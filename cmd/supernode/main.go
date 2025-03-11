@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -14,27 +13,35 @@ import (
 )
 
 func main() {
-	// Command-line flags.
-	port := flag.Int("port", 7777, "UDP port for the supernode to listen on")
-	staleDuration := flag.Duration("stale", 60*time.Second, "Duration after which an edge is considered stale and cleaned up")
+	port := flag.String("port", "7777", "UDP port for supernode")
+	cleanupInterval := flag.Duration("cleanup", 5*time.Minute, "Cleanup interval for stale edges")
+	expiryDuration := flag.Duration("expiry", 10*time.Minute, "Edge expiry duration")
 	flag.Parse()
 
-	// Resolve the UDP address.
-	addr, err := net.ResolveUDPAddr("udp4", ":"+strconv.Itoa(*port))
+	addrStr := ":" + *port
+	udpAddr, err := net.ResolveUDPAddr("udp", addrStr)
 	if err != nil {
-		log.Fatalf("Supernode: Failed to resolve UDP address: %v", err)
+		log.Fatalf("Supernode: Failed to resolve UDP address %s: %v", addrStr, err)
 	}
 
-	// Open the UDP connection.
-	conn, err := net.ListenUDP("udp4", addr)
+	conn, err := net.ListenUDP("udp", udpAddr)
 	if err != nil {
-		log.Fatalf("Supernode: Failed to listen on UDP: %v", err)
+		log.Fatalf("Supernode: Failed to listen on UDP %s: %v", addrStr, err)
 	}
+	defer conn.Close()
+	log.Printf("Supernode: Listening on %s", addrStr)
 
-	// Create the Supernode instance with the configured stale edge expiry.
-	sn := supernode.NewSupernode(conn, *staleDuration)
+	sn := supernode.NewSupernode(conn, *expiryDuration)
 
-	// Setup signal handling for graceful shutdown.
+	// Start periodic cleanup of stale edges.
+	go func() {
+		ticker := time.NewTicker(*cleanupInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			sn.CleanupStaleEdges(*expiryDuration)
+		}
+	}()
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -44,6 +51,5 @@ func main() {
 		os.Exit(0)
 	}()
 
-	log.Printf("Supernode: Listening on %s", addr.String())
 	sn.Listen()
 }
