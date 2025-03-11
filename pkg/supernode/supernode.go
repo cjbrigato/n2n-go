@@ -152,9 +152,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			s.macToEdge[edge.MACAddr] = srcID // store edge ID keyed by MAC string
 			s.macMu.Unlock()
 		}
-		if debug {
-			log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
-		}
+		log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
 	} else {
 		if community != edge.Community {
 			log.Printf("Supernode: Community mismatch for edge %s: packet community %q vs registered %q; dropping", srcID, community, edge.Community)
@@ -287,7 +285,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		s.UnregisterEdge(srcID)
 	case protocol.TypeHeartbeat:
 		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
-		if edge != nil && debug {
+		if edge != nil {
 			log.Printf("Supernode: Heartbeat received from edge %s", srcID)
 		}
 		s.SendAck(addr, "ACK")
@@ -329,10 +327,14 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 					return
 				}
 			}
-			log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMAC, community)
+			if debug {
+				log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMAC, community)
+			}
 			s.broadcast(packet, community, srcID)
 		} else {
-			log.Printf("Supernode: No destination MAC provided. Fallbacking to broadcast for community %s", community)
+			if debug {
+				log.Printf("Supernode: No destination MAC provided. Fallbacking to broadcast for community %s", community)
+			}
 			s.broadcast(packet, community, srcID)
 		}
 		// Do not send an ACK for data packets.
