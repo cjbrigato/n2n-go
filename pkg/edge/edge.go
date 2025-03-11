@@ -1,6 +1,5 @@
-// Package edge implements the client (edge) functionality, now using TAP
-// for layer-2 bridging, integrating protocol framing for registration,
-// heartbeat, and data forwarding.
+// Package edge implements the client (edge) functionality,
+// integrating protocol framing for registration, heartbeat, and data forwarding.
 package edge
 
 import (
@@ -26,6 +25,9 @@ type EdgeClient struct {
 
 	heartbeatInterval time.Duration
 	quitHeartbeat     chan struct{}
+
+	// VirtualIP is the IP assigned by the supernode.
+	VirtualIP net.IP
 }
 
 // NewEdgeClient creates a new EdgeClient.
@@ -59,7 +61,8 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	}, nil
 }
 
-// Register sends a registration message to the supernode.
+// Register sends a registration message to the supernode and parses the ACK
+// to obtain the assigned virtual IP.
 func (e *EdgeClient) Register() error {
 	e.seq++
 	header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
@@ -81,14 +84,21 @@ func (e *EdgeClient) Register() error {
 	if err != nil {
 		return fmt.Errorf("edge: registration ACK timeout: %v", err)
 	}
-	ack := strings.TrimSpace(string(buf[:n]))
-	if ack != "ACK" {
-		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, ack)
+	resp := strings.TrimSpace(string(buf[:n]))
+	// Expected format: "ACK <virtual_ip>"
+	parts := strings.Fields(resp)
+	if len(parts) < 1 || parts[0] != "ACK" {
+		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
 	}
-	log.Printf("Edge: Registration successful (ACK from %v)", addr)
-
+	if len(parts) >= 2 {
+		e.VirtualIP = net.ParseIP(parts[1])
+		log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP.String())
+	} else {
+		return fmt.Errorf("edge: registration response missing virtual IP")
+	}
 	// Clear the read deadline.
 	e.Conn.SetReadDeadline(time.Time{})
+	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 	return nil
 }
 
@@ -166,7 +176,7 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 
-		// If the packet is too short, it might be a simple "ACK" from supernode.
+		// If packet is too short, check if it's an ACK message.
 		if n < protocol.TotalHeaderSize {
 			msg := strings.TrimSpace(string(buf[:n]))
 			if msg == "ACK" {
