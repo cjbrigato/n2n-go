@@ -13,7 +13,7 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
-const debug = true // set to true for verbose logging
+const debug = false // set to true for verbose logging
 
 // VIPPool manages VIP allocation for a community.
 type VIPPool struct {
