@@ -27,10 +27,16 @@ type EdgeClient struct {
 
 	heartbeatInterval time.Duration
 	done              chan struct{}  // signals overall shutdown
+	quitHeartbeat     chan struct{}  // signals heartbeat goroutine to stop
 	wg                sync.WaitGroup // waits for all goroutines to finish
 
 	// VirtualIP is the IP assigned by the supernode.
 	VirtualIP net.IP
+
+	// once fields to ensure single execution.
+	unregisterOnce sync.Once
+	doneOnce       sync.Once
+	heartbeatOnce  sync.Once
 }
 
 // NewEdgeClient creates a new EdgeClient.
@@ -61,6 +67,7 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		seq:               0,
 		heartbeatInterval: heartbeatInterval,
 		done:              make(chan struct{}),
+		quitHeartbeat:     make(chan struct{}),
 	}, nil
 }
 
@@ -107,20 +114,25 @@ func (e *EdgeClient) Register() error {
 
 // Unregister sends an unregister message to the supernode so that the edge's VIP is freed.
 func (e *EdgeClient) Unregister() error {
-	e.seq++
-	header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
-	headerBytes, err := header.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("edge: failed to marshal unregister header: %v", err)
-	}
-	payload := []byte(fmt.Sprintf("UNREGISTER %s", e.ID))
-	packet := append(headerBytes, payload...)
-	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send unregister: %v", err)
-	}
-	log.Printf("Edge: Unregister message sent")
-	return nil
+	var unregErr error
+	e.unregisterOnce.Do(func() {
+		e.seq++
+		header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			unregErr = fmt.Errorf("edge: failed to marshal unregister header: %v", err)
+			return
+		}
+		payload := []byte(fmt.Sprintf("UNREGISTER %s", e.ID))
+		packet := append(headerBytes, payload...)
+		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+		if err != nil {
+			unregErr = fmt.Errorf("edge: failed to send unregister: %v", err)
+			return
+		}
+		log.Printf("Edge: Unregister message sent")
+	})
+	return unregErr
 }
 
 // runHeartbeat sends heartbeat messages periodically.
@@ -133,7 +145,7 @@ func (e *EdgeClient) runHeartbeat() {
 		select {
 		case <-ticker.C:
 			e.seq++
-			header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community)
+			header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community) // Flag 1 indicates heartbeat.
 			headerBytes, err := header.MarshalBinary()
 			if err != nil {
 				log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
@@ -241,21 +253,19 @@ func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
-	// Block until shutdown.
+	// Block until shutdown signal is received.
 	<-e.done
 }
 
-// Close initiates a clean shutdown: it unregisters, sets deadlines to break blocking reads,
-// signals goroutines to stop, waits for them, then closes the TAP interface and UDP connection.
+// Close initiates a clean shutdown: it unregisters, signals goroutines to stop,
+// waits for them, then closes the TAP interface and UDP connection.
 func (e *EdgeClient) Close() {
-	// Attempt to unregister.
+	// Attempt to unregister (only once).
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-	// Signal goroutines to stop.
-	close(e.done)
-	// Set deadlines to force blocking reads to return.
-	e.Conn.SetReadDeadline(time.Now())
+	// Signal goroutines to stop (using once to avoid double-close).
+	e.doneOnce.Do(func() { close(e.done) })
 	// Wait for all goroutines to finish.
 	e.wg.Wait()
 	if e.TAP != nil {
