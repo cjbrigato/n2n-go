@@ -1,5 +1,6 @@
 // Package supernode maintains registered edges, dynamic VIP pools,
 // and processes incoming packets using the refined protocol header.
+// This version splits locking into two parts: one for the edge registry and one for the VIP pools.
 package supernode
 
 import (
@@ -28,7 +29,7 @@ func NewVIPPool() *VIPPool {
 func (pool *VIPPool) Allocate(edgeID string) (net.IP, error) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	// Assign addresses in range 10.0.0.2 - 10.0.0.254 (reserve .1 for supernode).
+	// For example, assign addresses in range 10.0.0.2 - 10.0.0.254 (reserve .1 for supernode)
 	for octet := uint8(2); octet < 255; octet++ {
 		if _, ok := pool.used[octet]; !ok {
 			pool.used[octet] = edgeID
@@ -62,13 +63,14 @@ type Edge struct {
 
 // Supernode holds registered edges, VIP pools, and a UDP connection.
 type Supernode struct {
-	mu       sync.RWMutex
-	edges    map[string]*Edge    // keyed by edge ID
-	vipPools map[string]*VIPPool // keyed by community
-	Conn     *net.UDPConn
+	edgeMu sync.RWMutex     // protects edges
+	edges  map[string]*Edge // keyed by edge ID
 
-	// Edge expiry duration.
-	expiry time.Duration
+	vipMu    sync.RWMutex        // protects vipPools
+	vipPools map[string]*VIPPool // keyed by community
+
+	Conn   *net.UDPConn
+	expiry time.Duration // edge expiry duration
 }
 
 func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
@@ -78,14 +80,14 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
 		Conn:     conn,
 		expiry:   expiry,
 	}
-	// Start periodic cleanup.
 	go sn.periodicCleanup()
 	return sn
 }
 
+// getVIPPool retrieves (or creates) a VIP pool for a given community.
 func (s *Supernode) getVIPPool(community string) *VIPPool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.vipMu.Lock()
+	defer s.vipMu.Unlock()
 	pool, exists := s.vipPools[community]
 	if !exists {
 		pool = NewVIPPool()
@@ -95,10 +97,11 @@ func (s *Supernode) getVIPPool(community string) *VIPPool {
 }
 
 // RegisterEdge creates or updates an edge record.
-// For registration packets, it allocates a VIP from the pool.
+// For registration packets (isReg==true) a VIP is allocated.
 func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool) *Edge {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.edgeMu.Lock()
+	defer s.edgeMu.Unlock()
+
 	edge, exists := s.edges[srcID]
 	if !exists {
 		var vip net.IP
@@ -143,29 +146,43 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 }
 
 func (s *Supernode) UnregisterEdge(srcID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.edgeMu.Lock()
+	defer s.edgeMu.Unlock()
 	if edge, exists := s.edges[srcID]; exists {
-		if pool, ok := s.vipPools[edge.Community]; ok {
-			pool.Free(srcID)
-		}
+		// Free VIP from the proper pool.
+		pool := s.getVIPPool(edge.Community)
+		pool.Free(srcID)
 		delete(s.edges, srcID)
 		log.Printf("Supernode: Edge %s unregistered (VIP %s freed)", srcID, edge.VirtualIP.String())
 	}
 }
 
+// CleanupStaleEdges removes edge records that haven't been updated within expiry.
+// This function builds a list of stale IDs under a read lock, then removes them under a write lock.
 func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	var stale []string
 	now := time.Now()
+	// Acquire read lock to scan through edges.
+	s.edgeMu.RLock()
 	for id, edge := range s.edges {
 		if now.Sub(edge.LastHeartbeat) > expiry {
-			if pool, ok := s.vipPools[edge.Community]; ok {
-				pool.Free(id)
-			}
-			delete(s.edges, id)
-			log.Printf("Supernode: Edge %s removed due to stale heartbeat", id)
+			stale = append(stale, id)
 		}
+	}
+	s.edgeMu.RUnlock()
+
+	// Acquire write lock to remove stale edges.
+	if len(stale) > 0 {
+		s.edgeMu.Lock()
+		for _, id := range stale {
+			if edge, exists := s.edges[id]; exists {
+				pool := s.getVIPPool(edge.Community)
+				pool.Free(id)
+				delete(s.edges, id)
+				log.Printf("Supernode: Edge %s removed due to stale heartbeat", id)
+			}
+		}
+		s.edgeMu.Unlock()
 	}
 }
 
@@ -216,6 +233,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		s.SendAck(addr, ackMsg)
 	case protocol.TypeUnregister:
 		s.UnregisterEdge(srcID)
+		// No ACK for unregister.
 	case protocol.TypeHeartbeat:
 		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false)
 		if edge != nil && debug {
@@ -231,7 +249,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		if debug {
 			log.Printf("Supernode: Data packet received from edge %s", srcID)
 		}
-		s.mu.RLock()
+		s.edgeMu.RLock()
 		if destID != "" {
 			if target, ok := s.edges[destID]; ok {
 				if err := s.forwardPacket(packet, target); err != nil {
@@ -251,7 +269,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 				}
 			}
 		}
-		s.mu.RUnlock()
+		s.edgeMu.RUnlock()
 		s.SendAck(addr, "ACK")
 	case protocol.TypeAck:
 		if debug {
@@ -263,10 +281,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 }
 
 func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
-	addr := &net.UDPAddr{
-		IP:   target.PublicIP,
-		Port: target.Port,
-	}
+	addr := &net.UDPAddr{IP: target.PublicIP, Port: target.Port}
 	if debug {
 		log.Printf("Supernode: Forwarding packet to edge %s at %v", target.ID, addr)
 	}
