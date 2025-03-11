@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"n2n-go/pkg/protocol"
@@ -26,6 +27,9 @@ type EdgeClient struct {
 
 	heartbeatInterval time.Duration
 	quitHeartbeat     chan struct{}
+
+	done chan struct{}  // signals overall shutdown
+	wg   sync.WaitGroup // waits for all goroutines to finish
 
 	// VirtualIP is the IP assigned by the supernode.
 	VirtualIP net.IP
@@ -59,6 +63,7 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		seq:               0,
 		heartbeatInterval: heartbeatInterval,
 		quitHeartbeat:     make(chan struct{}),
+		done:              make(chan struct{}),
 	}, nil
 }
 
@@ -123,6 +128,8 @@ func (e *EdgeClient) Unregister() error {
 
 // startHeartbeat sends heartbeat messages periodically to refresh registration.
 func (e *EdgeClient) startHeartbeat() {
+	e.wg.Add(1)
+	defer e.wg.Done()
 	ticker := time.NewTicker(e.heartbeatInterval)
 	defer ticker.Stop()
 	for {
@@ -130,6 +137,8 @@ func (e *EdgeClient) startHeartbeat() {
 		case <-ticker.C:
 			e.sendHeartbeat()
 		case <-e.quitHeartbeat:
+			return
+		case <-e.done:
 			return
 		}
 	}
@@ -152,43 +161,51 @@ func (e *EdgeClient) sendHeartbeat() {
 	}
 }
 
-// Run starts the edge client:
-// - A heartbeat goroutine sending periodic heartbeats.
-// - A goroutine to forward packets from the TAP interface to the supernode.
-// - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
-func (e *EdgeClient) Run() {
-	go e.startHeartbeat()
-
-	// Goroutine: Forward TAP traffic to supernode.
-	go func() {
-		buf := make([]byte, 1500)
-		for {
-			n, err := e.TAP.Read(buf)
-			if err != nil {
-				log.Printf("Edge: TAP read error: %v", err)
-				continue
-			}
-			e.seq++
-			header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
-			headerBytes, err := header.MarshalBinary()
-			if err != nil {
-				log.Printf("Edge: Failed to marshal header: %v", err)
-				continue
-			}
-			// Add a prefix so the supernode knows the sender.
-			prefix := []byte(fmt.Sprintf("EDGE %s ", e.ID))
-			packet := append(headerBytes, prefix...)
-			packet = append(packet, buf[:n]...)
-			_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
-			if err != nil {
-				log.Printf("Edge: Error sending packet to supernode: %v", err)
-			}
-		}
-	}()
-
-	// Main loop: Forward UDP traffic from supernode to TAP.
+// runTAPToSupernode forwards packets from the TAP interface to the supernode.
+func (e *EdgeClient) runTAPToSupernode() {
+	e.wg.Add(1)
+	defer e.wg.Done()
 	buf := make([]byte, 1500)
 	for {
+		select {
+		case <-e.done:
+			return
+		default:
+		}
+		n, err := e.TAP.Read(buf)
+		if err != nil {
+			log.Printf("Edge: TAP read error: %v", err)
+			continue
+		}
+		e.seq++
+		header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+		headerBytes, err := header.MarshalBinary()
+		if err != nil {
+			log.Printf("Edge: Failed to marshal header: %v", err)
+			continue
+		}
+		// Add a prefix so the supernode knows the sender.
+		prefix := []byte(fmt.Sprintf("EDGE %s ", e.ID))
+		packet := append(headerBytes, prefix...)
+		packet = append(packet, buf[:n]...)
+		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+		if err != nil {
+			log.Printf("Edge: Error sending packet to supernode: %v", err)
+		}
+	}
+}
+
+// runUDPToTAP forwards packets from the UDP connection (supernode) to the TAP interface.
+func (e *EdgeClient) runUDPToTAP() {
+	e.wg.Add(1)
+	defer e.wg.Done()
+	buf := make([]byte, 1500)
+	for {
+		select {
+		case <-e.done:
+			return
+		default:
+		}
 		n, addr, err := e.Conn.ReadFromUDP(buf)
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -197,7 +214,6 @@ func (e *EdgeClient) Run() {
 			log.Printf("Edge: UDP read error: %v", err)
 			continue
 		}
-
 		// If packet is too short, check if it's a simple ACK.
 		if n < protocol.TotalHeaderSize {
 			msg := strings.TrimSpace(string(buf[:n]))
@@ -208,7 +224,6 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 
-		// First, remove the protocol header.
 		var hdr protocol.PacketHeader
 		if err := hdr.UnmarshalBinary(buf[:protocol.TotalHeaderSize]); err != nil {
 			log.Printf("Edge: Failed to unmarshal header from %v: %v", addr, err)
@@ -218,11 +233,10 @@ func (e *EdgeClient) Run() {
 			log.Printf("Edge: Header timestamp verification failed from %v", addr)
 			continue
 		}
-		// The payload now may include a prefix "EDGE <edgeID> ".
 		payload := buf[protocol.TotalHeaderSize:n]
+		// Strip prefix "EDGE <edgeID> " if present.
 		payloadStr := string(payload)
 		if strings.HasPrefix(payloadStr, "EDGE ") {
-			// Strip the "EDGE <edgeID> " prefix.
 			parts := strings.SplitN(payloadStr, " ", 3)
 			if len(parts) == 3 {
 				payload = []byte(parts[2])
@@ -235,16 +249,33 @@ func (e *EdgeClient) Run() {
 	}
 }
 
-// Close attempts to unregister from the supernode and then closes all resources.
+// Run starts the edge client by launching goroutines for heartbeats,
+// TAP-to-supernode forwarding, and UDP-to-TAP forwarding.
+func (e *EdgeClient) Run() {
+	go e.startHeartbeat()
+	go e.runTAPToSupernode()
+	go e.runUDPToTAP()
+	// Block forever.
+	select {}
+}
+
+// Close attempts to unregister from the supernode and then cleanly shuts down all goroutines and resources.
 func (e *EdgeClient) Close() {
+	// Attempt to unregister.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
+	// Signal goroutines to stop.
+	close(e.done)
+	// Also signal heartbeat to stop.
 	close(e.quitHeartbeat)
+	// Wait for goroutines to finish.
+	e.wg.Wait()
 	if e.TAP != nil {
 		e.TAP.Close()
 	}
 	if e.Conn != nil {
 		e.Conn.Close()
 	}
+	log.Printf("Edge: Shutdown complete")
 }
