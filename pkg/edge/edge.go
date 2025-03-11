@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/tuntap"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"n2n-go/pkg/protocol"
-	"n2n-go/pkg/tuntap"
 )
 
 // EdgeClient encapsulates the state and configuration of an edge.
@@ -21,7 +21,7 @@ type EdgeClient struct {
 	SupernodeAddr *net.UDPAddr
 	Conn          *net.UDPConn
 	TAP           *tuntap.Interface
-	seq           uint16
+	seq           uint32
 
 	heartbeatInterval time.Duration
 
@@ -83,9 +83,9 @@ func getTapMAC(tap *tuntap.Interface) (net.HardwareAddr, error) {
 // Register sends a registration packet to the supernode.
 // Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
 func (e *EdgeClient) Register() error {
-	e.seq++
+	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 	// Use control header (dest remains empty).
-	header := protocol.NewHeader(3, 64, protocol.TypeRegister, e.seq, e.Community, e.ID, "")
+	header := protocol.NewHeader(3, 64, protocol.TypeRegister, seq, e.Community, e.ID, "")
 	headerBytes, err := header.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("edge: failed to marshal registration header: %v", err)
@@ -126,8 +126,8 @@ func (e *EdgeClient) Register() error {
 func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
-		e.seq++
-		header := protocol.NewHeader(3, 64, protocol.TypeUnregister, e.seq, e.Community, e.ID, "")
+		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+		header := protocol.NewHeader(3, 64, protocol.TypeUnregister, seq, e.Community, e.ID, "")
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to marshal unregister header: %v", err)
@@ -154,8 +154,8 @@ func (e *EdgeClient) runHeartbeat() {
 	for {
 		select {
 		case <-ticker.C:
-			e.seq++
-			header := protocol.NewHeader(3, 64, protocol.TypeHeartbeat, e.seq, e.Community, e.ID, "")
+			seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+			header := protocol.NewHeader(3, 64, protocol.TypeHeartbeat, seq, e.Community, e.ID, "")
 			headerBytes, err := header.MarshalBinary()
 			if err != nil {
 				log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
@@ -202,9 +202,8 @@ func (e *EdgeClient) runTAPToSupernode() {
 		if !isBroadcastMAC(destMACBytes) {
 			destMAC = destMACBytes
 		}
-		e.seq++
-		// Use the new function to create a header with destination MAC.
-		header := protocol.NewHeaderWithDestMAC(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, destMAC)
+		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+		header := protocol.NewHeaderWithDestMAC(3, 64, protocol.TypeData, seq, e.Community, e.ID, destMAC)
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			log.Printf("Edge: Failed to marshal data header: %v", err)
