@@ -73,9 +73,9 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("edge: failed to send registration: %v", err)
 	}
 
-	// Wait for ACK with a timeout.
-	buf := make([]byte, 1024)
+	// Set a deadline for receiving the ACK.
 	e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	buf := make([]byte, 1024)
 	n, addr, err := e.Conn.ReadFromUDP(buf)
 	if err != nil {
 		return fmt.Errorf("edge: registration ACK timeout: %v", err)
@@ -85,6 +85,9 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, ack)
 	}
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
+
+	// Clear the read deadline to avoid spurious timeouts during normal operation.
+	e.Conn.SetReadDeadline(time.Time{})
 	return nil
 }
 
@@ -126,6 +129,7 @@ func (e *EdgeClient) sendHeartbeat() {
 func (e *EdgeClient) Run() {
 	go e.startHeartbeat()
 
+	// Goroutine: Forward TUN traffic to supernode.
 	go func() {
 		buf := make([]byte, 1500)
 		for {
@@ -149,10 +153,15 @@ func (e *EdgeClient) Run() {
 		}
 	}()
 
+	// Main loop: Forward UDP traffic from supernode to TUN.
 	buf := make([]byte, 1500)
 	for {
 		n, addr, err := e.Conn.ReadFromUDP(buf)
 		if err != nil {
+			// Check for timeout error and skip logging if so.
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue
+			}
 			log.Printf("Edge: UDP read error: %v", err)
 			continue
 		}
