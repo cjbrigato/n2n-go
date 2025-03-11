@@ -4,6 +4,7 @@ package tuntap
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/cjbrigato/water"
 )
@@ -48,4 +49,22 @@ func (i *Interface) Close() error {
 // Name returns the name of the TAP interface.
 func (i *Interface) Name() string {
 	return i.ifce.Name()
+}
+
+func (i *Interface) HardwareAddr() net.HardwareAddr {
+	addr, _ := i.hardwareAddr()
+	return addr
+}
+
+// hardwareAddr retrieves the MAC address of the TAP interface using its name.
+func (i *Interface) hardwareAddr() (net.HardwareAddr, error) {
+	iface, err := net.InterfaceByName(i.Name())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get interface %s: %v", i.Name(), err)
+	}
+	if iface.HardwareAddr == nil || len(iface.HardwareAddr) < 6 {
+		return nil, fmt.Errorf("no valid MAC address found on interface %s", i.Name())
+	}
+	// Return the first 6 bytes.
+	return iface.HardwareAddr[:6], nil
 }

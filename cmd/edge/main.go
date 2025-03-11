@@ -57,6 +57,13 @@ func main() {
 	}
 	log.Printf("TAP interface %s configured with virtual IP %s", *tapName, client.VirtualIP)
 
+	// Send gratuitous ARP.
+	if err := edge.SendGratuitousARP(*tapName, client.TAP.HardwareAddr(), net.ParseIP(client.VirtualIP)); err != nil {
+		log.Printf("Failed to send gratuitous ARP: %v", err)
+	} else {
+		log.Printf("Gratuitous ARP sent successfully")
+	}
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
