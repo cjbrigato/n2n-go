@@ -292,7 +292,6 @@ func (e *EdgeClient) Run() {
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
 	<-e.ctx.Done()
-	e.wg.Wait()
 }
 
 // Close initiates a clean shutdown.
