@@ -1,5 +1,6 @@
 // Package edge implements the client (edge) functionality,
-// integrating protocol framing for registration, heartbeat, unregistration, and data forwarding.
+// integrating protocol framing for registration, heartbeat, unregistration,
+// and data forwarding using a TAP interface.
 package edge
 
 import (
@@ -31,17 +32,17 @@ type EdgeClient struct {
 }
 
 // NewEdgeClient creates a new EdgeClient.
-// It resolves the supernode address, opens a UDP socket, and sets up a TAP interface.
+// It resolves the supernode address, opens an IPv4 UDP socket, and sets up a TAP interface.
 func NewEdgeClient(id, community, tapName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
-	snAddr, err := net.ResolveUDPAddr("udp", supernode)
+	snAddr, err := net.ResolveUDPAddr("udp4", supernode)
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to resolve supernode address: %v", err)
 	}
-	localAddr, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(localPort))
+	localAddr, err := net.ResolveUDPAddr("udp4", ":"+strconv.Itoa(localPort))
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to resolve local UDP address: %v", err)
 	}
-	conn, err := net.ListenUDP("udp", localAddr)
+	conn, err := net.ListenUDP("udp4", localAddr)
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to open UDP connection: %v", err)
 	}
@@ -143,7 +144,6 @@ func (e *EdgeClient) sendHeartbeat() {
 		log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
 		return
 	}
-	// Include edge ID in the heartbeat payload.
 	payload := []byte(fmt.Sprintf("HEARTBEAT %s", e.ID))
 	packet := append(headerBytes, payload...)
 	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
@@ -153,10 +153,9 @@ func (e *EdgeClient) sendHeartbeat() {
 }
 
 // Run starts the edge client:
-//   - A heartbeat goroutine sending periodic heartbeats.
-//   - A goroutine to forward packets from the TAP interface to the supernode,
-//     prefixing the payload with "EDGE <edgeID> ".
-//   - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
+// - A heartbeat goroutine sending periodic heartbeats.
+// - A goroutine to forward packets from the TAP interface to the supernode.
+// - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
 func (e *EdgeClient) Run() {
 	go e.startHeartbeat()
 
@@ -176,7 +175,7 @@ func (e *EdgeClient) Run() {
 				log.Printf("Edge: Failed to marshal header: %v", err)
 				continue
 			}
-			// Prefix payload with "EDGE <edgeID> " so supernode can identify the sender.
+			// Add a prefix so the supernode knows the sender.
 			prefix := []byte(fmt.Sprintf("EDGE %s ", e.ID))
 			packet := append(headerBytes, prefix...)
 			packet = append(packet, buf[:n]...)
@@ -209,6 +208,7 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 
+		// First, remove the protocol header.
 		var hdr protocol.PacketHeader
 		if err := hdr.UnmarshalBinary(buf[:protocol.TotalHeaderSize]); err != nil {
 			log.Printf("Edge: Failed to unmarshal header from %v: %v", addr, err)
@@ -218,7 +218,16 @@ func (e *EdgeClient) Run() {
 			log.Printf("Edge: Header timestamp verification failed from %v", addr)
 			continue
 		}
+		// The payload now may include a prefix "EDGE <edgeID> ".
 		payload := buf[protocol.TotalHeaderSize:n]
+		payloadStr := string(payload)
+		if strings.HasPrefix(payloadStr, "EDGE ") {
+			// Strip the "EDGE <edgeID> " prefix.
+			parts := strings.SplitN(payloadStr, " ", 3)
+			if len(parts) == 3 {
+				payload = []byte(parts[2])
+			}
+		}
 		_, err = e.TAP.Write(payload)
 		if err != nil {
 			log.Printf("Edge: TAP write error: %v", err)
@@ -228,7 +237,6 @@ func (e *EdgeClient) Run() {
 
 // Close attempts to unregister from the supernode and then closes all resources.
 func (e *EdgeClient) Close() {
-	// Attempt to unregister.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
