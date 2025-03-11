@@ -70,8 +70,8 @@ type Supernode struct {
 	vipMu    sync.RWMutex        // protects vipPools
 	vipPools map[string]*VIPPool // keyed by community
 
-	macMu     sync.RWMutex                // protects macToEdge mapping
-	macToEdge map[string]net.HardwareAddr // maps TAP MAC address to edge ID
+	macMu     sync.RWMutex      // protects macToEdge mapping
+	macToEdge map[string]string // maps normalized MAC string to edge ID
 
 	Conn   *net.UDPConn
 	expiry time.Duration // edge expiry duration
@@ -81,7 +81,7 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
 	sn := &Supernode{
 		edges:     make(map[string]*Edge),
 		vipPools:  make(map[string]*VIPPool),
-		macToEdge: make(map[string]net.HardwareAddr),
+		macToEdge: make(map[string]string),
 		Conn:      conn,
 		expiry:    expiry,
 	}
@@ -149,7 +149,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 		if macAddr != nil {
 			edge.MACAddr = macAddr.String()
 			s.macMu.Lock()
-			s.macToEdge[edge.MACAddr] = macAddr
+			s.macToEdge[edge.MACAddr] = srcID // store edge ID keyed by MAC string
 			s.macMu.Unlock()
 		}
 		if debug {
@@ -167,7 +167,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 		if isReg && macAddr != nil {
 			edge.MACAddr = macAddr.String()
 			s.macMu.Lock()
-			s.macToEdge[edge.MACAddr] = macAddr
+			s.macToEdge[edge.MACAddr] = srcID
 			s.macMu.Unlock()
 		}
 		if debug {
@@ -302,11 +302,11 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		}
 		if destMAC != "" {
 			s.macMu.RLock()
-			_, exists := s.macToEdge[destMAC]
+			targetEdgeID, exists := s.macToEdge[destMAC]
 			s.macMu.RUnlock()
 			if exists {
 				s.edgeMu.RLock()
-				target, ok := s.edges[srcID] // Here, if a specific destination were provided, we’d look up by that edge ID.
+				target, ok := s.edges[targetEdgeID]
 				s.edgeMu.RUnlock()
 				if ok {
 					if err := s.forwardPacket(packet, target); err != nil {
