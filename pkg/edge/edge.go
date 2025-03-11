@@ -27,16 +27,13 @@ type EdgeClient struct {
 
 	heartbeatInterval time.Duration
 	done              chan struct{}  // signals overall shutdown
-	quitHeartbeat     chan struct{}  // signals heartbeat goroutine to stop
 	wg                sync.WaitGroup // waits for all goroutines to finish
 
 	// VirtualIP is the IP assigned by the supernode.
 	VirtualIP net.IP
 
-	// once fields to ensure single execution.
+	// once to ensure unregister happens only once.
 	unregisterOnce sync.Once
-	doneOnce       sync.Once
-	heartbeatOnce  sync.Once
 }
 
 // NewEdgeClient creates a new EdgeClient.
@@ -67,7 +64,6 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		seq:               0,
 		heartbeatInterval: heartbeatInterval,
 		done:              make(chan struct{}),
-		quitHeartbeat:     make(chan struct{}),
 	}, nil
 }
 
@@ -145,7 +141,7 @@ func (e *EdgeClient) runHeartbeat() {
 		select {
 		case <-ticker.C:
 			e.seq++
-			header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community) // Flag 1 indicates heartbeat.
+			header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community)
 			headerBytes, err := header.MarshalBinary()
 			if err != nil {
 				log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
@@ -176,6 +172,9 @@ func (e *EdgeClient) runTAPToSupernode() {
 		}
 		n, err := e.TAP.Read(buf)
 		if err != nil {
+			if strings.Contains(err.Error(), "file already closed") {
+				return
+			}
 			log.Printf("Edge: TAP read error: %v", err)
 			continue
 		}
@@ -191,6 +190,9 @@ func (e *EdgeClient) runTAPToSupernode() {
 		packet = append(packet, buf[:n]...)
 		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return
+			}
 			log.Printf("Edge: Error sending packet to supernode: %v", err)
 		}
 	}
@@ -209,6 +211,9 @@ func (e *EdgeClient) runUDPToTAP() {
 		}
 		n, addr, err := e.Conn.ReadFromUDP(buf)
 		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return
+			}
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
@@ -243,6 +248,9 @@ func (e *EdgeClient) runUDPToTAP() {
 		}
 		_, err = e.TAP.Write(payload)
 		if err != nil {
+			if strings.Contains(err.Error(), "file already closed") {
+				return
+			}
 			log.Printf("Edge: TAP write error: %v", err)
 		}
 	}
@@ -253,30 +261,26 @@ func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
-	// Block until shutdown signal is received.
+	// Block until done is closed.
 	<-e.done
 }
 
-// Close initiates a clean shutdown: it unregisters from the supernode,
-// signals goroutines to stop, immediately closes the TAP and UDP connections
-// to force any blocking reads to return, then waits for all goroutines to finish.
+// Close initiates a clean shutdown: it unregisters, signals goroutines to stop,
+// waits for them, then closes the TAP interface and UDP connection.
 func (e *EdgeClient) Close() {
-	// Attempt to unregister (only once).
+	// Attempt to unregister.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-	// Signal goroutines to stop (using once to avoid double-closing).
-	e.doneOnce.Do(func() { close(e.done) })
-
-	// Immediately close TAP and UDP to unblock any blocking Read() calls.
+	// Signal shutdown once.
+	close(e.done)
+	// Wait for all goroutines to finish.
+	e.wg.Wait()
 	if e.TAP != nil {
 		e.TAP.Close()
 	}
 	if e.Conn != nil {
 		e.Conn.Close()
 	}
-
-	// Wait for all goroutines to finish.
-	e.wg.Wait()
 	log.Printf("Edge: Shutdown complete")
 }
