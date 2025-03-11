@@ -204,8 +204,10 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		}
 	} else {
 		s.mu.RLock()
+		log.Printf("afterlock")
 		found := false
 		for _, edge := range s.edges {
+			log.Printf("lost in the loop")
 			if edge.PublicIP.Equal(addr.IP) && edge.Port == addr.Port {
 				edgeID = edge.ID
 				found = true
