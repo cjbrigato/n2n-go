@@ -200,6 +200,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			log.Printf("Supernode: Malformed registration message from %v: %q", addr, msg)
 			return
 		}
+		log.Printf("yes")
 	} else if strings.HasPrefix(msg, "UNREGISTER") {
 		isUnreg = true
 		parts := strings.Fields(msg)
