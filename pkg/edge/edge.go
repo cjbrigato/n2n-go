@@ -1,3 +1,7 @@
+// Package edge implements the client (edge) functionality,
+// using the refined protocol header for registration, heartbeat,
+// data transfer, and unregistration. It retains the VIP pool management
+// and other critical features.
 package edge
 
 import (
@@ -31,7 +35,7 @@ type EdgeClient struct {
 
 	wg sync.WaitGroup
 
-	// VirtualIP is the IP assigned by the supernode.
+	// VirtualIP as assigned by the supernode.
 	VirtualIP string
 
 	// Ensure unregister is sent only once.
@@ -70,22 +74,23 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	}, nil
 }
 
-// Register sends a registration message to the supernode and parses the ACK.
+// Register sends a registration packet using the refined header.
+// For registration, PacketType is TypeRegister, SourceID is the edge ID,
+// and DestinationID is empty (broadcast).
 func (e *EdgeClient) Register() error {
 	e.seq++
-	header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+	header := protocol.NewPacketHeader(3, 64, protocol.TypeRegister, e.seq, e.Community, e.ID, "")
 	headerBytes, err := header.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("edge: failed to marshal registration header: %v", err)
 	}
-	payload := []byte(fmt.Sprintf("REGISTER %s", e.ID))
-	packet := append(headerBytes, payload...)
+	packet := append(headerBytes, []byte{}...)
 	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send registration: %v", err)
 	}
 
-	// Set a deadline for receiving the ACK.
+	// Wait for ACK.
 	e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buf := make([]byte, 1024)
 	n, addr, err := e.Conn.ReadFromUDP(buf)
@@ -108,19 +113,18 @@ func (e *EdgeClient) Register() error {
 	return nil
 }
 
-// Unregister sends an unregister message to the supernode (ensured to run once).
+// Unregister sends an unregister packet (TypeUnregister).
 func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		e.seq++
-		header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+		header := protocol.NewPacketHeader(3, 64, protocol.TypeUnregister, e.seq, e.Community, e.ID, "")
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to marshal unregister header: %v", err)
 			return
 		}
-		payload := []byte(fmt.Sprintf("UNREGISTER %s", e.ID))
-		packet := append(headerBytes, payload...)
+		packet := append(headerBytes, []byte{}...)
 		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %v", err)
@@ -131,7 +135,7 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
-// runHeartbeat sends heartbeat messages periodically.
+// runHeartbeat sends heartbeat packets periodically.
 func (e *EdgeClient) runHeartbeat() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -141,14 +145,13 @@ func (e *EdgeClient) runHeartbeat() {
 		select {
 		case <-ticker.C:
 			e.seq++
-			header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community)
+			header := protocol.NewPacketHeader(3, 64, protocol.TypeHeartbeat, e.seq, e.Community, e.ID, "")
 			headerBytes, err := header.MarshalBinary()
 			if err != nil {
 				log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
 				continue
 			}
-			payload := []byte(fmt.Sprintf("HEARTBEAT %s", e.ID))
-			packet := append(headerBytes, payload...)
+			packet := append(headerBytes, []byte{}...)
 			_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 			if err != nil {
 				log.Printf("Edge: Failed to send heartbeat: %v", err)
@@ -159,7 +162,7 @@ func (e *EdgeClient) runHeartbeat() {
 	}
 }
 
-// runTAPToSupernode reads from the TAP interface and forwards packets to the supernode.
+// runTAPToSupernode reads from the TAP interface and sends data packets.
 func (e *EdgeClient) runTAPToSupernode() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -179,26 +182,25 @@ func (e *EdgeClient) runTAPToSupernode() {
 			continue
 		}
 		e.seq++
-		header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+		header := protocol.NewPacketHeader(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, "")
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
-			log.Printf("Edge: Failed to marshal header: %v", err)
+			log.Printf("Edge: Failed to marshal data header: %v", err)
 			continue
 		}
-		prefix := []byte(fmt.Sprintf("EDGE %s ", e.ID))
-		packet := append(headerBytes, prefix...)
-		packet = append(packet, buf[:n]...)
+		packet := append(headerBytes, buf[:n]...)
 		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
 			}
-			log.Printf("Edge: Error sending packet to supernode: %v", err)
+			log.Printf("Edge: Error sending data packet: %v", err)
 		}
 	}
 }
 
-// runUDPToTAP reads from the UDP connection (from supernode) and writes to the TAP interface.
+// runUDPToTAP reads from the UDP connection and writes payload to the TAP interface,
+// discarding packets not addressed to this edge.
 func (e *EdgeClient) runUDPToTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -233,19 +235,12 @@ func (e *EdgeClient) runUDPToTAP() {
 			log.Printf("Edge: Failed to unmarshal header from %v: %v", addr, err)
 			continue
 		}
-		if !hdr.VerifyTimestamp(time.Now(), 16*time.Second) {
-			log.Printf("Edge: Header timestamp verification failed from %v", addr)
+		// If DestinationID is set and does not match this edge, drop the packet.
+		destID := strings.TrimRight(string(hdr.DestinationID[:]), "\x00")
+		if destID != "" && destID != e.ID {
 			continue
 		}
 		payload := buf[protocol.TotalHeaderSize:n]
-		// Remove prefix "EDGE <edgeID> " if present.
-		payloadStr := string(payload)
-		if strings.HasPrefix(payloadStr, "EDGE ") {
-			parts := strings.SplitN(payloadStr, " ", 3)
-			if len(parts) == 3 {
-				payload = []byte(parts[2])
-			}
-		}
 		_, err = e.TAP.Write(payload)
 		if err != nil {
 			if strings.Contains(err.Error(), "file already closed") {
@@ -256,26 +251,22 @@ func (e *EdgeClient) runUDPToTAP() {
 	}
 }
 
-// Run launches the heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
+// Run launches all background goroutines.
 func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
-	<-e.ctx.Done() // Block until context is cancelled.
+	<-e.ctx.Done()
+	e.wg.Wait()
 }
 
-// Close initiates a clean shutdown: it calls Unregister (once), cancels the context to signal all goroutines,
-// waits for them to finish, and then closes the TAP interface and UDP connection.
+// Close initiates shutdown: it sends unregister, cancels the context, unblocks reads, and closes resources.
 func (e *EdgeClient) Close() {
-	// Send unregister once.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-	// Cancel the context.
 	e.cancel()
-	// Optionally, set a read deadline to unblock blocking calls.
 	e.Conn.SetReadDeadline(time.Now())
-	// Wait for all goroutines to finish.
 	e.wg.Wait()
 	if e.TAP != nil {
 		e.TAP.Close()

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -13,48 +14,36 @@ import (
 )
 
 func main() {
-	// Parse command-line flags.
-	port := flag.String("port", "7777", "UDP port for supernode to listen on")
-	cleanupInterval := flag.Duration("cleanup", 5*time.Minute, "Interval to run cleanup of stale edge registrations")
-	expiryDuration := flag.Duration("expiry", 10*time.Minute, "Edge expiry duration (no heartbeat received)")
+	// Command-line flags.
+	port := flag.Int("port", 7777, "UDP port for the supernode to listen on")
+	staleDuration := flag.Duration("stale", 60*time.Second, "Duration after which an edge is considered stale and cleaned up")
 	flag.Parse()
 
-	// Resolve and listen on the specified UDP port.
-	addrStr := ":" + *port
-	udpAddr, err := net.ResolveUDPAddr("udp", addrStr)
+	// Resolve the UDP address.
+	addr, err := net.ResolveUDPAddr("udp4", ":"+strconv.Itoa(*port))
 	if err != nil {
-		log.Fatalf("Failed to resolve UDP address %s: %v", addrStr, err)
+		log.Fatalf("Supernode: Failed to resolve UDP address: %v", err)
 	}
 
-	conn, err := net.ListenUDP("udp", udpAddr)
+	// Open the UDP connection.
+	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
-		log.Fatalf("Failed to listen on UDP %s: %v", addrStr, err)
+		log.Fatalf("Supernode: Failed to listen on UDP: %v", err)
 	}
-	defer conn.Close()
-	log.Printf("Supernode is running on %s", addrStr)
 
-	// Create a new Supernode instance.
-	sn := supernode.NewSupernode(conn)
+	// Create the Supernode instance with the configured stale edge expiry.
+	sn := supernode.NewSupernode(conn, *staleDuration)
 
-	// Start a goroutine to cleanup stale edges periodically.
-	go func() {
-		ticker := time.NewTicker(*cleanupInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			sn.CleanupStaleEdges(*expiryDuration)
-		}
-	}()
-
-	// Setup OS signal handling for graceful shutdown.
+	// Setup signal handling for graceful shutdown.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
-		log.Printf("Received signal %s, shutting down.", sig)
+		log.Printf("Supernode: Received signal %s, shutting down.", sig)
 		conn.Close()
 		os.Exit(0)
 	}()
 
-	// Start listening for incoming packets.
+	log.Printf("Supernode: Listening on %s", addr.String())
 	sn.Listen()
 }

@@ -14,7 +14,7 @@ import (
 	"n2n-go/pkg/edge"
 )
 
-// configureInterface brings the TAP interface up and assigns the given IP address.
+// configureInterface brings up the TAP interface and assigns the given IP address.
 func configureInterface(ifName, ipAddr string) error {
 	cmdUp := exec.Command("ip", "link", "set", "dev", ifName, "up")
 	if err := cmdUp.Run(); err != nil {
@@ -67,7 +67,7 @@ func main() {
 	}()
 
 	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
-	log.Printf("Edge %s registered successfully on local UDP port %s. TAP interface: %s",
+	log.Printf("Edge %s registered on local UDP port %s. TAP interface: %s",
 		*edgeID, strconv.Itoa(udpPort), *tapName)
 
 	client.Run()
