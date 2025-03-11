@@ -292,14 +292,25 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		}
 		s.SendAck(addr, "ACK")
 	case protocol.TypeData:
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
-		if edge == nil {
-			s.SendAck(addr, "ERR")
+		// Look up the sender edge. If not registered, ignore the packet.
+		s.edgeMu.RLock()
+		senderEdge, exists := s.edges[srcID]
+		s.edgeMu.RUnlock()
+		if !exists {
+			log.Printf("Supernode: Received data packet from unregistered edge %s; dropping packet", srcID)
 			return
 		}
+		// Update sender's heartbeat and sequence.
+		s.edgeMu.Lock()
+		senderEdge.LastHeartbeat = time.Now()
+		senderEdge.LastSequence = hdr.Sequence
+		s.edgeMu.Unlock()
+
 		if debug {
 			log.Printf("Supernode: Data packet received from edge %s", srcID)
 		}
+
+		// Use the destination MAC address from the header.
 		if destMAC != "" {
 			s.macMu.RLock()
 			targetEdgeID, exists := s.macToEdge[destMAC]
@@ -311,19 +322,20 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 				if ok {
 					if err := s.forwardPacket(packet, target); err != nil {
 						log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
-					} else {
+					} else if debug {
 						log.Printf("Supernode: Forwarded packet to edge %s", target.ID)
 					}
+					// Forwarded to specific target; no ACK for data.
+					return
 				}
-			} else {
-				log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMAC, community)
-				s.broadcast(packet, community, srcID)
 			}
+			log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMAC, community)
+			s.broadcast(packet, community, srcID)
 		} else {
 			log.Printf("Supernode: No destination MAC provided. Fallbacking to broadcast for community %s", community)
 			s.broadcast(packet, community, srcID)
 		}
-		s.SendAck(addr, "ACK")
+		// Do not send an ACK for data packets.
 	case protocol.TypeAck:
 		if debug {
 			log.Printf("Supernode: Received ACK from edge %s", srcID)
