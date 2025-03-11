@@ -1,7 +1,6 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
-// It provides functions to register/update edges, cleanup stale entries,
-// and includes extensive debug logging.
+// It now forwards data packets to all other edges in the same community.
 package supernode
 
 import (
@@ -16,7 +15,7 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
-const debug = false // set to true to enable verbose debug output
+const debug = true // set to true to enable verbose debug output
 
 // Edge represents a registered edge.
 type Edge struct {
@@ -77,8 +76,7 @@ func NewSupernode(conn *net.UDPConn) *Supernode {
 	}
 }
 
-// getOrCreateVIPPoolLocked returns the VIP pool for the given community.
-// It assumes that s.mu is already held.
+// getOrCreateVIPPoolLocked returns the VIP pool for the given community assuming s.mu is held.
 func (s *Supernode) getOrCreateVIPPoolLocked(community string) *VIPPool {
 	pool, exists := s.vipPools[community]
 	if !exists {
@@ -106,7 +104,7 @@ func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community
 	edge, exists := s.edges[id]
 	if !exists {
 		var vip net.IP
-		if isReg { // allocate VIP only for registration messages
+		if isReg {
 			pool := s.getOrCreateVIPPoolLocked(community)
 			var err error
 			vip, err = pool.allocate(id)
@@ -171,11 +169,25 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	}
 }
 
+// forwardPacket sends the given packet to the specified target edge.
+func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
+	addr := &net.UDPAddr{
+		IP:   target.PublicIP,
+		Port: target.Port,
+	}
+	if debug {
+		log.Printf("Supernode: Forwarding packet to edge %s at %v", target.ID, addr)
+	}
+	_, err := s.Conn.WriteToUDP(packet, addr)
+	return err
+}
+
 // ProcessPacket parses an incoming packet using the protocol package,
 // updates the edge registry, and processes the payload.
 // It handles registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
+// For data packets, it forwards them to all other edges in the same community.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
-	// Log raw packet for debugging.
+	// Log raw packet.
 	if debug {
 		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
 	}
@@ -253,6 +265,18 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
 		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
+		// Forward data packet to all other edges in the same community.
+		s.mu.RLock()
+		for _, target := range s.edges {
+			if target.Community == community && target.ID != edgeID {
+				if err := s.forwardPacket(packet, target); err != nil {
+					log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
+				} else if debug {
+					log.Printf("Supernode: Forwarded packet from edge %s to edge %s", edgeID, target.ID)
+				}
+			}
+		}
+		s.mu.RUnlock()
 	}
 
 	ackMsg := "ACK"
