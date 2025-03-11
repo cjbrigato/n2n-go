@@ -86,7 +86,7 @@ func (e *EdgeClient) Register() error {
 	}
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 
-	// Clear the read deadline to avoid spurious timeouts during normal operation.
+	// Clear the read deadline.
 	e.Conn.SetReadDeadline(time.Time{})
 	return nil
 }
@@ -158,17 +158,24 @@ func (e *EdgeClient) Run() {
 	for {
 		n, addr, err := e.Conn.ReadFromUDP(buf)
 		if err != nil {
-			// Check for timeout error and skip logging if so.
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
 			log.Printf("Edge: UDP read error: %v", err)
 			continue
 		}
+
+		// If the packet is too short, it might be a simple ACK.
 		if n < protocol.TotalHeaderSize {
-			log.Printf("Edge: Received packet too short from %v", addr)
+			msg := strings.TrimSpace(string(buf[:n]))
+			if msg == "ACK" {
+				// Skip processing ACK messages.
+				continue
+			}
+			log.Printf("Edge: Received packet too short from %v: %q", addr, msg)
 			continue
 		}
+
 		var hdr protocol.PacketHeader
 		if err := hdr.UnmarshalBinary(buf[:protocol.TotalHeaderSize]); err != nil {
 			log.Printf("Edge: Failed to unmarshal header from %v: %v", addr, err)
