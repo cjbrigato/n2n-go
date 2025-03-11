@@ -94,9 +94,10 @@ func (s *Supernode) getOrCreateVIPPool(community string) *VIPPool {
 // RegisterEdge adds or updates an edge record. For registration messages,
 // the VIP is allocated from the appropriate community pool.
 func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community string, seq uint16, isReg bool) *Edge {
+	log.Printf("in registerEdge")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
+	log.Printf("locked")
 	edge, exists := s.edges[id]
 	if !exists {
 		var vip net.IP
@@ -200,7 +201,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			log.Printf("Supernode: Malformed registration message from %v: %q", addr, msg)
 			return
 		}
-		log.Printf("yes")
 	} else if strings.HasPrefix(msg, "UNREGISTER") {
 		isUnreg = true
 		parts := strings.Fields(msg)
@@ -241,7 +241,9 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	edge := s.RegisterEdge(edgeID, addr.IP, addr.Port, community, hdr.Sequence, isReg)
+	log.Printf("unlocked")
 	if edge == nil {
+		log.Printf("return because edgenil")
 		return
 	}
 
