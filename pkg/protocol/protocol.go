@@ -10,6 +10,8 @@ import (
 	"n2n-go/pkg/pearson"
 )
 
+const NoChecksum = true
+
 const TotalHeaderSize = 73 // Fixed header size in bytes
 
 // PacketType defines the type of packet.
@@ -91,8 +93,12 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	copy(buf[21:37], h.SourceID[:])
 	copy(buf[37:53], h.DestinationID[:])
 	copy(buf[53:73], h.Community[:])
-	// Compute checksum.
-	checksum := pearson.Hash64(buf)
+
+	var checksum uint64
+	if !NoChecksum {
+		// Compute checksum.
+		checksum = pearson.Hash64(buf)
+	}
 	h.Checksum = checksum
 	binary.BigEndian.PutUint64(buf[13:21], checksum)
 	// Make a copy to return so the buffer can be reused.
@@ -116,16 +122,19 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 	copy(h.SourceID[:], data[21:37])
 	copy(h.DestinationID[:], data[37:53])
 	copy(h.Community[:], data[53:73])
-	// Recompute checksum.
-	temp := data[:TotalHeaderSize]
-	// Zero out checksum bytes in temp.
-	zeroed := make([]byte, TotalHeaderSize)
-	copy(zeroed, temp)
-	for i := 13; i < 21; i++ {
-		zeroed[i] = 0
-	}
-	if pearson.Hash64(zeroed) != h.Checksum {
-		return errors.New("checksum verification failed")
+
+	if !NoChecksum {
+		// Recompute checksum.
+		temp := data[:TotalHeaderSize]
+		// Zero out checksum bytes in temp.
+		zeroed := make([]byte, TotalHeaderSize)
+		copy(zeroed, temp)
+		for i := 13; i < 21; i++ {
+			zeroed[i] = 0
+		}
+		if pearson.Hash64(zeroed) != h.Checksum {
+			return errors.New("checksum verification failed")
+		}
 	}
 	return nil
 }
