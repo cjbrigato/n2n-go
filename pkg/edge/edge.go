@@ -1,9 +1,7 @@
-// Package edge implements the client (edge) functionality,
-// integrating protocol framing for registration, heartbeat, unregistration,
-// and data forwarding using a TAP interface.
 package edge
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -26,18 +24,21 @@ type EdgeClient struct {
 	seq           uint16
 
 	heartbeatInterval time.Duration
-	done              chan struct{}  // signals overall shutdown
-	wg                sync.WaitGroup // waits for all goroutines to finish
+
+	// Use a cancellable context for shutdown.
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	wg sync.WaitGroup
 
 	// VirtualIP is the IP assigned by the supernode.
-	VirtualIP net.IP
+	VirtualIP string
 
-	// once to ensure unregister happens only once.
+	// Ensure unregister is sent only once.
 	unregisterOnce sync.Once
 }
 
-// NewEdgeClient creates a new EdgeClient.
-// It resolves the supernode address, opens an IPv4 UDP socket, and sets up a TAP interface.
+// NewEdgeClient creates a new EdgeClient with a cancellable context.
 func NewEdgeClient(id, community, tapName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
 	snAddr, err := net.ResolveUDPAddr("udp4", supernode)
 	if err != nil {
@@ -55,6 +56,7 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to create TAP interface: %v", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &EdgeClient{
 		ID:                id,
 		Community:         community,
@@ -63,12 +65,12 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		TAP:               tap,
 		seq:               0,
 		heartbeatInterval: heartbeatInterval,
-		done:              make(chan struct{}),
+		ctx:               ctx,
+		cancel:            cancel,
 	}, nil
 }
 
-// Register sends a registration message to the supernode and parses the ACK
-// to obtain the assigned virtual IP.
+// Register sends a registration message to the supernode and parses the ACK.
 func (e *EdgeClient) Register() error {
 	e.seq++
 	header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
@@ -91,24 +93,22 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("edge: registration ACK timeout: %v", err)
 	}
 	resp := strings.TrimSpace(string(buf[:n]))
-	// Expected format: "ACK <virtual_ip>"
 	parts := strings.Fields(resp)
 	if len(parts) < 1 || parts[0] != "ACK" {
 		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
 	}
 	if len(parts) >= 2 {
-		e.VirtualIP = net.ParseIP(parts[1])
-		log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP.String())
+		e.VirtualIP = parts[1]
+		log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
 	} else {
 		return fmt.Errorf("edge: registration response missing virtual IP")
 	}
-	// Clear the read deadline.
 	e.Conn.SetReadDeadline(time.Time{})
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 	return nil
 }
 
-// Unregister sends an unregister message to the supernode so that the edge's VIP is freed.
+// Unregister sends an unregister message to the supernode (ensured to run once).
 func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
@@ -153,20 +153,20 @@ func (e *EdgeClient) runHeartbeat() {
 			if err != nil {
 				log.Printf("Edge: Failed to send heartbeat: %v", err)
 			}
-		case <-e.done:
+		case <-e.ctx.Done():
 			return
 		}
 	}
 }
 
-// runTAPToSupernode forwards packets from the TAP interface to the supernode.
+// runTAPToSupernode reads from the TAP interface and forwards packets to the supernode.
 func (e *EdgeClient) runTAPToSupernode() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 	buf := make([]byte, 1500)
 	for {
 		select {
-		case <-e.done:
+		case <-e.ctx.Done():
 			return
 		default:
 		}
@@ -198,14 +198,14 @@ func (e *EdgeClient) runTAPToSupernode() {
 	}
 }
 
-// runUDPToTAP forwards packets from the UDP connection (from the supernode) to the TAP interface.
+// runUDPToTAP reads from the UDP connection (from supernode) and writes to the TAP interface.
 func (e *EdgeClient) runUDPToTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 	buf := make([]byte, 1500)
 	for {
 		select {
-		case <-e.done:
+		case <-e.ctx.Done():
 			return
 		default:
 		}
@@ -256,24 +256,25 @@ func (e *EdgeClient) runUDPToTAP() {
 	}
 }
 
-// Run launches the heartbeat, TAP-to-supernode, and UDP-to-TAP forwarding goroutines.
+// Run launches the heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
 func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
-	// Block until done is closed.
-	<-e.done
+	<-e.ctx.Done() // Block until context is cancelled.
 }
 
-// Close initiates a clean shutdown: it unregisters, signals goroutines to stop,
-// waits for them, then closes the TAP interface and UDP connection.
+// Close initiates a clean shutdown: it calls Unregister (once), cancels the context to signal all goroutines,
+// waits for them to finish, and then closes the TAP interface and UDP connection.
 func (e *EdgeClient) Close() {
-	// Attempt to unregister.
+	// Send unregister once.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-	// Signal shutdown once.
-	close(e.done)
+	// Cancel the context.
+	e.cancel()
+	// Optionally, set a read deadline to unblock blocking calls.
+	e.Conn.SetReadDeadline(time.Now())
 	// Wait for all goroutines to finish.
 	e.wg.Wait()
 	if e.TAP != nil {

@@ -15,7 +15,6 @@ import (
 )
 
 // configureInterface brings the TAP interface up and assigns the given IP address.
-// It uses the `ip` command; ensure you have proper privileges.
 func configureInterface(ifName, ipAddr string) error {
 	cmdUp := exec.Command("ip", "link", "set", "dev", ifName, "up")
 	if err := cmdUp.Run(); err != nil {
@@ -23,10 +22,7 @@ func configureInterface(ifName, ipAddr string) error {
 	}
 	ipWithMask := ipAddr + "/24"
 	cmdAddr := exec.Command("ip", "addr", "add", ipWithMask, "dev", ifName)
-	if err := cmdAddr.Run(); err != nil {
-		return err
-	}
-	return nil
+	return cmdAddr.Run()
 }
 
 func main() {
@@ -48,19 +44,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to create edge client: %v", err)
 	}
-	defer client.Close()
 
 	if err := client.Register(); err != nil {
 		log.Fatalf("Edge registration failed: %v", err)
 	}
 
-	if client.VirtualIP == nil {
+	if client.VirtualIP == "" {
 		log.Fatalf("No virtual IP assigned by supernode")
 	}
-	if err := configureInterface(*tapName, client.VirtualIP.String()); err != nil {
+	if err := configureInterface(*tapName, client.VirtualIP); err != nil {
 		log.Fatalf("Failed to configure TAP interface: %v", err)
 	}
-	log.Printf("TAP interface %s configured with virtual IP %s", *tapName, client.VirtualIP.String())
+	log.Printf("TAP interface %s configured with virtual IP %s", *tapName, client.VirtualIP)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
