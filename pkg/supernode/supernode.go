@@ -1,7 +1,7 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
 // It provides functions to register/update edges, cleanup stale entries,
-// and now includes extra debug logging to inspect incoming packets.
+// and now includes additional debug logging for ACKs.
 package supernode
 
 import (
@@ -16,7 +16,7 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
-const debug = true // Set to true to enable verbose debug output
+const debug = true // set to true to enable extra debug output
 
 // Edge represents a registered edge.
 type Edge struct {
@@ -100,7 +100,7 @@ func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community
 	edge, exists := s.edges[id]
 	if !exists {
 		var vip net.IP
-		if isReg {
+		if isReg { // allocate VIP only for registration messages
 			pool := s.getOrCreateVIPPool(community)
 			var err error
 			vip, err = pool.allocate(id)
@@ -129,7 +129,7 @@ func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community
 		edge.Port = port
 		edge.LastHeartbeat = time.Now()
 		edge.LastSequence = seq
-		log.Printf("Supernode: Edge updated: id=%s, community=%s", id, edge.Community)
+		log.Printf("Supernode: Edge updated: id=%s, community=%s", id, community)
 	}
 	return edge
 }
@@ -167,7 +167,7 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 
 // ProcessPacket parses an incoming packet using the protocol package,
 // updates the edge registry, and processes the payload.
-// It handles both registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
+// It handles registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	if len(packet) < protocol.TotalHeaderSize {
 		log.Printf("Supernode: Packet too short from %v", addr)
@@ -204,10 +204,8 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		}
 	} else {
 		s.mu.RLock()
-		log.Printf("afterlock")
 		found := false
 		for _, edge := range s.edges {
-			log.Printf("lost in the loop")
 			if edge.PublicIP.Equal(addr.IP) && edge.Port == addr.Port {
 				edgeID = edge.ID
 				found = true
@@ -222,7 +220,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
-
 	if isUnreg {
 		s.UnregisterEdge(edgeID)
 		if err := s.SendAck(addr, "ACK UNREGISTER"); err != nil {
@@ -241,7 +238,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
 		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
-		// Additional payload processing can go here.
+		// Further processing can occur here.
 	}
 
 	ackMsg := "ACK"
@@ -253,7 +250,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Failed to send ACK to %v: %v", addr, err)
 	}
 
-	// Debug: log raw packet data if debug enabled.
 	if debug {
 		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
 	}
@@ -280,6 +276,7 @@ func hexEncode(data []byte) string {
 
 // SendAck sends an ACK message back to the specified address.
 func (s *Supernode) SendAck(addr *net.UDPAddr, msg string) error {
+	log.Printf("Supernode: Sending ACK to %v: %s", addr, msg)
 	_, err := s.Conn.WriteToUDP([]byte(msg), addr)
 	return err
 }
@@ -293,7 +290,6 @@ func (s *Supernode) Listen() {
 			log.Printf("Supernode: UDP read error: %v", err)
 			continue
 		}
-		// Extra debug output for each received packet.
 		if debug {
 			log.Printf("Supernode: Received %d bytes from %v", n, addr)
 		}
