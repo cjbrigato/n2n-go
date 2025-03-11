@@ -15,7 +15,7 @@ import (
 )
 
 // configureInterface brings the TAP interface up and assigns the given IP address.
-// It uses the `ip` command, so proper privileges are required.
+// This uses the `ip` command; ensure you have proper privileges.
 func configureInterface(ifName, ipAddr string) error {
 	// Bring the interface up.
 	cmdUp := exec.Command("ip", "link", "set", "dev", ifName, "up")

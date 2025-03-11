@@ -134,7 +134,7 @@ func (e *EdgeClient) startHeartbeat() {
 	}
 }
 
-// sendHeartbeat constructs and sends a heartbeat packet.
+// sendHeartbeat constructs and sends a heartbeat packet including the edge ID.
 func (e *EdgeClient) sendHeartbeat() {
 	e.seq++
 	header := protocol.NewPacketHeader(3, 64, 1, e.seq, e.Community) // Flag 1 indicates heartbeat.
@@ -143,7 +143,8 @@ func (e *EdgeClient) sendHeartbeat() {
 		log.Printf("Edge: Failed to marshal heartbeat header: %v", err)
 		return
 	}
-	payload := []byte("HEARTBEAT")
+	// Include edge ID in the heartbeat payload.
+	payload := []byte(fmt.Sprintf("HEARTBEAT %s", e.ID))
 	packet := append(headerBytes, payload...)
 	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 	if err != nil {
@@ -152,9 +153,10 @@ func (e *EdgeClient) sendHeartbeat() {
 }
 
 // Run starts the edge client:
-// - A heartbeat goroutine sending periodic heartbeats.
-// - A goroutine to forward packets from the TAP interface to the supernode.
-// - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
+//   - A heartbeat goroutine sending periodic heartbeats.
+//   - A goroutine to forward packets from the TAP interface to the supernode,
+//     prefixing the payload with "EDGE <edgeID> ".
+//   - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
 func (e *EdgeClient) Run() {
 	go e.startHeartbeat()
 
@@ -174,7 +176,10 @@ func (e *EdgeClient) Run() {
 				log.Printf("Edge: Failed to marshal header: %v", err)
 				continue
 			}
-			packet := append(headerBytes, buf[:n]...)
+			// Prefix payload with "EDGE <edgeID> " so supernode can identify the sender.
+			prefix := []byte(fmt.Sprintf("EDGE %s ", e.ID))
+			packet := append(headerBytes, prefix...)
+			packet = append(packet, buf[:n]...)
 			_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 			if err != nil {
 				log.Printf("Edge: Error sending packet to supernode: %v", err)
@@ -221,9 +226,9 @@ func (e *EdgeClient) Run() {
 	}
 }
 
-// Close stops the heartbeat and closes the TAP interface and UDP connection.
+// Close attempts to unregister from the supernode and then closes all resources.
 func (e *EdgeClient) Close() {
-	// Attempt to unregister before closing.
+	// Attempt to unregister.
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
