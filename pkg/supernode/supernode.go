@@ -16,7 +16,7 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
-const debug = true // set to true to enable verbose debug output
+const debug = false // set to true to enable verbose debug output
 
 // Edge represents a registered edge.
 type Edge struct {
