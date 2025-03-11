@@ -5,13 +5,32 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strconv"
 	"syscall"
+
 	"time"
 
 	"n2n-go/pkg/edge"
 )
+
+// configureInterface brings the TAP interface up and assigns the given IP address.
+// This uses the `ip` command; ensure you have appropriate privileges.
+func configureInterface(ifName, ipAddr string) error {
+	// Bring the interface up.
+	cmdUp := exec.Command("ip", "link", "set", "dev", ifName, "up")
+	if err := cmdUp.Run(); err != nil {
+		return err
+	}
+	// Assign IP address (assumes /24 subnet by default).
+	ipWithMask := ipAddr + "/24"
+	cmdAddr := exec.Command("ip", "addr", "add", ipWithMask, "dev", ifName)
+	if err := cmdAddr.Run(); err != nil {
+		return err
+	}
+	return nil
+}
 
 func main() {
 	// Command-line flags.
@@ -41,6 +60,15 @@ func main() {
 		log.Fatalf("Edge registration failed: %v", err)
 	}
 
+	// Use the virtual IP received from the supernode to configure the TAP interface.
+	if client.VirtualIP == nil {
+		log.Fatalf("No virtual IP assigned by supernode")
+	}
+	if err := configureInterface(*tapName, client.VirtualIP.String()); err != nil {
+		log.Fatalf("Failed to configure TAP interface: %v", err)
+	}
+	log.Printf("TAP interface %s configured with virtual IP %s", *tapName, client.VirtualIP.String())
+
 	// Setup OS signal handling for graceful shutdown.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -52,7 +80,7 @@ func main() {
 	}()
 
 	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
-	log.Printf("Edge %s registered successfully on local port %s. TAP interface: %s",
+	log.Printf("Edge %s registered successfully on local UDP port %s. TAP interface: %s",
 		*edgeID, strconv.Itoa(udpPort), *tapName)
 
 	// Start processing traffic.
