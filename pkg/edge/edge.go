@@ -257,22 +257,26 @@ func (e *EdgeClient) Run() {
 	<-e.done
 }
 
-// Close initiates a clean shutdown: it unregisters, signals goroutines to stop,
-// waits for them, then closes the TAP interface and UDP connection.
+// Close initiates a clean shutdown: it unregisters from the supernode,
+// signals goroutines to stop, immediately closes the TAP and UDP connections
+// to force any blocking reads to return, then waits for all goroutines to finish.
 func (e *EdgeClient) Close() {
 	// Attempt to unregister (only once).
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-	// Signal goroutines to stop (using once to avoid double-close).
+	// Signal goroutines to stop (using once to avoid double-closing).
 	e.doneOnce.Do(func() { close(e.done) })
-	// Wait for all goroutines to finish.
-	e.wg.Wait()
+
+	// Immediately close TAP and UDP to unblock any blocking Read() calls.
 	if e.TAP != nil {
 		e.TAP.Close()
 	}
 	if e.Conn != nil {
 		e.Conn.Close()
 	}
+
+	// Wait for all goroutines to finish.
+	e.wg.Wait()
 	log.Printf("Edge: Shutdown complete")
 }
