@@ -1,7 +1,7 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
 // It provides functions to register/update edges, cleanup stale entries,
-// and now includes additional debug logging for ACKs.
+// and now includes extensive debug logging to trace incoming packets.
 package supernode
 
 import (
@@ -16,7 +16,7 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
-const debug = true // set to true to enable extra debug output
+const debug = true // set to true to enable verbose debug output
 
 // Edge represents a registered edge.
 type Edge struct {
@@ -169,10 +169,16 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 // updates the edge registry, and processes the payload.
 // It handles registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
+	// Debug: log raw packet data.
+	if debug {
+		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
+	}
+
 	if len(packet) < protocol.TotalHeaderSize {
 		log.Printf("Supernode: Packet too short from %v", addr)
 		return
 	}
+
 	var hdr protocol.PacketHeader
 	if err := hdr.UnmarshalBinary(packet[:protocol.TotalHeaderSize]); err != nil {
 		log.Printf("Supernode: Failed to unmarshal header from %v: %v", addr, err)
@@ -180,6 +186,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 	payload := packet[protocol.TotalHeaderSize:]
 	msg := strings.TrimSpace(string(payload))
+	log.Printf("Supernode: Payload from %v: %q", addr, msg)
 
 	var edgeID string
 	isReg := false
@@ -220,6 +227,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
+
 	if isUnreg {
 		s.UnregisterEdge(edgeID)
 		if err := s.SendAck(addr, "ACK UNREGISTER"); err != nil {
@@ -238,20 +246,15 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
 		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
-		// Further processing can occur here.
+		// Additional payload processing can occur here.
 	}
 
 	ackMsg := "ACK"
 	if isReg {
 		ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
 	}
-
 	if err := s.SendAck(addr, ackMsg); err != nil {
 		log.Printf("Supernode: Failed to send ACK to %v: %v", addr, err)
-	}
-
-	if debug {
-		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
 	}
 }
 
