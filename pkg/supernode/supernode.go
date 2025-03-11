@@ -1,7 +1,7 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
 // It provides functions to register/update edges, cleanup stale entries,
-// and now includes extensive debug logging to trace packet processing.
+// and includes extensive debug logging.
 package supernode
 
 import (
@@ -23,7 +23,7 @@ type Edge struct {
 	ID            string    // Unique edge identifier (from registration payload)
 	PublicIP      net.IP    // Edge's public IP address
 	Port          int       // Edge's UDP port
-	Community     string    // Community membership
+	Community     string    // Registered community membership
 	VirtualIP     net.IP    // Assigned virtual IP address
 	LastHeartbeat time.Time // Last heartbeat time
 	LastSequence  uint16    // Last sequence number received
@@ -77,10 +77,9 @@ func NewSupernode(conn *net.UDPConn) *Supernode {
 	}
 }
 
-// getOrCreateVIPPool returns the VIP pool for the given community, creating it if needed.
-func (s *Supernode) getOrCreateVIPPool(community string) *VIPPool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// getOrCreateVIPPoolLocked returns the VIP pool for the given community.
+// It assumes that s.mu is already held.
+func (s *Supernode) getOrCreateVIPPoolLocked(community string) *VIPPool {
 	pool, exists := s.vipPools[community]
 	if !exists {
 		pool = &VIPPool{
@@ -91,18 +90,24 @@ func (s *Supernode) getOrCreateVIPPool(community string) *VIPPool {
 	return pool
 }
 
+// getOrCreateVIPPool returns the VIP pool for the given community, creating it if needed.
+func (s *Supernode) getOrCreateVIPPool(community string) *VIPPool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getOrCreateVIPPoolLocked(community)
+}
+
 // RegisterEdge adds or updates an edge record. For registration messages,
 // the VIP is allocated from the appropriate community pool.
 func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community string, seq uint16, isReg bool) *Edge {
-	log.Printf("in registerEdge")
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	log.Printf("locked")
+
 	edge, exists := s.edges[id]
 	if !exists {
 		var vip net.IP
 		if isReg { // allocate VIP only for registration messages
-			pool := s.getOrCreateVIPPool(community)
+			pool := s.getOrCreateVIPPoolLocked(community)
 			var err error
 			vip, err = pool.allocate(id)
 			if err != nil {
@@ -211,7 +216,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			return
 		}
 	} else {
-		// For non-registration packets, log the attempt to lookup based on remote address.
 		s.mu.RLock()
 		found := false
 		for _, edge := range s.edges {
@@ -228,8 +232,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		}
 	}
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
-
-	// Log extracted values.
 	log.Printf("Supernode: Extracted edgeID=%q, community=%q from packet", edgeID, community)
 
 	if isUnreg {
@@ -241,9 +243,8 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 
 	edge := s.RegisterEdge(edgeID, addr.IP, addr.Port, community, hdr.Sequence, isReg)
-	log.Printf("unlocked")
 	if edge == nil {
-		log.Printf("return because edgenil")
+		s.SendAck(addr, "ERR Registration failed")
 		return
 	}
 
@@ -258,7 +259,6 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	if isReg {
 		ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
 	}
-
 	if err := s.SendAck(addr, ackMsg); err != nil {
 		log.Printf("Supernode: Failed to send ACK to %v: %v", addr, err)
 	}
