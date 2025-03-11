@@ -1,6 +1,7 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
-// It now forwards data packets to all other edges in the same community.
+// It provides functions to register/update edges, cleanup stale entries,
+// and includes extensive debug logging.
 package supernode
 
 import (
@@ -76,7 +77,7 @@ func NewSupernode(conn *net.UDPConn) *Supernode {
 	}
 }
 
-// getOrCreateVIPPoolLocked returns the VIP pool for the given community assuming s.mu is held.
+// getOrCreateVIPPoolLocked returns the VIP pool for the given community, assuming s.mu is held.
 func (s *Supernode) getOrCreateVIPPoolLocked(community string) *VIPPool {
 	pool, exists := s.vipPools[community]
 	if !exists {
@@ -104,7 +105,7 @@ func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community
 	edge, exists := s.edges[id]
 	if !exists {
 		var vip net.IP
-		if isReg {
+		if isReg { // allocate VIP only for registration messages
 			pool := s.getOrCreateVIPPoolLocked(community)
 			var err error
 			vip, err = pool.allocate(id)
@@ -187,7 +188,6 @@ func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
 // It handles registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
 // For data packets, it forwards them to all other edges in the same community.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
-	// Log raw packet.
 	if debug {
 		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
 	}
@@ -246,11 +246,10 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
 	log.Printf("Supernode: Extracted edgeID=%q, community=%q from packet", edgeID, community)
 
+	// If unregister, process and return without sending an ACK.
 	if isUnreg {
 		s.UnregisterEdge(edgeID)
-		if err := s.SendAck(addr, "ACK UNREGISTER"); err != nil {
-			log.Printf("Supernode: Failed to send UNREGISTER ACK to %v: %v", addr, err)
-		}
+		log.Printf("Supernode: Processed UNREGISTER for edge %s", edgeID)
 		return
 	}
 
@@ -265,7 +264,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
 		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
-		// Forward data packet to all other edges in the same community.
+		// Forward the packet to all other edges in the same community.
 		s.mu.RLock()
 		for _, target := range s.edges {
 			if target.Community == community && target.ID != edgeID {
@@ -283,6 +282,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	if isReg {
 		ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
 	}
+	// For non-unregister events, send ACK.
 	if err := s.SendAck(addr, ackMsg); err != nil {
 		log.Printf("Supernode: Failed to send ACK to %v: %v", addr, err)
 	}
