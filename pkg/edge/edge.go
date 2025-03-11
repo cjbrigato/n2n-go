@@ -1,5 +1,5 @@
 // Package edge implements the client (edge) functionality,
-// integrating protocol framing for registration, heartbeat, and data forwarding.
+// integrating protocol framing for registration, heartbeat, unregistration, and data forwarding.
 package edge
 
 import (
@@ -102,6 +102,24 @@ func (e *EdgeClient) Register() error {
 	return nil
 }
 
+// Unregister sends an unregister message to the supernode so that the edge's VIP is freed.
+func (e *EdgeClient) Unregister() error {
+	e.seq++
+	header := protocol.NewPacketHeader(3, 64, 0, e.seq, e.Community)
+	headerBytes, err := header.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("edge: failed to marshal unregister header: %v", err)
+	}
+	payload := []byte(fmt.Sprintf("UNREGISTER %s", e.ID))
+	packet := append(headerBytes, payload...)
+	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send unregister: %v", err)
+	}
+	log.Printf("Edge: Unregister message sent")
+	return nil
+}
+
 // startHeartbeat sends heartbeat messages periodically to refresh registration.
 func (e *EdgeClient) startHeartbeat() {
 	ticker := time.NewTicker(e.heartbeatInterval)
@@ -176,7 +194,7 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 
-		// If packet is too short, check if it's an ACK message.
+		// If packet is too short, check if it's a simple ACK.
 		if n < protocol.TotalHeaderSize {
 			msg := strings.TrimSpace(string(buf[:n]))
 			if msg == "ACK" {
@@ -205,6 +223,10 @@ func (e *EdgeClient) Run() {
 
 // Close stops the heartbeat and closes the TAP interface and UDP connection.
 func (e *EdgeClient) Close() {
+	// Attempt to unregister before closing.
+	if err := e.Unregister(); err != nil {
+		log.Printf("Edge: Unregister failed: %v", err)
+	}
 	close(e.quitHeartbeat)
 	if e.TAP != nil {
 		e.TAP.Close()

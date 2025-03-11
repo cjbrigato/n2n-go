@@ -9,21 +9,20 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
-
 	"time"
 
 	"n2n-go/pkg/edge"
 )
 
 // configureInterface brings the TAP interface up and assigns the given IP address.
-// This uses the `ip` command; ensure you have appropriate privileges.
+// It uses the `ip` command, so proper privileges are required.
 func configureInterface(ifName, ipAddr string) error {
 	// Bring the interface up.
 	cmdUp := exec.Command("ip", "link", "set", "dev", ifName, "up")
 	if err := cmdUp.Run(); err != nil {
 		return err
 	}
-	// Assign IP address (assumes /24 subnet by default).
+	// Assign IP address (assuming /24).
 	ipWithMask := ipAddr + "/24"
 	cmdAddr := exec.Command("ip", "addr", "add", ipWithMask, "dev", ifName)
 	if err := cmdAddr.Run(); err != nil {
@@ -74,7 +73,7 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		sig := <-sigChan
-		log.Printf("Received signal %s, shutting down.", sig)
+		log.Printf("Received signal %s, unregistering and shutting down.", sig)
 		client.Close()
 		os.Exit(0)
 	}()
