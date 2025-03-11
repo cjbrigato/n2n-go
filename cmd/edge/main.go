@@ -17,7 +17,7 @@ func main() {
 	// Command-line flags.
 	edgeID := flag.String("id", "", "Unique edge identifier (e.g., MAC address)")
 	community := flag.String("community", "default", "Community name")
-	tunName := flag.String("tun", "n2n0", "TUN interface name")
+	tapName := flag.String("tap", "n2n_tap0", "TAP interface name")
 	localPort := flag.Int("port", 0, "Local UDP port (0 for system-assigned)")
 	supernodeAddr := flag.String("supernode", "", "Supernode address (host:port)")
 	heartbeatInterval := flag.Duration("heartbeat", 30*time.Second, "Heartbeat interval")
@@ -29,8 +29,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create the edge client.
-	client, err := edge.NewEdgeClient(*edgeID, *community, *tunName, *localPort, *supernodeAddr, *heartbeatInterval)
+	// Create the edge client with a TAP interface.
+	client, err := edge.NewEdgeClient(*edgeID, *community, *tapName, *localPort, *supernodeAddr, *heartbeatInterval)
 	if err != nil {
 		log.Fatalf("Failed to create edge client: %v", err)
 	}
@@ -51,8 +51,9 @@ func main() {
 		os.Exit(0)
 	}()
 
-	log.Printf("Edge %s registered successfully on local port %s. Entering main loop.",
-		*edgeID, strconv.Itoa(client.Conn.LocalAddr().(*net.UDPAddr).Port))
+	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
+	log.Printf("Edge %s registered successfully on local port %s. TAP interface: %s",
+		*edgeID, strconv.Itoa(udpPort), *tapName)
 
 	// Start processing traffic.
 	client.Run()

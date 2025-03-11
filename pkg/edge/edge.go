@@ -1,5 +1,6 @@
-// Package edge implements the client (edge) functionality,
-// integrating protocol framing for registration, heartbeat, and data forwarding.
+// Package edge implements the client (edge) functionality, now using TAP
+// for layer-2 bridging, integrating protocol framing for registration,
+// heartbeat, and data forwarding.
 package edge
 
 import (
@@ -20,7 +21,7 @@ type EdgeClient struct {
 	Community     string
 	SupernodeAddr *net.UDPAddr
 	Conn          *net.UDPConn
-	TUN           *tuntap.Interface
+	TAP           *tuntap.Interface
 	seq           uint16
 
 	heartbeatInterval time.Duration
@@ -28,8 +29,8 @@ type EdgeClient struct {
 }
 
 // NewEdgeClient creates a new EdgeClient.
-// It resolves the supernode address, opens a UDP socket, and sets up a TUN interface.
-func NewEdgeClient(id, community, tunName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
+// It resolves the supernode address, opens a UDP socket, and sets up a TAP interface.
+func NewEdgeClient(id, community, tapName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
 	snAddr, err := net.ResolveUDPAddr("udp", supernode)
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to resolve supernode address: %v", err)
@@ -42,16 +43,16 @@ func NewEdgeClient(id, community, tunName string, localPort int, supernode strin
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to open UDP connection: %v", err)
 	}
-	tun, err := tuntap.NewInterface(tunName, "tun")
+	tap, err := tuntap.NewInterface(tapName, "tap")
 	if err != nil {
-		return nil, fmt.Errorf("edge: failed to create TUN interface: %v", err)
+		return nil, fmt.Errorf("edge: failed to create TAP interface: %v", err)
 	}
 	return &EdgeClient{
 		ID:                id,
 		Community:         community,
 		SupernodeAddr:     snAddr,
 		Conn:              conn,
-		TUN:               tun,
+		TAP:               tap,
 		seq:               0,
 		heartbeatInterval: heartbeatInterval,
 		quitHeartbeat:     make(chan struct{}),
@@ -124,18 +125,18 @@ func (e *EdgeClient) sendHeartbeat() {
 
 // Run starts the edge client:
 // - A heartbeat goroutine sending periodic heartbeats.
-// - A goroutine to forward packets from the TUN interface to the supernode.
-// - The main loop reads from UDP (from the supernode) and writes to the TUN interface.
+// - A goroutine to forward packets from the TAP interface to the supernode.
+// - The main loop reads from UDP (from the supernode) and writes to the TAP interface.
 func (e *EdgeClient) Run() {
 	go e.startHeartbeat()
 
-	// Goroutine: Forward TUN traffic to supernode.
+	// Goroutine: Forward TAP traffic to supernode.
 	go func() {
 		buf := make([]byte, 1500)
 		for {
-			n, err := e.TUN.Read(buf)
+			n, err := e.TAP.Read(buf)
 			if err != nil {
-				log.Printf("Edge: TUN read error: %v", err)
+				log.Printf("Edge: TAP read error: %v", err)
 				continue
 			}
 			e.seq++
@@ -153,7 +154,7 @@ func (e *EdgeClient) Run() {
 		}
 	}()
 
-	// Main loop: Forward UDP traffic from supernode to TUN.
+	// Main loop: Forward UDP traffic from supernode to TAP.
 	buf := make([]byte, 1500)
 	for {
 		n, addr, err := e.Conn.ReadFromUDP(buf)
@@ -165,11 +166,10 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 
-		// If the packet is too short, it might be a simple ACK.
+		// If the packet is too short, it might be a simple "ACK" from supernode.
 		if n < protocol.TotalHeaderSize {
 			msg := strings.TrimSpace(string(buf[:n]))
 			if msg == "ACK" {
-				// Skip processing ACK messages.
 				continue
 			}
 			log.Printf("Edge: Received packet too short from %v: %q", addr, msg)
@@ -186,18 +186,18 @@ func (e *EdgeClient) Run() {
 			continue
 		}
 		payload := buf[protocol.TotalHeaderSize:n]
-		_, err = e.TUN.Write(payload)
+		_, err = e.TAP.Write(payload)
 		if err != nil {
-			log.Printf("Edge: TUN write error: %v", err)
+			log.Printf("Edge: TAP write error: %v", err)
 		}
 	}
 }
 
-// Close stops the heartbeat and closes the TUN interface and UDP connection.
+// Close stops the heartbeat and closes the TAP interface and UDP connection.
 func (e *EdgeClient) Close() {
 	close(e.quitHeartbeat)
-	if e.TUN != nil {
-		e.TUN.Close()
+	if e.TAP != nil {
+		e.TAP.Close()
 	}
 	if e.Conn != nil {
 		e.Conn.Close()

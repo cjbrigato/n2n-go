@@ -8,45 +8,44 @@ import (
 	"github.com/cjbrigato/water"
 )
 
-// Interface wraps a TUN/TAP interface.
+// Interface wraps a TAP interface.
 type Interface struct {
 	ifce *water.Interface
 }
 
-// NewInterface creates a new TUN/TAP interface with the specified name and mode.
-// The mode parameter can be "tun" or "tap". If an unrecognized mode is provided, "tun" is used by default.
+// NewInterface creates a new TAP interface with the specified name.
+// mode must be "tap" to indicate a TAP device.
 func NewInterface(name, mode string) (*Interface, error) {
-	config := water.Config{}
-	switch mode {
-	case "tap":
-		config.DeviceType = water.TAP
-	default:
-		config.DeviceType = water.TUN
+	if mode != "tap" {
+		return nil, fmt.Errorf("unsupported mode: %s (must be 'tap')", mode)
 	}
-	//config.Name = name
+	config := water.Config{
+		DeviceType: water.TAP,
+	}
+	config.Name = name
 	ifce, err := water.New(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s interface %s: %v", mode, name, err)
+		return nil, fmt.Errorf("failed to create TAP interface %s: %v", name, err)
 	}
 	return &Interface{ifce: ifce}, nil
 }
 
-// Read reads data from the TUN/TAP interface.
+// Read reads data from the TAP interface.
 func (i *Interface) Read(b []byte) (int, error) {
 	return i.ifce.Read(b)
 }
 
-// Write writes data to the TUN/TAP interface.
+// Write writes data to the TAP interface.
 func (i *Interface) Write(b []byte) (int, error) {
 	return i.ifce.Write(b)
 }
 
-// Close closes the TUN/TAP interface.
+// Close closes the TAP interface.
 func (i *Interface) Close() error {
 	return i.ifce.Close()
 }
 
-// Name returns the name of the interface.
+// Name returns the name of the TAP interface.
 func (i *Interface) Name() string {
 	return i.ifce.Name()
 }
