@@ -19,8 +19,8 @@ type Edge struct {
 	ID            string    // Unique edge identifier
 	PublicIP      net.IP    // Edge's public IP address
 	Port          int       // Edge's UDP port
-	Community     string    // Community name (used here as edge identifier)
-	VirtualIP     net.IP    // Assigned virtual IP address
+	Community     string    // Community membership (as set in header)
+	VirtualIP     net.IP    // (Optional) Assigned virtual IP
 	LastHeartbeat time.Time // Last time a packet was received from this edge
 	LastSequence  uint16    // Last sequence number received
 }
@@ -41,14 +41,14 @@ func NewSupernode(conn *net.UDPConn) *Supernode {
 }
 
 // RegisterEdge adds a new edge record or updates an existing one.
-// The edge's VirtualIP is calculated here based on its ID.
+// id is the unique edge identifier (extracted from the registration payload),
+// and community is taken from the header.
 func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community string, seq uint16) *Edge {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	edge, exists := s.edges[id]
 	if !exists {
-		// For demonstration, we generate a virtual IP by appending the last octet from a hash.
-		// In production, use a more robust allocation mechanism.
+		// For demonstration, we generate a virtual IP by using the sequence modulo 254.
 		virtualOctet := uint8(seq%254 + 1)
 		vip := net.IPv4(10, 0, 0, virtualOctet)
 		edge = &Edge{
@@ -61,14 +61,14 @@ func (s *Supernode) RegisterEdge(id string, publicIP net.IP, port int, community
 			LastSequence:  seq,
 		}
 		s.edges[id] = edge
-		log.Printf("Supernode: New edge registered: %s, assigned VIP: %s", id, vip.String())
+		log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s", id, community, vip.String())
 	} else {
 		edge.PublicIP = publicIP
 		edge.Port = port
 		edge.Community = community
 		edge.LastHeartbeat = time.Now()
 		edge.LastSequence = seq
-		log.Printf("Supernode: Edge updated: %s", id)
+		log.Printf("Supernode: Edge updated: id=%s, community=%s", id, community)
 	}
 	return edge
 }
@@ -87,8 +87,8 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 }
 
 // ProcessPacket parses an incoming packet using the protocol package,
-// updates the edge registry, and sends an appropriate ACK.
-// For registration messages, it includes the assigned virtual IP in the ACK.
+// updates the edge registry, and processes the packet payload.
+// For registration messages, it extracts the edge ID from the payload.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	if len(packet) < protocol.TotalHeaderSize {
 		log.Printf("Supernode: Packet too short from %v", addr)
@@ -103,27 +103,48 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	payload := packet[protocol.TotalHeaderSize:]
 	msg := strings.TrimSpace(string(payload))
 
-	// Use community field (trimmed zeros) as the edge ID.
-	edgeID := strings.TrimRight(string(hdr.Community[:]), "\x00")
-	edge := s.RegisterEdge(edgeID, addr.IP, addr.Port, edgeID, hdr.Sequence)
+	var edgeID string
+	if strings.HasPrefix(msg, "REGISTER") {
+		// Expected registration message: "REGISTER <edgeID>"
+		parts := strings.Fields(msg)
+		if len(parts) >= 2 {
+			edgeID = parts[1]
+		} else {
+			log.Printf("Supernode: Registration message malformed from %v: %q", addr, msg)
+			return
+		}
+	} else {
+		// For non-registration messages, use the edge ID from previous registration.
+		edgeID = "" // will be updated later if needed.
+	}
 
-	// Determine if this is a registration (payload starts with "REGISTER") or heartbeat.
-	isRegistration := strings.HasPrefix(msg, "REGISTER")
+	// Use the header's community field (trimmed) as the community.
+	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
+	// If edgeID is still empty (e.g. heartbeat or data packet), try to use community as fallback.
+	if edgeID == "" {
+		edgeID = community
+	}
+	s.RegisterEdge(edgeID, addr.IP, addr.Port, community, hdr.Sequence)
+
 	isHeartbeat := (hdr.Flags == 1) || (msg == "HEARTBEAT")
-
-	if isRegistration {
-		log.Printf("Supernode: Received registration from edge %s", edgeID)
-	} else if isHeartbeat {
+	if isHeartbeat {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
-		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
-		// Further payload processing could occur here.
+		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d",
+			edgeID, hdr.Sequence, len(payload))
+		// Process additional payload if needed.
 	}
 
 	// For registration, include the assigned virtual IP in the ACK.
 	ackMsg := "ACK"
-	if isRegistration {
-		ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
+	if strings.HasPrefix(msg, "REGISTER") {
+		// Retrieve the edge record to get the VIP.
+		s.mu.RLock()
+		edge, ok := s.edges[edgeID]
+		s.mu.RUnlock()
+		if ok && edge.VirtualIP != nil {
+			ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
+		}
 	}
 
 	if err := s.SendAck(addr, ackMsg); err != nil {
