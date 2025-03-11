@@ -1,5 +1,3 @@
-// Package edge implements the client functionality using the refined protocol header,
-// while retaining VIP pool integration, registration, heartbeat, and a cancellable clean shutdown.
 package edge
 
 import (
@@ -16,6 +14,7 @@ import (
 	"n2n-go/pkg/tuntap"
 )
 
+// EdgeClient encapsulates the state and configuration of an edge.
 type EdgeClient struct {
 	ID            string
 	Community     string
@@ -26,19 +25,17 @@ type EdgeClient struct {
 
 	heartbeatInterval time.Duration
 
-	// Context for cancellation.
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	wg sync.WaitGroup
 
-	// VirtualIP assigned by supernode.
 	VirtualIP string
 
-	// Ensure unregister is sent only once.
 	unregisterOnce sync.Once
 }
 
+// NewEdgeClient creates a new EdgeClient with a cancellable context.
 func NewEdgeClient(id, community, tapName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
 	snAddr, err := net.ResolveUDPAddr("udp4", supernode)
 	if err != nil {
@@ -70,21 +67,55 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	}, nil
 }
 
+// getTapMAC retrieves the MAC address of the TAP interface using its name.
+func getTapMAC(tap *tuntap.Interface) (string, error) {
+	iface, err := net.InterfaceByName(tap.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to get interface %s: %v", tap.Name(), err)
+	}
+	if iface.HardwareAddr == nil || len(iface.HardwareAddr) == 0 {
+		return "", fmt.Errorf("no MAC address found on interface %s", tap.Name())
+	}
+	return iface.HardwareAddr.String(), nil
+}
+
+// isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.
+func isBroadcastMAC(mac []byte) bool {
+	if len(mac) != 6 {
+		return false
+	}
+	for _, b := range mac {
+		if b != 0xFF {
+			return false
+		}
+	}
+	return true
+}
+
+// formatMAC formats a 6-byte MAC address into the standard colon-separated string.
+func formatMAC(mac []byte) string {
+	return strings.ToUpper(fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]))
+}
+
+// Register sends a registration packet to the supernode.
+// Registration payload format: "REGISTER <edgeID> <tapMAC>"
 func (e *EdgeClient) Register() error {
 	e.seq++
-	// For registration, use TypeRegister and empty DestinationID.
 	header := protocol.NewHeader(3, 64, protocol.TypeRegister, e.seq, e.Community, e.ID, "")
 	headerBytes, err := header.MarshalBinary()
 	if err != nil {
 		return fmt.Errorf("edge: failed to marshal registration header: %v", err)
 	}
-	payload := []byte(fmt.Sprintf("REGISTER %s", e.ID))
+	mac, err := getTapMAC(e.TAP)
+	if err != nil {
+		return fmt.Errorf("edge: failed to get TAP MAC address: %v", err)
+	}
+	payload := []byte(fmt.Sprintf("REGISTER %s %s", e.ID, mac))
 	packet := append(headerBytes, payload...)
 	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send registration: %v", err)
 	}
-
 	e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buf := make([]byte, 1024)
 	n, addr, err := e.Conn.ReadFromUDP(buf)
@@ -107,6 +138,7 @@ func (e *EdgeClient) Register() error {
 	return nil
 }
 
+// Unregister sends an unregister packet to the supernode.
 func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
@@ -129,6 +161,7 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
+// runHeartbeat sends heartbeat messages periodically.
 func (e *EdgeClient) runHeartbeat() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -156,6 +189,8 @@ func (e *EdgeClient) runHeartbeat() {
 	}
 }
 
+// runTAPToSupernode reads packets from the TAP interface and sends them to the supernode.
+// It extracts the destination MAC address from the Ethernet frame and sets it in the header.
 func (e *EdgeClient) runTAPToSupernode() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -174,8 +209,17 @@ func (e *EdgeClient) runTAPToSupernode() {
 			log.Printf("Edge: TAP read error: %v", err)
 			continue
 		}
+		if n < 14 { // Minimum Ethernet header size
+			log.Printf("Edge: Packet too short to contain Ethernet header")
+			continue
+		}
+		destMACBytes := buf[0:6]
+		destMACStr := ""
+		if !isBroadcastMAC(destMACBytes) {
+			destMACStr = formatMAC(destMACBytes)
+		}
 		e.seq++
-		header := protocol.NewHeader(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, "")
+		header := protocol.NewHeader(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, destMACStr)
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			log.Printf("Edge: Failed to marshal data header: %v", err)
@@ -187,11 +231,12 @@ func (e *EdgeClient) runTAPToSupernode() {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
 			}
-			log.Printf("Edge: Error sending data packet: %v", err)
+			log.Printf("Edge: Error sending packet to supernode: %v", err)
 		}
 	}
 }
 
+// runUDPToTAP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) runUDPToTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -230,11 +275,6 @@ func (e *EdgeClient) runUDPToTAP() {
 			log.Printf("Edge: Header timestamp verification failed from %v", addr)
 			continue
 		}
-		// Drop packet if DestinationID is set and doesn't match.
-		destID := strings.TrimRight(string(hdr.DestinationID[:]), "\x00")
-		if destID != "" && destID != e.ID {
-			continue
-		}
 		payload := buf[protocol.TotalHeaderSize:n]
 		_, err = e.TAP.Write(payload)
 		if err != nil {
@@ -246,6 +286,7 @@ func (e *EdgeClient) runUDPToTAP() {
 	}
 }
 
+// Run launches the heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
 func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
@@ -254,6 +295,7 @@ func (e *EdgeClient) Run() {
 	e.wg.Wait()
 }
 
+// Close initiates a clean shutdown.
 func (e *EdgeClient) Close() {
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)

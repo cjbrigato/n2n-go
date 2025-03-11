@@ -1,6 +1,5 @@
-// Package supernode maintains registered edges, dynamic VIP pools,
+// Package supernode maintains registered edges, VIP pools, and MAC-to-edge mappings,
 // and processes incoming packets using the refined protocol header.
-// This version splits locking into two parts: one for the edge registry and one for the VIP pools.
 package supernode
 
 import (
@@ -29,7 +28,7 @@ func NewVIPPool() *VIPPool {
 func (pool *VIPPool) Allocate(edgeID string) (net.IP, error) {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
-	// For example, assign addresses in range 10.0.0.2 - 10.0.0.254 (reserve .1 for supernode)
+	// Assign addresses in range 10.0.0.2 - 10.0.0.254 (reserve .1 for supernode)
 	for octet := uint8(2); octet < 255; octet++ {
 		if _, ok := pool.used[octet]; !ok {
 			pool.used[octet] = edgeID
@@ -59,9 +58,11 @@ type Edge struct {
 	VirtualIP     net.IP
 	LastHeartbeat time.Time
 	LastSequence  uint16
+	// MAC address provided during registration.
+	MACAddr string
 }
 
-// Supernode holds registered edges, VIP pools, and a UDP connection.
+// Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
 type Supernode struct {
 	edgeMu sync.RWMutex     // protects edges
 	edges  map[string]*Edge // keyed by edge ID
@@ -69,22 +70,25 @@ type Supernode struct {
 	vipMu    sync.RWMutex        // protects vipPools
 	vipPools map[string]*VIPPool // keyed by community
 
+	macMu     sync.RWMutex      // protects macToEdge map
+	macToEdge map[string]string // maps TAP MAC address to edge ID
+
 	Conn   *net.UDPConn
 	expiry time.Duration // edge expiry duration
 }
 
 func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
 	sn := &Supernode{
-		edges:    make(map[string]*Edge),
-		vipPools: make(map[string]*VIPPool),
-		Conn:     conn,
-		expiry:   expiry,
+		edges:     make(map[string]*Edge),
+		vipPools:  make(map[string]*VIPPool),
+		macToEdge: make(map[string]string),
+		Conn:      conn,
+		expiry:    expiry,
 	}
 	go sn.periodicCleanup()
 	return sn
 }
 
-// getVIPPool retrieves (or creates) a VIP pool for a given community.
 func (s *Supernode) getVIPPool(community string) *VIPPool {
 	s.vipMu.Lock()
 	defer s.vipMu.Unlock()
@@ -96,12 +100,20 @@ func (s *Supernode) getVIPPool(community string) *VIPPool {
 	return pool
 }
 
-// RegisterEdge creates or updates an edge record.
-// For registration packets (isReg==true) a VIP is allocated.
-func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool) *Edge {
+// RegisterEdge now expects the registration payload to include the TAP MAC address.
+// Expected format: "REGISTER <edgeID> <macAddr>"
+func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) *Edge {
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
-
+	var macAddr string
+	if isReg {
+		parts := strings.Fields(payload)
+		if len(parts) >= 3 {
+			macAddr = parts[2]
+		} else {
+			log.Printf("Supernode: Registration payload format invalid: %s", payload)
+		}
+	}
 	edge, exists := s.edges[srcID]
 	if !exists {
 		var vip net.IP
@@ -124,10 +136,16 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			VirtualIP:     vip,
 			LastHeartbeat: time.Now(),
 			LastSequence:  seq,
+			MACAddr:       macAddr,
 		}
 		s.edges[srcID] = edge
+		if macAddr != "" {
+			s.macMu.Lock()
+			s.macToEdge[macAddr] = srcID
+			s.macMu.Unlock()
+		}
 		if debug {
-			log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s", srcID, community, vip)
+			log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, macAddr)
 		}
 	} else {
 		if community != edge.Community {
@@ -138,6 +156,12 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 		edge.Port = addr.Port
 		edge.LastHeartbeat = time.Now()
 		edge.LastSequence = seq
+		if isReg && macAddr != "" {
+			edge.MACAddr = macAddr
+			s.macMu.Lock()
+			s.macToEdge[macAddr] = srcID
+			s.macMu.Unlock()
+		}
 		if debug {
 			log.Printf("Supernode: Edge updated: id=%s, community=%s", srcID, community)
 		}
@@ -149,20 +173,21 @@ func (s *Supernode) UnregisterEdge(srcID string) {
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
 	if edge, exists := s.edges[srcID]; exists {
-		// Free VIP from the proper pool.
 		pool := s.getVIPPool(edge.Community)
 		pool.Free(srcID)
+		if edge.MACAddr != "" {
+			s.macMu.Lock()
+			delete(s.macToEdge, edge.MACAddr)
+			s.macMu.Unlock()
+		}
 		delete(s.edges, srcID)
 		log.Printf("Supernode: Edge %s unregistered (VIP %s freed)", srcID, edge.VirtualIP.String())
 	}
 }
 
-// CleanupStaleEdges removes edge records that haven't been updated within expiry.
-// This function builds a list of stale IDs under a read lock, then removes them under a write lock.
 func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	var stale []string
 	now := time.Now()
-	// Acquire read lock to scan through edges.
 	s.edgeMu.RLock()
 	for id, edge := range s.edges {
 		if now.Sub(edge.LastHeartbeat) > expiry {
@@ -171,13 +196,17 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	}
 	s.edgeMu.RUnlock()
 
-	// Acquire write lock to remove stale edges.
 	if len(stale) > 0 {
 		s.edgeMu.Lock()
 		for _, id := range stale {
 			if edge, exists := s.edges[id]; exists {
 				pool := s.getVIPPool(edge.Community)
 				pool.Free(id)
+				if edge.MACAddr != "" {
+					s.macMu.Lock()
+					delete(s.macToEdge, edge.MACAddr)
+					s.macMu.Unlock()
+				}
 				delete(s.edges, id)
 				log.Printf("Supernode: Edge %s removed due to stale heartbeat", id)
 			}
@@ -215,16 +244,18 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	payload := packet[protocol.TotalHeaderSize:]
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
 	srcID := strings.TrimRight(string(hdr.SourceID[:]), "\x00")
-	destID := strings.TrimRight(string(hdr.DestinationID[:]), "\x00")
+	// Interpret Destination field as destination MAC address.
+	destMacAddr := strings.TrimRight(string(hdr.DestinationID[:]), "\x00")
 
 	if debug {
-		log.Printf("Supernode: Received packet: Type=%d, srcID=%q, destID=%q, community=%q, seq=%d, payloadLen=%d",
-			hdr.PacketType, srcID, destID, community, hdr.Sequence, len(payload))
+		log.Printf("Supernode: Received packet: Type=%d, srcID=%q, destMacAddr=%q, community=%q, seq=%d, payloadLen=%d",
+			hdr.PacketType, srcID, destMacAddr, community, hdr.Sequence, len(payload))
 	}
 
 	switch hdr.PacketType {
 	case protocol.TypeRegister:
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, true)
+		payloadStr := strings.TrimSpace(string(payload))
+		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, true, payloadStr)
 		if edge == nil {
 			s.SendAck(addr, "ERR Registration failed")
 			return
@@ -233,15 +264,14 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		s.SendAck(addr, ackMsg)
 	case protocol.TypeUnregister:
 		s.UnregisterEdge(srcID)
-		// No ACK for unregister.
 	case protocol.TypeHeartbeat:
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false)
+		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
 		if edge != nil && debug {
 			log.Printf("Supernode: Heartbeat received from edge %s", srcID)
 		}
 		s.SendAck(addr, "ACK")
 	case protocol.TypeData:
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false)
+		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
 		if edge == nil {
 			s.SendAck(addr, "ERR")
 			return
@@ -249,27 +279,31 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		if debug {
 			log.Printf("Supernode: Data packet received from edge %s", srcID)
 		}
-		s.edgeMu.RLock()
-		if destID != "" {
-			if target, ok := s.edges[destID]; ok {
-				if err := s.forwardPacket(packet, target); err != nil {
-					log.Printf("Supernode: Failed to forward packet to %s: %v", destID, err)
-				} else if debug {
-					log.Printf("Supernode: Forwarded packet from %s to %s", srcID, destID)
-				}
-			}
-		} else {
-			for _, target := range s.edges {
-				if target.Community == community && target.ID != srcID {
+		// If a destination MAC address is provided, try to forward specifically.
+		if destMacAddr != "" {
+			s.macMu.RLock()
+			targetEdgeID, exists := s.macToEdge[destMacAddr]
+			s.macMu.RUnlock()
+			if exists {
+				s.edgeMu.RLock()
+				target, ok := s.edges[targetEdgeID]
+				s.edgeMu.RUnlock()
+				if ok {
 					if err := s.forwardPacket(packet, target); err != nil {
-						log.Printf("Supernode: Failed to forward packet to %s: %v", target.ID, err)
-					} else if debug {
-						log.Printf("Supernode: Forwarded packet from %s to %s", srcID, target.ID)
+						log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
+					} else {
+						log.Printf("Supernode: Forwarded packet to edge %s", target.ID)
 					}
 				}
+			} else {
+				log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMacAddr, community)
+				s.broadcast(packet, community, srcID)
 			}
+		} else {
+			// No destination MAC provided.
+			log.Printf("Supernode: No destination MAC provided. Fallbacking to broadcast for community %s", community)
+			s.broadcast(packet, community, srcID)
 		}
-		s.edgeMu.RUnlock()
 		s.SendAck(addr, "ACK")
 	case protocol.TypeAck:
 		if debug {
@@ -287,6 +321,21 @@ func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
 	}
 	_, err := s.Conn.WriteToUDP(packet, addr)
 	return err
+}
+
+// broadcast sends the packet to all edges in the same community (except sender).
+func (s *Supernode) broadcast(packet []byte, community, senderID string) {
+	s.edgeMu.RLock()
+	defer s.edgeMu.RUnlock()
+	for _, target := range s.edges {
+		if target.Community == community && target.ID != senderID {
+			if err := s.forwardPacket(packet, target); err != nil {
+				log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
+			} else if debug {
+				log.Printf("Supernode: Broadcasted packet from %s to edge %s", senderID, target.ID)
+			}
+		}
+	}
 }
 
 func (s *Supernode) Listen() {

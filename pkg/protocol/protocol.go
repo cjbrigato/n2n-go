@@ -1,4 +1,7 @@
 // Package protocol implements the refined n2n protocol framing.
+// The header now includes dedicated fields for source and destination
+// identifiers (with the destination interpreted as a MAC address), a packet type field,
+// sequence number, timestamp, and a checksum.
 package protocol
 
 import (
@@ -24,39 +27,40 @@ const (
 
 // Header represents the refined protocol header.
 type Header struct {
-	Version       uint8      // protocol version
-	TTL           uint8      // time-to-live
-	PacketType    PacketType // packet type
-	Sequence      uint16     // sequence number
-	Timestamp     int64      // UnixNano timestamp
-	Checksum      uint64     // checksum computed over header with checksum field zeroed
-	SourceID      [16]byte   // sender's ID (padded to 16 bytes)
-	DestinationID [16]byte   // destination ID (all-zero for broadcast)
-	Community     [20]byte   // community name (padded to 20 bytes)
+	Version       uint8      // Protocol version.
+	TTL           uint8      // Time-to-live.
+	PacketType    PacketType // Type of packet.
+	Sequence      uint16     // Sequence number.
+	Timestamp     int64      // Timestamp (UnixNano).
+	Checksum      uint64     // Checksum computed over header (with checksum field zeroed during computation).
+	SourceID      [16]byte   // Sender identifier.
+	DestinationID [16]byte   // Destination identifier (interpreted as destination MAC address).
+	Community     [20]byte   // Community name.
 }
 
-// NewHeader creates a new Header. For broadcast, destID should be empty.
-func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, srcID, destID string) *Header {
+// NewHeader creates a new Header instance.
+// If dest is an empty string, the destination is considered broadcast.
+func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, src, dest string) *Header {
 	var comm [20]byte
 	copy(comm[:], []byte(community))
-	var src [16]byte
-	copy(src[:], []byte(srcID))
-	var dst [16]byte
-	copy(dst[:], []byte(destID))
+	var srcID [16]byte
+	copy(srcID[:], []byte(src))
+	var destID [16]byte
+	copy(destID[:], []byte(dest))
 	return &Header{
 		Version:       version,
 		TTL:           ttl,
 		PacketType:    pType,
 		Sequence:      seq,
 		Timestamp:     time.Now().UnixNano(),
-		SourceID:      src,
-		DestinationID: dst,
+		SourceID:      srcID,
+		DestinationID: destID,
 		Community:     comm,
 	}
 }
 
 // MarshalBinary serializes the header into a fixed-size byte slice.
-// The checksum field (bytes 13-21) is computed using a Pearson hash.
+// The checksum field (bytes 13–21) is computed using the Pearson hash.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	data := make([]byte, TotalHeaderSize)
 	data[0] = h.Version
@@ -64,7 +68,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	data[2] = uint8(h.PacketType)
 	binary.BigEndian.PutUint16(data[3:5], h.Sequence)
 	binary.BigEndian.PutUint64(data[5:13], uint64(h.Timestamp))
-	// Zero out checksum field.
+	// Zero out checksum field before computing the checksum.
 	for i := 13; i < 21; i++ {
 		data[i] = 0
 	}
@@ -77,7 +81,7 @@ func (h *Header) MarshalBinary() ([]byte, error) {
 	return data, nil
 }
 
-// UnmarshalBinary deserializes the header from a byte slice and verifies the checksum.
+// UnmarshalBinary deserializes the header from a byte slice and verifies its checksum.
 func (h *Header) UnmarshalBinary(data []byte) error {
 	if len(data) < TotalHeaderSize {
 		return errors.New("insufficient data for header")
@@ -91,7 +95,7 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 	copy(h.SourceID[:], data[21:37])
 	copy(h.DestinationID[:], data[37:53])
 	copy(h.Community[:], data[53:73])
-	// Recompute checksum.
+	// Recompute checksum with checksum field zeroed.
 	temp := make([]byte, TotalHeaderSize)
 	copy(temp, data[:TotalHeaderSize])
 	for i := 13; i < 21; i++ {
@@ -103,7 +107,7 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
-// VerifyTimestamp checks if the header's timestamp is within allowed drift.
+// VerifyTimestamp checks whether the header's timestamp is within the allowed drift of the provided reference time.
 func (h *Header) VerifyTimestamp(ref time.Time, allowedDrift time.Duration) bool {
 	ts := time.Unix(0, h.Timestamp)
 	diff := ts.Sub(ref)
