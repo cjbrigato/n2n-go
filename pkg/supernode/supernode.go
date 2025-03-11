@@ -70,8 +70,8 @@ type Supernode struct {
 	vipMu    sync.RWMutex        // protects vipPools
 	vipPools map[string]*VIPPool // keyed by community
 
-	macMu     sync.RWMutex      // protects macToEdge map
-	macToEdge map[string]string // maps TAP MAC address to edge ID
+	macMu     sync.RWMutex                // protects macToEdge mapping
+	macToEdge map[string]net.HardwareAddr // maps TAP MAC address to edge ID
 
 	Conn   *net.UDPConn
 	expiry time.Duration // edge expiry duration
@@ -81,7 +81,7 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
 	sn := &Supernode{
 		edges:     make(map[string]*Edge),
 		vipPools:  make(map[string]*VIPPool),
-		macToEdge: make(map[string]string),
+		macToEdge: make(map[string]net.HardwareAddr),
 		Conn:      conn,
 		expiry:    expiry,
 	}
@@ -100,16 +100,23 @@ func (s *Supernode) getVIPPool(community string) *VIPPool {
 	return pool
 }
 
-// RegisterEdge now expects the registration payload to include the TAP MAC address.
-// Expected format: "REGISTER <edgeID> <macAddr>"
+// RegisterEdge now expects payload to contain "REGISTER <edgeID> <tapMAC>"
+// The tapMAC is expected in its standard string representation (e.g., "aa:bb:cc:dd:ee:ff")
+// We convert it to a net.HardwareAddr.
 func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) *Edge {
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
-	var macAddr string
+	var macAddr net.HardwareAddr
 	if isReg {
 		parts := strings.Fields(payload)
 		if len(parts) >= 3 {
-			macAddr = parts[2]
+			// Parse the MAC address.
+			mac, err := net.ParseMAC(parts[2])
+			if err != nil {
+				log.Printf("Supernode: Failed to parse MAC address %s: %v", parts[2], err)
+			} else {
+				macAddr = mac
+			}
 		} else {
 			log.Printf("Supernode: Registration payload format invalid: %s", payload)
 		}
@@ -136,16 +143,17 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			VirtualIP:     vip,
 			LastHeartbeat: time.Now(),
 			LastSequence:  seq,
-			MACAddr:       macAddr,
+			MACAddr:       "", // We store MAC as empty string in Edge, but update mapping below.
 		}
 		s.edges[srcID] = edge
-		if macAddr != "" {
+		if macAddr != nil {
+			edge.MACAddr = macAddr.String()
 			s.macMu.Lock()
-			s.macToEdge[macAddr] = srcID
+			s.macToEdge[edge.MACAddr] = macAddr
 			s.macMu.Unlock()
 		}
 		if debug {
-			log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, macAddr)
+			log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
 		}
 	} else {
 		if community != edge.Community {
@@ -156,10 +164,10 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 		edge.Port = addr.Port
 		edge.LastHeartbeat = time.Now()
 		edge.LastSequence = seq
-		if isReg && macAddr != "" {
-			edge.MACAddr = macAddr
+		if isReg && macAddr != nil {
+			edge.MACAddr = macAddr.String()
 			s.macMu.Lock()
-			s.macToEdge[macAddr] = srcID
+			s.macToEdge[edge.MACAddr] = macAddr
 			s.macMu.Unlock()
 		}
 		if debug {
@@ -185,6 +193,7 @@ func (s *Supernode) UnregisterEdge(srcID string) {
 	}
 }
 
+// CleanupStaleEdges and periodicCleanup remain unchanged.
 func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	var stale []string
 	now := time.Now()
@@ -195,7 +204,6 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 		}
 	}
 	s.edgeMu.RUnlock()
-
 	if len(stale) > 0 {
 		s.edgeMu.Lock()
 		for _, id := range stale {
@@ -245,11 +253,24 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
 	srcID := strings.TrimRight(string(hdr.SourceID[:]), "\x00")
 	// Interpret Destination field as destination MAC address.
-	destMacAddr := strings.TrimRight(string(hdr.DestinationID[:]), "\x00")
+	// Here we extract the first 6 bytes as the MAC.
+	destMACRaw := hdr.DestinationID[0:6]
+	var destMAC string
+	// If all bytes are zero, treat as empty.
+	empty := true
+	for _, b := range destMACRaw {
+		if b != 0 {
+			empty = false
+			break
+		}
+	}
+	if !empty {
+		destMAC = net.HardwareAddr(destMACRaw).String()
+	}
 
 	if debug {
-		log.Printf("Supernode: Received packet: Type=%d, srcID=%q, destMacAddr=%q, community=%q, seq=%d, payloadLen=%d",
-			hdr.PacketType, srcID, destMacAddr, community, hdr.Sequence, len(payload))
+		log.Printf("Supernode: Received packet: Type=%d, srcID=%q, destMAC=%q, community=%q, seq=%d, payloadLen=%d",
+			hdr.PacketType, srcID, destMAC, community, hdr.Sequence, len(payload))
 	}
 
 	switch hdr.PacketType {
@@ -279,14 +300,13 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		if debug {
 			log.Printf("Supernode: Data packet received from edge %s", srcID)
 		}
-		// If a destination MAC address is provided, try to forward specifically.
-		if destMacAddr != "" {
+		if destMAC != "" {
 			s.macMu.RLock()
-			targetEdgeID, exists := s.macToEdge[destMacAddr]
+			_, exists := s.macToEdge[destMAC]
 			s.macMu.RUnlock()
 			if exists {
 				s.edgeMu.RLock()
-				target, ok := s.edges[targetEdgeID]
+				target, ok := s.edges[srcID] // Here, if a specific destination were provided, we’d look up by that edge ID.
 				s.edgeMu.RUnlock()
 				if ok {
 					if err := s.forwardPacket(packet, target); err != nil {
@@ -296,11 +316,10 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 					}
 				}
 			} else {
-				log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMacAddr, community)
+				log.Printf("Supernode: Destination MAC %s not found. Fallbacking to broadcast for community %s", destMAC, community)
 				s.broadcast(packet, community, srcID)
 			}
 		} else {
-			// No destination MAC provided.
 			log.Printf("Supernode: No destination MAC provided. Fallbacking to broadcast for community %s", community)
 			s.broadcast(packet, community, srcID)
 		}

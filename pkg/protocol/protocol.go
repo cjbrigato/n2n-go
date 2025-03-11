@@ -7,6 +7,7 @@ package protocol
 import (
 	"encoding/binary"
 	"errors"
+	"net"
 	"time"
 
 	"n2n-go/pkg/pearson"
@@ -38,14 +39,15 @@ type Header struct {
 	Community     [20]byte   // Community name.
 }
 
-// NewHeader creates a new Header instance.
-// If dest is an empty string, the destination is considered broadcast.
+// NewHeader creates a new Header instance. The dest parameter is interpreted
+// as a string (for control messages that do not need a MAC address).
 func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, src, dest string) *Header {
 	var comm [20]byte
 	copy(comm[:], []byte(community))
 	var srcID [16]byte
 	copy(srcID[:], []byte(src))
 	var destID [16]byte
+	// For control messages, dest is provided as a string.
 	copy(destID[:], []byte(dest))
 	return &Header{
 		Version:       version,
@@ -57,6 +59,17 @@ func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, src,
 		DestinationID: destID,
 		Community:     comm,
 	}
+}
+
+// NewHeaderWithDestMAC creates a new Header instance using a destination MAC address.
+// The dest parameter is a net.HardwareAddr (expected length 6); its 6 bytes are stored in the
+// first 6 bytes of the DestinationID field (the remaining 10 bytes are zeroed).
+func NewHeaderWithDestMAC(version, ttl uint8, pType PacketType, seq uint16, community, src string, dest net.HardwareAddr) *Header {
+	h := NewHeader(version, ttl, pType, seq, community, src, "")
+	if len(dest) == 6 {
+		copy(h.DestinationID[0:6], dest)
+	}
+	return h
 }
 
 // MarshalBinary serializes the header into a fixed-size byte slice.

@@ -68,39 +68,23 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 }
 
 // getTapMAC retrieves the MAC address of the TAP interface using its name.
-func getTapMAC(tap *tuntap.Interface) (string, error) {
+func getTapMAC(tap *tuntap.Interface) (net.HardwareAddr, error) {
 	iface, err := net.InterfaceByName(tap.Name())
 	if err != nil {
-		return "", fmt.Errorf("failed to get interface %s: %v", tap.Name(), err)
+		return nil, fmt.Errorf("failed to get interface %s: %v", tap.Name(), err)
 	}
-	if iface.HardwareAddr == nil || len(iface.HardwareAddr) == 0 {
-		return "", fmt.Errorf("no MAC address found on interface %s", tap.Name())
+	if iface.HardwareAddr == nil || len(iface.HardwareAddr) < 6 {
+		return nil, fmt.Errorf("no valid MAC address found on interface %s", tap.Name())
 	}
-	return iface.HardwareAddr.String(), nil
-}
-
-// isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.
-func isBroadcastMAC(mac []byte) bool {
-	if len(mac) != 6 {
-		return false
-	}
-	for _, b := range mac {
-		if b != 0xFF {
-			return false
-		}
-	}
-	return true
-}
-
-// formatMAC formats a 6-byte MAC address into the standard colon-separated string.
-func formatMAC(mac []byte) string {
-	return strings.ToUpper(fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]))
+	// Return the first 6 bytes.
+	return iface.HardwareAddr[:6], nil
 }
 
 // Register sends a registration packet to the supernode.
-// Registration payload format: "REGISTER <edgeID> <tapMAC>"
+// Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
 func (e *EdgeClient) Register() error {
 	e.seq++
+	// Use control header (dest remains empty).
 	header := protocol.NewHeader(3, 64, protocol.TypeRegister, e.seq, e.Community, e.ID, "")
 	headerBytes, err := header.MarshalBinary()
 	if err != nil {
@@ -110,7 +94,7 @@ func (e *EdgeClient) Register() error {
 	if err != nil {
 		return fmt.Errorf("edge: failed to get TAP MAC address: %v", err)
 	}
-	payload := []byte(fmt.Sprintf("REGISTER %s %s", e.ID, mac))
+	payload := []byte(fmt.Sprintf("REGISTER %s %s", e.ID, mac.String()))
 	packet := append(headerBytes, payload...)
 	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
 	if err != nil {
@@ -190,7 +174,7 @@ func (e *EdgeClient) runHeartbeat() {
 }
 
 // runTAPToSupernode reads packets from the TAP interface and sends them to the supernode.
-// It extracts the destination MAC address from the Ethernet frame and sets it in the header.
+// It extracts the destination MAC address from the Ethernet header (first 6 bytes).
 func (e *EdgeClient) runTAPToSupernode() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -209,17 +193,18 @@ func (e *EdgeClient) runTAPToSupernode() {
 			log.Printf("Edge: TAP read error: %v", err)
 			continue
 		}
-		if n < 14 { // Minimum Ethernet header size
+		if n < 14 {
 			log.Printf("Edge: Packet too short to contain Ethernet header")
 			continue
 		}
 		destMACBytes := buf[0:6]
-		destMACStr := ""
+		var destMAC net.HardwareAddr
 		if !isBroadcastMAC(destMACBytes) {
-			destMACStr = formatMAC(destMACBytes)
+			destMAC = destMACBytes
 		}
 		e.seq++
-		header := protocol.NewHeader(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, destMACStr)
+		// Use the new function to create a header with destination MAC.
+		header := protocol.NewHeaderWithDestMAC(3, 64, protocol.TypeData, e.seq, e.Community, e.ID, destMAC)
 		headerBytes, err := header.MarshalBinary()
 		if err != nil {
 			log.Printf("Edge: Failed to marshal data header: %v", err)
@@ -286,12 +271,13 @@ func (e *EdgeClient) runUDPToTAP() {
 	}
 }
 
-// Run launches the heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
+// Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
+// (We now do not wait for wg.Wait() here—Clean shutdown is handled in Close.)
 func (e *EdgeClient) Run() {
 	go e.runHeartbeat()
 	go e.runTAPToSupernode()
 	go e.runUDPToTAP()
-	<-e.ctx.Done()
+	<-e.ctx.Done() // Block until context is cancelled.
 }
 
 // Close initiates a clean shutdown.
@@ -309,4 +295,17 @@ func (e *EdgeClient) Close() {
 		e.Conn.Close()
 	}
 	log.Printf("Edge: Shutdown complete")
+}
+
+// isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.
+func isBroadcastMAC(mac []byte) bool {
+	if len(mac) != 6 {
+		return false
+	}
+	for _, b := range mac {
+		if b != 0xFF {
+			return false
+		}
+	}
+	return true
 }
