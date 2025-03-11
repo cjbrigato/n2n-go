@@ -1,7 +1,7 @@
 // Package supernode maintains a registry of registered edges (peers)
 // and processes incoming packets from edges using protocol framing.
 // It provides functions to register/update edges, cleanup stale entries,
-// and now includes extensive debug logging to trace incoming packets.
+// and now includes extensive debug logging to trace packet processing.
 package supernode
 
 import (
@@ -169,7 +169,7 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 // updates the edge registry, and processes the payload.
 // It handles registration ("REGISTER <edgeID>") and unregistration ("UNREGISTER <edgeID>") messages.
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
-	// Debug: log raw packet data.
+	// Log raw packet for debugging.
 	if debug {
 		log.Printf("Supernode: Raw packet from %v: %s", addr, hexDump(packet))
 	}
@@ -210,6 +210,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			return
 		}
 	} else {
+		// For non-registration packets, log the attempt to lookup based on remote address.
 		s.mu.RLock()
 		found := false
 		for _, edge := range s.edges {
@@ -225,8 +226,10 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			return
 		}
 	}
-
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
+
+	// Log extracted values.
+	log.Printf("Supernode: Extracted edgeID=%q, community=%q from packet", edgeID, community)
 
 	if isUnreg {
 		s.UnregisterEdge(edgeID)
@@ -246,15 +249,19 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Received heartbeat from edge %s", edgeID)
 	} else {
 		log.Printf("Supernode: Received data packet from edge %s: seq=%d, payloadLen=%d", edgeID, hdr.Sequence, len(payload))
-		// Additional payload processing can occur here.
 	}
 
 	ackMsg := "ACK"
 	if isReg {
 		ackMsg = fmt.Sprintf("ACK %s", edge.VirtualIP.String())
 	}
+
 	if err := s.SendAck(addr, ackMsg); err != nil {
 		log.Printf("Supernode: Failed to send ACK to %v: %v", addr, err)
+	}
+
+	if debug {
+		log.Printf("Supernode: End ProcessPacket for edgeID=%q", edgeID)
 	}
 }
 
