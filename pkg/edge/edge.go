@@ -67,18 +67,6 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	}, nil
 }
 
-// getTapMAC retrieves the MAC address of the TAP interface using its name.
-func getTapMAC(tap *tuntap.Interface) (net.HardwareAddr, error) {
-	iface, err := net.InterfaceByName(tap.Name())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get interface %s: %v", tap.Name(), err)
-	}
-	if iface.HardwareAddr == nil || len(iface.HardwareAddr) < 6 {
-		return nil, fmt.Errorf("no valid MAC address found on interface %s", tap.Name())
-	}
-	// Return the first 6 bytes.
-	return iface.HardwareAddr[:6], nil
-}
 
 // Register sends a registration packet to the supernode.
 // Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
@@ -90,9 +78,9 @@ func (e *EdgeClient) Register() error {
 	if err != nil {
 		return fmt.Errorf("edge: failed to marshal registration header: %v", err)
 	}
-	mac, err := getTapMAC(e.TAP)
-	if err != nil {
-		return fmt.Errorf("edge: failed to get TAP MAC address: %v", err)
+	mac := e.TAP.HardwareAddr()
+	if mac == nil {
+		return fmt.Errorf("edge: failed to get TAP MAC address")
 	}
 	payload := []byte(fmt.Sprintf("REGISTER %s %s", e.ID, mac.String()))
 	packet := append(headerBytes, payload...)
