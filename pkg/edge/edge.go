@@ -67,7 +67,6 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	}, nil
 }
 
-
 // Register sends a registration packet to the supernode.
 // Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
 func (e *EdgeClient) Register() error {
@@ -99,8 +98,8 @@ func (e *EdgeClient) Register() error {
 	if len(parts) < 1 || parts[0] != "ACK" {
 		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
 	}
-	if len(parts) >= 2 {
-		e.VirtualIP = parts[1]
+	if len(parts) >= 3 {
+		e.VirtualIP = fmt.Sprintf("%s/%s", parts[1], parts[2])
 		log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
 	} else {
 		return fmt.Errorf("edge: registration response missing virtual IP")

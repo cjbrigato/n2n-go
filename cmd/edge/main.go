@@ -20,8 +20,7 @@ func configureInterface(ifName, ipAddr string) error {
 	if err := cmdUp.Run(); err != nil {
 		return err
 	}
-	ipWithMask := ipAddr + "/24"
-	cmdAddr := exec.Command("ip", "addr", "add", ipWithMask, "dev", ifName)
+	cmdAddr := exec.Command("ip", "addr", "add", ipAddr, "dev", ifName)
 	return cmdAddr.Run()
 }
 

@@ -31,16 +31,7 @@ func main() {
 	defer conn.Close()
 	log.Printf("Supernode: Listening on %s", addrStr)
 
-	sn := supernode.NewSupernode(conn, *expiryDuration)
-
-	// Start periodic cleanup of stale edges.
-	go func() {
-		ticker := time.NewTicker(*cleanupInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			sn.CleanupStaleEdges(*expiryDuration)
-		}
-	}()
+	sn := supernode.NewSupernode(conn, *expiryDuration, *cleanupInterval)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

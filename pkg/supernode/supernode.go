@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -14,40 +15,10 @@ import (
 )
 
 const debug = false // set to true for verbose logging
-
-// VIPPool manages VIP allocation for a community.
-type VIPPool struct {
-	mu   sync.Mutex
-	used map[uint8]string // maps last octet to edge ID
-}
-
-func NewVIPPool() *VIPPool {
-	return &VIPPool{used: make(map[uint8]string)}
-}
-
-func (pool *VIPPool) Allocate(edgeID string) (net.IP, error) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	// Assign addresses in range 10.0.0.2 - 10.0.0.254 (reserve .1 for supernode)
-	for octet := uint8(2); octet < 255; octet++ {
-		if _, ok := pool.used[octet]; !ok {
-			pool.used[octet] = edgeID
-			return net.IPv4(10, 0, 0, octet), nil
-		}
-	}
-	return nil, fmt.Errorf("no available VIP addresses")
-}
-
-func (pool *VIPPool) Free(edgeID string) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	for octet, id := range pool.used {
-		if id == edgeID {
-			delete(pool.used, octet)
-			return
-		}
-	}
-}
+const (
+	communitySubnetFrom = "10.128.0.0" // Communities will be allocated upper subnets half of this
+	communitySubnetCIDR = 24
+)
 
 // Edge represents a registered edge.
 type Edge struct {
@@ -55,7 +26,8 @@ type Edge struct {
 	PublicIP      net.IP
 	Port          int
 	Community     string
-	VirtualIP     net.IP
+	VirtualIP     netip.Addr
+	VNetMaskLen   int
 	LastHeartbeat time.Time
 	LastSequence  uint16
 	// MAC address provided during registration.
@@ -67,37 +39,47 @@ type Supernode struct {
 	edgeMu sync.RWMutex     // protects edges
 	edges  map[string]*Edge // keyed by edge ID
 
+	netAllocator *NetworkAllocator
+
 	vipMu    sync.RWMutex        // protects vipPools
 	vipPools map[string]*VIPPool // keyed by community
 
 	macMu     sync.RWMutex      // protects macToEdge mapping
 	macToEdge map[string]string // maps normalized MAC string to edge ID
 
-	Conn   *net.UDPConn
-	expiry time.Duration // edge expiry duration
+	Conn            *net.UDPConn
+	expiry          time.Duration // edge expiry duration
+	cleanupInterval time.Duration // expiry Checking ticker
 }
 
-func NewSupernode(conn *net.UDPConn, expiry time.Duration) *Supernode {
+func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.Duration) *Supernode {
+	netAllocator := NewNetworkAllocator(net.ParseIP(communitySubnetFrom), net.CIDRMask(communitySubnetCIDR, 32))
 	sn := &Supernode{
-		edges:     make(map[string]*Edge),
-		vipPools:  make(map[string]*VIPPool),
-		macToEdge: make(map[string]string),
-		Conn:      conn,
-		expiry:    expiry,
+		edges:           make(map[string]*Edge),
+		netAllocator:    netAllocator,
+		vipPools:        make(map[string]*VIPPool),
+		macToEdge:       make(map[string]string),
+		Conn:            conn,
+		expiry:          expiry,
+		cleanupInterval: cleanupInterval,
 	}
-	go sn.periodicCleanup()
+	go sn.cleanupRoutine()
 	return sn
 }
 
-func (s *Supernode) getVIPPool(community string) *VIPPool {
+func (s *Supernode) getVIPPool(community string) (*VIPPool, error) {
 	s.vipMu.Lock()
 	defer s.vipMu.Unlock()
 	pool, exists := s.vipPools[community]
 	if !exists {
-		pool = NewVIPPool()
+		prefix, err := s.netAllocator.ProposeVirtualNetwork(community)
+		if err != nil {
+			return nil, err
+		}
+		pool = NewVIPPool(prefix)
 		s.vipPools[community] = pool
 	}
-	return pool
+	return pool, nil
 }
 
 // RegisterEdge now expects payload to contain "REGISTER <edgeID> <tapMAC>"
@@ -123,16 +105,22 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 	}
 	edge, exists := s.edges[srcID]
 	if !exists {
-		var vip net.IP
+		var vip netip.Addr
+		var masklen int
 		if isReg {
-			pool := s.getVIPPool(community)
-			var err error
-			vip, err = pool.Allocate(srcID)
+			pool, err := s.getVIPPool(community)
 			if err != nil {
 				if debug {
-					log.Printf("Supernode: VIP allocation failed for edge %s: %v", srcID, err)
+					log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", community, err)
 				}
-				return nil
+			} else {
+				vip, masklen, err = pool.Allocate(srcID)
+				if err != nil {
+					if debug {
+						log.Printf("Supernode: VIP allocation failed for edge %s: %v", srcID, err)
+					}
+					return nil
+				}
 			}
 		}
 		edge = &Edge{
@@ -141,6 +129,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			Port:          addr.Port,
 			Community:     community,
 			VirtualIP:     vip,
+			VNetMaskLen:   masklen,
 			LastHeartbeat: time.Now(),
 			LastSequence:  seq,
 			MACAddr:       "", // We store MAC as empty string in Edge, but update mapping below.
@@ -179,8 +168,14 @@ func (s *Supernode) UnregisterEdge(srcID string) {
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
 	if edge, exists := s.edges[srcID]; exists {
-		pool := s.getVIPPool(edge.Community)
-		pool.Free(srcID)
+		pool, err := s.getVIPPool(edge.Community)
+		if err != nil {
+			if debug {
+				log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", edge.Community, err)
+			}
+		} else {
+			pool.Free(srcID)
+		}
 		if edge.MACAddr != "" {
 			s.macMu.Lock()
 			delete(s.macToEdge, edge.MACAddr)
@@ -206,8 +201,14 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 		s.edgeMu.Lock()
 		for _, id := range stale {
 			if edge, exists := s.edges[id]; exists {
-				pool := s.getVIPPool(edge.Community)
-				pool.Free(id)
+				pool, err := s.getVIPPool(edge.Community)
+				if err != nil {
+					if debug {
+						log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", edge.Community, err)
+					}
+				} else {
+					pool.Free(id)
+				}
 				if edge.MACAddr != "" {
 					s.macMu.Lock()
 					delete(s.macToEdge, edge.MACAddr)
@@ -221,8 +222,8 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	}
 }
 
-func (s *Supernode) periodicCleanup() {
-	ticker := time.NewTicker(s.expiry / 2)
+func (s *Supernode) cleanupRoutine() {
+	ticker := time.NewTicker(s.cleanupInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		s.CleanupStaleEdges(s.expiry)
@@ -279,7 +280,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			s.SendAck(addr, "ERR Registration failed")
 			return
 		}
-		ackMsg := fmt.Sprintf("ACK %s", edge.VirtualIP.String())
+		ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
 		s.SendAck(addr, ackMsg)
 	case protocol.TypeUnregister:
 		s.UnregisterEdge(srcID)
