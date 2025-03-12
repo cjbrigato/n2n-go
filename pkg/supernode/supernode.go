@@ -152,7 +152,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			s.macToEdge[edge.MACAddr] = srcID // store edge ID keyed by MAC string
 			s.macMu.Unlock()
 		}
-		log.Printf("Supernode: New edge registered: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
+		log.Printf("Supernode: +edge.register: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
 	} else {
 		if community != edge.Community {
 			log.Printf("Supernode: Community mismatch for edge %s: packet community %q vs registered %q; dropping", srcID, community, edge.Community)
@@ -169,7 +169,7 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 			s.macMu.Unlock()
 		}
 		if debug {
-			log.Printf("Supernode: Edge updated: id=%s, community=%s", srcID, community)
+			log.Printf("Supernode: ~edge.update: id=%s, community=%s", srcID, community)
 		}
 	}
 	return edge
@@ -187,7 +187,7 @@ func (s *Supernode) UnregisterEdge(srcID string) {
 			s.macMu.Unlock()
 		}
 		delete(s.edges, srcID)
-		log.Printf("Supernode: Edge %s unregistered (VIP %s freed)", srcID, edge.VirtualIP.String())
+		log.Printf("Supernode: -edge.unregister: id=%s, community=%s, freed VIP=%s, MAC=%s, ", srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
 	}
 }
 
@@ -214,7 +214,7 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 					s.macMu.Unlock()
 				}
 				delete(s.edges, id)
-				log.Printf("Supernode: Edge %s removed due to stale heartbeat", id)
+				log.Printf("Supernode: -edge.unregister (removed due to stale heartbeat): id=%s, community=%s, freed VIP=%s, MAC=%s, ", id, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
 			}
 		}
 		s.edgeMu.Unlock()
@@ -286,7 +286,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	case protocol.TypeHeartbeat:
 		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
 		if edge != nil {
-			log.Printf("Supernode: Heartbeat received from edge %s", srcID)
+			log.Printf("Supernode: !edge.heartbeat: id=%s, community=%s, VIP=%s, MAC=%s, ", srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
 		}
 		s.SendAck(addr, "ACK")
 	case protocol.TypeData:
