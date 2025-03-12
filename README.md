@@ -1,6 +1,6 @@
 # n2n-go
 
-**n2n-go** is a complete rewrite of the popular n2n project in Go. It re-implements core functionality—including cryptographic transforms, edge and supernode management, protocol framing, virtual networking, and more—in an idiomatic, modular way.
+**n2n-go** is a complete rewrite of the popular n2n project in Go. It aims to re-implements core functionality—including cryptographic transforms, edge and supernode management, protocol framing, virtual networking, and more—in an idiomatic, modular way.
 
 ## Repository Structure
 
@@ -13,31 +13,16 @@ n2n-go/
 │   └── supernode/
 │        └── main.go        # Supernode executable – listens on a UDP socket, maintains edge registry, processes registration/heartbeat messages.
 ├── pkg/
-│   ├── aes/                # AES-CBC encryption with PKCS#7 padding.
-│   ├── auth/               # Key generation, binary/ASCII conversion, and key exchange utilities.
-│   ├── cc20/               # ChaCha20 (as a CC20 substitute) encryption functions.
-│   ├── curve25519/         # Curve25519 key pair generation and shared secret computation.
-│   ├── trafficfilter/      # Network traffic filtering (by IP/protocol).
-│   ├── hexdump/            # Utility for generating hex dumps of binary data.
-│   ├── json/               # Minimal JSON parser wrapping the standard library.
-│   ├── minilzo/            # Pure-Go LZO1X compression and decompression.
-│   ├── n2nregex/          # Regular expression utilities.
 │   ├── pearson/            # Pearson hashing (8-bit and 64-bit).
-│   ├── random/             # XORSHIFT128+ random number generator seeded from crypto/rand.
-│   ├── portmap/            # In-memory port mapping (e.g., “80:8080”) management.
-│   ├── management/         # Edge registration, virtual IP allocation, heartbeat management, and cleanup.
 │   ├── supernode/          # Supernode-specific logic: managing edge records and processing UDP packets.
 │   ├── edge/               # Edge-specific logic: TUN interface setup, UDP registration, heartbeat, and traffic forwarding.
-│   ├── protocol/           # Packet header framing, checksum computation, and replay protection.
-│   ├── util/               # Low-level utility functions and string buffering.
-│   └── transform/          # Data transforms: null, AES, CC20, SPECK, TF (XOR), LZO, and Zstd.
+│   ├── tuntap/             # Tun/Tap interface abstraction (currently lacks win32 support)
+│   └── protocol/           # Packet header framing, checksum computation, and replay protection.
 └── README.md               # This file
 ```
 
 ## Features
 
-- **Cryptographic Transforms:**  
-  Provides multiple ciphers and transforms (AES, ChaCha20/CC20, SPECK, TF, LZO, Zstd) for securing data payloads and headers.
 
 - **Protocol Framing:**  
   Implements packet header construction (version, TTL, sequence, timestamp, checksum, community) with checksum and timestamp verification for replay protection.
@@ -46,10 +31,7 @@ n2n-go/
   Edge clients register with a supernode over UDP. Supernodes maintain a registry of edges, update heartbeats, and remove stale records.
 
 - **Virtual Networking:**  
-  Uses a TUN interface on the edge side for forwarding IP packets, allowing creation of a virtual network overlay.
-
-- **Additional Utilities:**  
-  Includes port mapping, random number generation, JSON parsing, regular expressions, and low-level helpers.
+  Uses a TAP interface on the edge side for forwarding IP packets, allowing creation of a virtual network overlay.
 
 ## Requirements
 
@@ -85,12 +67,12 @@ go build -o edge .
 Run the edge client (example):
 
 ```bash
-./edge -id="edge01" -community="n2ncommunity" -tun="n2n0" -port=0 -supernode="supernode.example.com:7777" -heartbeat=30s
+./edge -id="edge01" -community="n2ncommunity" -tap="n2n0" -port=0 -supernode="supernode.example.com:7777" -heartbeat=30s
 ```
 
 - Use `-id` for the unique edge identifier.
 - Use `-community` for the network/community name.
-- Use `-tun` to specify the TUN interface name.
+- Use `-tap` to specify the TAP interface name.
 - `-port` can be 0 for system-assigned local UDP port.
 - `-supernode` is the address of the supernode (host:port).
 - `-heartbeat` specifies the interval for heartbeat messages.
