@@ -10,7 +10,7 @@ import (
 	"n2n-go/pkg/pearson"
 )
 
-const NoChecksum = true
+const NoChecksum = false
 
 const TotalHeaderSize = 73 // Fixed header size in bytes
 
