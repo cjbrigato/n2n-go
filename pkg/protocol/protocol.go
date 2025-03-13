@@ -10,9 +10,23 @@ import (
 	"n2n-go/pkg/pearson"
 )
 
-const NoChecksum = false
+const (
+	// NoChecksum can be set to true to disable checksums for testing or performance
+	NoChecksum = false
 
-const TotalHeaderSize = 73 // Fixed header size in bytes
+	// TotalHeaderSize is the fixed header size in bytes
+	TotalHeaderSize = 73
+
+	// DefaultTimestampDrift is the default allowed timestamp drift for packets
+	DefaultTimestampDrift = 16 * time.Second
+)
+
+// Common errors
+var (
+	ErrInsufficientData      = errors.New("insufficient data for header")
+	ErrChecksumVerification  = errors.New("checksum verification failed")
+	ErrTimestampVerification = errors.New("timestamp verification failed")
+)
 
 // PacketType defines the type of packet.
 type PacketType uint8
@@ -25,7 +39,25 @@ const (
 	TypeAck        PacketType = 5
 )
 
-// Header represents the refined protocol header.
+// String returns a human-readable name for the packet type
+func (pt PacketType) String() string {
+	switch pt {
+	case TypeRegister:
+		return "Register"
+	case TypeUnregister:
+		return "Unregister"
+	case TypeHeartbeat:
+		return "Heartbeat"
+	case TypeData:
+		return "Data"
+	case TypeAck:
+		return "Ack"
+	default:
+		return "Unknown"
+	}
+}
+
+// Header represents the protocol header.
 type Header struct {
 	Version       uint8      // Protocol version.
 	TTL           uint8      // Time-to-live.
@@ -34,7 +66,7 @@ type Header struct {
 	Timestamp     int64      // Timestamp (UnixNano).
 	Checksum      uint64     // Checksum computed over header (with checksum field zeroed during computation).
 	SourceID      [16]byte   // Sender identifier.
-	DestinationID [16]byte   // Destination identifier (used for destination MAC address).
+	DestinationID [16]byte   // Destination identifier.
 	Community     [20]byte   // Community name.
 }
 
@@ -50,10 +82,13 @@ var bufferPool = sync.Pool{
 func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, src, dest string) *Header {
 	var comm [20]byte
 	copy(comm[:], []byte(community))
+
 	var srcID [16]byte
 	copy(srcID[:], []byte(src))
+
 	var destID [16]byte
 	copy(destID[:], []byte(dest))
+
 	return &Header{
 		Version:       version,
 		TTL:           ttl,
@@ -66,7 +101,7 @@ func NewHeader(version, ttl uint8, pType PacketType, seq uint16, community, src,
 	}
 }
 
-// NewHeaderWithDestMAC creates a header where the destination is provided as a MAC address (expected length 6).
+// NewHeaderWithDestMAC creates a header where the destination is provided as a MAC address.
 // It stores the MAC in the first 6 bytes of DestinationID.
 func NewHeaderWithDestMAC(version, ttl uint8, pType PacketType, seq uint16, community, src string, dest net.HardwareAddr) *Header {
 	h := NewHeader(version, ttl, pType, seq, community, src, "")
@@ -76,43 +111,83 @@ func NewHeaderWithDestMAC(version, ttl uint8, pType PacketType, seq uint16, comm
 	return h
 }
 
+// GetSourceID returns the source ID as a string
+func (h *Header) GetSourceID() string {
+	return string(trimNullBytes(h.SourceID[:]))
+}
+
+// GetDestinationID returns the destination ID as a string
+func (h *Header) GetDestinationID() string {
+	return string(trimNullBytes(h.DestinationID[:]))
+}
+
+// GetCommunity returns the community name as a string
+func (h *Header) GetCommunity() string {
+	return string(trimNullBytes(h.Community[:]))
+}
+
+// GetDestinationMAC returns the destination MAC address if present
+func (h *Header) GetDestinationMAC() net.HardwareAddr {
+	// Check if there is a MAC address in the first 6 bytes
+	empty := true
+	for i := 0; i < 6; i++ {
+		if h.DestinationID[i] != 0 {
+			empty = false
+			break
+		}
+	}
+
+	if empty {
+		return nil
+	}
+
+	mac := make(net.HardwareAddr, 6)
+	copy(mac, h.DestinationID[0:6])
+	return mac
+}
+
 // MarshalBinary serializes the header into a fixed-size byte slice.
-// This version reuses a buffer from bufferPool to reduce allocations.
 func (h *Header) MarshalBinary() ([]byte, error) {
 	buf := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buf)
+
 	// Fill in fields.
 	buf[0] = h.Version
 	buf[1] = h.TTL
 	buf[2] = uint8(h.PacketType)
 	binary.BigEndian.PutUint16(buf[3:5], h.Sequence)
 	binary.BigEndian.PutUint64(buf[5:13], uint64(h.Timestamp))
-	// Zero out checksum field.
+
+	// Zero out checksum field for checksum calculation
 	for i := 13; i < 21; i++ {
 		buf[i] = 0
 	}
+
 	copy(buf[21:37], h.SourceID[:])
 	copy(buf[37:53], h.DestinationID[:])
 	copy(buf[53:73], h.Community[:])
 
 	var checksum uint64
 	if !NoChecksum {
-		// Compute checksum.
+		// Compute checksum
 		checksum = pearson.Hash64(buf)
 	}
 	h.Checksum = checksum
 	binary.BigEndian.PutUint64(buf[13:21], checksum)
-	// Make a copy to return so the buffer can be reused.
+
+	// Make a copy of the buffer for the result
 	result := make([]byte, TotalHeaderSize)
 	copy(result, buf)
-	bufferPool.Put(buf)
+
 	return result, nil
 }
 
 // UnmarshalBinary deserializes a header from a byte slice and verifies its checksum.
 func (h *Header) UnmarshalBinary(data []byte) error {
 	if len(data) < TotalHeaderSize {
-		return errors.New("insufficient data for header")
+		return ErrInsufficientData
 	}
+
 	h.Version = data[0]
 	h.TTL = data[1]
 	h.PacketType = PacketType(data[2])
@@ -124,18 +199,18 @@ func (h *Header) UnmarshalBinary(data []byte) error {
 	copy(h.Community[:], data[53:73])
 
 	if !NoChecksum {
-		// Recompute checksum.
-		temp := data[:TotalHeaderSize]
-		// Zero out checksum bytes in temp.
+		// Recompute checksum with zeroed checksum field
 		zeroed := make([]byte, TotalHeaderSize)
-		copy(zeroed, temp)
+		copy(zeroed, data)
 		for i := 13; i < 21; i++ {
 			zeroed[i] = 0
 		}
+
 		if pearson.Hash64(zeroed) != h.Checksum {
-			return errors.New("checksum verification failed")
+			return ErrChecksumVerification
 		}
 	}
+
 	return nil
 }
 
@@ -147,4 +222,14 @@ func (h *Header) VerifyTimestamp(ref time.Time, allowedDrift time.Duration) bool
 		diff = -diff
 	}
 	return diff <= allowedDrift
+}
+
+// trimNullBytes removes null bytes from the end of a byte slice
+func trimNullBytes(data []byte) []byte {
+	for i := len(data) - 1; i >= 0; i-- {
+		if data[i] != 0 {
+			return data[:i+1]
+		}
+	}
+	return []byte{}
 }
