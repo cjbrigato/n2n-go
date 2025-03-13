@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
 	"net"
@@ -13,9 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 )
-
-// BufferSize defines the maximum packet size to handle
-const BufferSize = 2048
 
 // EdgeClient encapsulates the state and configuration of an edge.
 type EdgeClient struct {
@@ -37,6 +35,10 @@ type EdgeClient struct {
 
 	unregisterOnce sync.Once
 	running        atomic.Bool
+
+	// Buffer pools
+	packetBufPool *buffers.BufferPool
+	headerBufPool *buffers.BufferPool
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
@@ -51,14 +53,23 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		return nil, fmt.Errorf("edge: failed to resolve local UDP address: %w", err)
 	}
 
+	// Set larger buffer sizes for UDP
 	conn, err := net.ListenUDP("udp4", localAddr)
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to open UDP connection: %w", err)
 	}
 
+	// Set UDP buffer sizes to reduce latency
+	if err := conn.SetReadBuffer(1024 * 1024); err != nil {
+		log.Printf("Warning: couldn't increase UDP read buffer size: %v", err)
+	}
+	if err := conn.SetWriteBuffer(1024 * 1024); err != nil {
+		log.Printf("Warning: couldn't increase UDP write buffer size: %v", err)
+	}
+
 	tap, err := tuntap.NewInterface(tapName, "tap")
 	if err != nil {
-		conn.Close() // Close the connection if TAP creation fails
+		conn.Close() // Clean up on error
 		return nil, fmt.Errorf("edge: failed to create TAP interface: %w", err)
 	}
 
@@ -74,6 +85,8 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		heartbeatInterval: heartbeatInterval,
 		ctx:               ctx,
 		cancel:            cancel,
+		packetBufPool:     buffers.PacketBufferPool,
+		headerBufPool:     buffers.HeaderBufferPool,
 	}, nil
 }
 
@@ -81,44 +94,57 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 // Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
 func (e *EdgeClient) Register() error {
 	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-	// Use control header (dest remains empty).
-	header := protocol.NewHeader(3, 64, protocol.TypeRegister, seq, e.Community, e.ID, "")
-	headerBytes, err := header.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("edge: failed to marshal registration header: %w", err)
-	}
 
+	// Get MAC address
 	mac := e.TAP.HardwareAddr()
 	if mac == nil {
 		return fmt.Errorf("edge: failed to get TAP MAC address")
 	}
 
-	payload := []byte(fmt.Sprintf("REGISTER %s %s", e.ID, mac.String()))
-	packet := append(headerBytes, payload...)
+	// Create header
+	header := protocol.NewHeader(3, 64, protocol.TypeRegister, seq, e.Community, e.ID, "")
 
-	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+	// Get buffer for full packet
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+
+	// Marshal header directly into packet buffer
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+		return fmt.Errorf("edge: failed to marshal registration header: %w", err)
+	}
+
+	// Add payload after header
+	payloadStr := fmt.Sprintf("REGISTER %s %s", e.ID, mac.String())
+	payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
+
+	// Send the packet
+	totalLen := protocol.TotalHeaderSize + payloadLen
+	_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send registration: %w", err)
 	}
 
-	// Set a timeout for registration response
+	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("edge: failed to set read deadline: %w", err)
 	}
 
-	// Use a larger buffer to handle potential large responses
-	buf := make([]byte, BufferSize)
-	n, addr, err := e.Conn.ReadFromUDP(buf)
+	// Read the response
+	respBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(respBuf)
+
+	n, addr, err := e.Conn.ReadFromUDP(respBuf)
 	if err != nil {
 		return fmt.Errorf("edge: registration ACK timeout: %w", err)
 	}
 
-	// Reset the deadline
+	// Reset deadline
 	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
 		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
 	}
 
-	resp := strings.TrimSpace(string(buf[:n]))
+	// Process the response
+	resp := strings.TrimSpace(string(respBuf[:n]))
 	parts := strings.Fields(resp)
 	if len(parts) < 1 || parts[0] != "ACK" {
 		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
@@ -140,17 +166,27 @@ func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+
+		// Create header
 		header := protocol.NewHeader(3, 64, protocol.TypeUnregister, seq, e.Community, e.ID, "")
-		headerBytes, err := header.MarshalBinary()
-		if err != nil {
+
+		// Get buffer for full packet
+		packetBuf := e.packetBufPool.Get()
+		defer e.packetBufPool.Put(packetBuf)
+
+		// Marshal header directly into packet buffer
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
 			unregErr = fmt.Errorf("edge: failed to marshal unregister header: %w", err)
 			return
 		}
 
-		payload := []byte(fmt.Sprintf("UNREGISTER %s", e.ID))
-		packet := append(headerBytes, payload...)
+		// Add payload after header
+		payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
+		payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
 
-		_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+		// Send the packet
+		totalLen := protocol.TotalHeaderSize + payloadLen
+		_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
@@ -162,19 +198,29 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
-// sendHeartbeat sends a single heartbeat message to the supernode
+// sendHeartbeat sends a single heartbeat message
 func (e *EdgeClient) sendHeartbeat() error {
 	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+
+	// Create header
 	header := protocol.NewHeader(3, 64, protocol.TypeHeartbeat, seq, e.Community, e.ID, "")
-	headerBytes, err := header.MarshalBinary()
-	if err != nil {
+
+	// Get buffer for full packet
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+
+	// Marshal header directly into packet buffer
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
 		return fmt.Errorf("edge: failed to marshal heartbeat header: %w", err)
 	}
 
-	payload := []byte(fmt.Sprintf("HEARTBEAT %s", e.ID))
-	packet := append(headerBytes, payload...)
+	// Add payload after header
+	payloadStr := fmt.Sprintf("HEARTBEAT %s", e.ID)
+	payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
 
-	_, err = e.Conn.WriteToUDP(packet, e.SupernodeAddr)
+	// Send the packet
+	totalLen := protocol.TotalHeaderSize + payloadLen
+	_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -182,7 +228,7 @@ func (e *EdgeClient) sendHeartbeat() error {
 	return nil
 }
 
-// runHeartbeat sends heartbeat messages periodically.
+// runHeartbeat sends heartbeat messages periodically
 func (e *EdgeClient) runHeartbeat() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -202,52 +248,29 @@ func (e *EdgeClient) runHeartbeat() {
 	}
 }
 
-// processAndSendPacket handles the packet processing and sending logic
-func (e *EdgeClient) processAndSendPacket(packet []byte) error {
-	destMACBytes := packet[0:6]
-	var destMAC net.HardwareAddr
-
-	if !isBroadcastMAC(destMACBytes) {
-		destMAC = destMACBytes
-	}
-
-	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-	header := protocol.NewHeaderWithDestMAC(3, 64, protocol.TypeData, seq, e.Community, e.ID, destMAC)
-
-	headerBytes, err := header.MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("failed to marshal data header: %w", err)
-	}
-
-	fullPacket := append(headerBytes, packet...)
-
-	_, err = e.Conn.WriteToUDP(fullPacket, e.SupernodeAddr)
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			return nil // Silently handle closed connection
-		}
-		return fmt.Errorf("error sending packet to supernode: %w", err)
-	}
-
-	return nil
-}
-
 // runTAPToSupernode reads packets from the TAP interface and sends them to the supernode.
 func (e *EdgeClient) runTAPToSupernode() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	buf := make([]byte, BufferSize)
+	// Preallocate the buffer once - no need to reallocate for each packet
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+
+	// Create separate areas for header and payload
+	headerBuf := packetBuf[:protocol.TotalHeaderSize]
+	payloadBuf := packetBuf[protocol.TotalHeaderSize:]
 
 	for {
 		select {
 		case <-e.ctx.Done():
 			return
 		default:
-			// Continue with normal operation
+			// Continue processing
 		}
 
-		n, err := e.TAP.Read(buf)
+		// Read directly into payload area to avoid a copy
+		n, err := e.TAP.Read(payloadBuf)
 		if err != nil {
 			if strings.Contains(err.Error(), "file already closed") {
 				return
@@ -261,41 +284,31 @@ func (e *EdgeClient) runTAPToSupernode() {
 			continue
 		}
 
-		if err := e.processAndSendPacket(buf[:n]); err != nil {
-			log.Printf("Edge: Failed to send packet: %v", err)
+		// Extract destination MAC address from Ethernet header (first 6 bytes)
+		var destMAC net.HardwareAddr
+		if !isBroadcastMAC(payloadBuf[:6]) {
+			destMAC = net.HardwareAddr(payloadBuf[:6])
+		}
+
+		// Create and marshal header
+		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+		header := protocol.NewHeaderWithDestMAC(3, 64, protocol.TypeData, seq, e.Community, e.ID, destMAC)
+
+		if err := header.MarshalBinaryTo(headerBuf); err != nil {
+			log.Printf("Edge: Failed to marshal data header: %v", err)
+			continue
+		}
+
+		// Send packet (header is already at the beginning of packetBuf)
+		totalLen := protocol.TotalHeaderSize + n
+		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				return
+			}
+			log.Printf("Edge: Error sending packet to supernode: %v", err)
 		}
 	}
-}
-
-// processReceivedPacket handles packet processing logic for received UDP packets
-func (e *EdgeClient) processReceivedPacket(packet []byte, addr *net.UDPAddr) error {
-	if len(packet) < protocol.TotalHeaderSize {
-		msg := strings.TrimSpace(string(packet))
-		if msg == "ACK" {
-			return nil // ACK messages are expected and ignored
-		}
-		return fmt.Errorf("received packet too short from %v: %q", addr, msg)
-	}
-
-	var hdr protocol.Header
-	if err := hdr.UnmarshalBinary(packet[:protocol.TotalHeaderSize]); err != nil {
-		return fmt.Errorf("failed to unmarshal header from %v: %w", addr, err)
-	}
-
-	if !hdr.VerifyTimestamp(time.Now(), 16*time.Second) {
-		return fmt.Errorf("header timestamp verification failed from %v", addr)
-	}
-
-	payload := packet[protocol.TotalHeaderSize:]
-	_, err := e.TAP.Write(payload)
-	if err != nil {
-		if strings.Contains(err.Error(), "file already closed") {
-			return nil // Silently handle closed TAP interface
-		}
-		return fmt.Errorf("TAP write error: %w", err)
-	}
-
-	return nil
 }
 
 // runUDPToTAP reads packets from the UDP connection and writes the payload to the TAP interface.
@@ -303,17 +316,21 @@ func (e *EdgeClient) runUDPToTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	buf := make([]byte, BufferSize)
+	// Preallocate buffer for receiving packets
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+
+	var header protocol.Header
 
 	for {
 		select {
 		case <-e.ctx.Done():
 			return
 		default:
-			// Continue with normal operation
+			// Continue processing
 		}
 
-		n, addr, err := e.Conn.ReadFromUDP(buf)
+		n, addr, err := e.Conn.ReadFromUDP(packetBuf)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
@@ -325,8 +342,37 @@ func (e *EdgeClient) runUDPToTAP() {
 			continue
 		}
 
-		if err := e.processReceivedPacket(buf[:n], addr); err != nil {
-			log.Printf("Edge: Failed to process packet: %v", err)
+		// Handle short packets and ACKs
+		if n < protocol.TotalHeaderSize {
+			msg := strings.TrimSpace(string(packetBuf[:n]))
+			if msg == "ACK" {
+				// Just an ACK - nothing to do
+				continue
+			}
+			log.Printf("Edge: Received packet too short from %v: %q", addr, msg)
+			continue
+		}
+
+		// Unmarshal header
+		if err := header.UnmarshalBinary(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+			log.Printf("Edge: Failed to unmarshal header from %v: %v", addr, err)
+			continue
+		}
+
+		// Verify timestamp
+		if !header.VerifyTimestamp(time.Now(), 16*time.Second) {
+			log.Printf("Edge: Header timestamp verification failed from %v", addr)
+			continue
+		}
+
+		// Extract payload and write to TAP
+		payload := packetBuf[protocol.TotalHeaderSize:n]
+		_, err = e.TAP.Write(payload)
+		if err != nil {
+			if strings.Contains(err.Error(), "file already closed") {
+				return
+			}
+			log.Printf("Edge: TAP write error: %v", err)
 		}
 	}
 }

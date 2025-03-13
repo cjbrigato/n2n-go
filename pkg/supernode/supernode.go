@@ -1,17 +1,16 @@
-// Package supernode maintains registered edges, VIP pools, and MAC-to-edge mappings,
-// and processes incoming packets using the refined protocol header.
 package supernode
 
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/protocol"
 	"net"
 	"net/netip"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"n2n-go/pkg/protocol"
 )
 
 // Config holds supernode configuration options
@@ -21,6 +20,7 @@ type Config struct {
 	CommunitySubnetCIDR int           // CIDR prefix length for community subnets
 	ExpiryDuration      time.Duration // Time after which an edge is considered stale
 	CleanupInterval     time.Duration // Interval for the cleanup routine
+	UDPBufferSize       int           // Size of UDP socket buffers
 }
 
 // DefaultConfig returns a default configuration
@@ -31,6 +31,7 @@ func DefaultConfig() *Config {
 		CommunitySubnetCIDR: 24,
 		ExpiryDuration:      10 * time.Minute,
 		CleanupInterval:     5 * time.Minute,
+		UDPBufferSize:       1024 * 1024, // 1MB buffer
 	}
 }
 
@@ -61,15 +62,6 @@ func NewGlobalID(id string, community string) *GlobalID {
 	}
 }
 
-// ParseGlobalID parses a string representation of a GlobalID
-func ParseGlobalID(s string) (*GlobalID, error) {
-	parts := strings.Split(s, ".communities/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("cannot parse invalid GID")
-	}
-	return NewGlobalID(parts[1], parts[0]), nil
-}
-
 // String returns a string representation of a GlobalID
 func (gid *GlobalID) String() string {
 	return fmt.Sprintf("%s.communities/%s", gid.community, gid.id)
@@ -78,6 +70,18 @@ func (gid *GlobalID) String() string {
 // GID returns the GlobalID for an Edge
 func (e *Edge) GID() *GlobalID {
 	return NewGlobalID(e.ID, e.Community)
+}
+
+// SupernodeStats holds runtime statistics
+type SupernodeStats struct {
+	PacketsProcessed   atomic.Uint64
+	PacketsForwarded   atomic.Uint64
+	PacketsDropped     atomic.Uint64
+	EdgesRegistered    atomic.Uint64
+	EdgesUnregistered  atomic.Uint64
+	HeartbeatsReceived atomic.Uint64
+	LastCleanupTime    time.Time
+	LastCleanupEdges   int
 }
 
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
@@ -97,6 +101,12 @@ type Supernode struct {
 	config     *Config
 	shutdownCh chan struct{}
 	shutdownWg sync.WaitGroup
+
+	// Buffer pool for packet processing
+	packetBufPool *buffers.BufferPool
+
+	// Statistics
+	stats SupernodeStats
 }
 
 // NewSupernode creates a new Supernode instance with default config
@@ -110,16 +120,25 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.
 
 // NewSupernodeWithConfig creates a new Supernode with the specified configuration
 func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
+	// Set UDP buffer sizes
+	if err := conn.SetReadBuffer(config.UDPBufferSize); err != nil {
+		log.Printf("Warning: couldn't set UDP read buffer size: %v", err)
+	}
+	if err := conn.SetWriteBuffer(config.UDPBufferSize); err != nil {
+		log.Printf("Warning: couldn't set UDP write buffer size: %v", err)
+	}
+
 	netAllocator := NewNetworkAllocator(net.ParseIP(config.CommunitySubnet), net.CIDRMask(config.CommunitySubnetCIDR, 32))
 
 	sn := &Supernode{
-		edges:        make(map[GlobalID]*Edge),
-		netAllocator: netAllocator,
-		communities:  make(map[string]*Community),
-		macToEdge:    make(map[string]GlobalID),
-		Conn:         conn,
-		config:       config,
-		shutdownCh:   make(chan struct{}),
+		edges:         make(map[GlobalID]*Edge),
+		netAllocator:  netAllocator,
+		communities:   make(map[string]*Community),
+		macToEdge:     make(map[string]GlobalID),
+		Conn:          conn,
+		config:        config,
+		shutdownCh:    make(chan struct{}),
+		packetBufPool: buffers.PacketBufferPool,
 	}
 
 	sn.shutdownWg.Add(1)
@@ -169,7 +188,7 @@ func (s *Supernode) GetCommunity(community string, create bool) (*Community, err
 		return nil, fmt.Errorf("failed to allocate network for community %s: %w", community, err)
 	}
 
-	c = NewCommunity(community, prefix)
+	c = NewCommunityWithConfig(community, prefix, s.config)
 	s.communities[community] = c
 
 	return c, nil
@@ -206,9 +225,15 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 	s.edgeMu.Lock()
 	s.edges[*gid] = edge
 	s.edgeMu.Unlock()
+
 	s.macMu.Lock()
-	s.macToEdge[edge.MACAddr] = *gid // store edge ID keyed by MAC string
+	s.macToEdge[edge.MACAddr] = *gid
 	s.macMu.Unlock()
+
+	// Update statistics
+	if isReg {
+		s.stats.EdgesRegistered.Add(1)
+	}
 
 	return edge, nil
 }
@@ -239,6 +264,9 @@ func (s *Supernode) UnregisterEdge(srcID string, community string) {
 		s.edgeMu.Lock()
 		delete(s.edges, gid)
 		s.edgeMu.Unlock()
+
+		// Update statistics
+		s.stats.EdgesUnregistered.Add(1)
 	}
 }
 
@@ -261,6 +289,10 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 		s.UnregisterEdge(id.id, id.community)
 		log.Printf("Supernode: Removed stale edge %s from community %s", id.id, id.community)
 	}
+
+	// Update statistics
+	s.stats.LastCleanupTime = now
+	s.stats.LastCleanupEdges = len(stale)
 }
 
 // cleanupRoutine periodically cleans up stale edges
@@ -287,14 +319,18 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, msg string) error {
 
 // ProcessPacket processes an incoming packet
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
+	s.stats.PacketsProcessed.Add(1)
+
 	if len(packet) < protocol.TotalHeaderSize {
 		log.Printf("Supernode: Packet too short from %v", addr)
+		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
 	var hdr protocol.Header
 	if err := hdr.UnmarshalBinary(packet[:protocol.TotalHeaderSize]); err != nil {
 		log.Printf("Supernode: Failed to unmarshal header from %v: %v", addr, err)
+		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
@@ -324,7 +360,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 	switch hdr.PacketType {
 	case protocol.TypeRegister:
-		s.handleRegister(srcID, community, addr, hdr.Sequence, payload)
+		s.handleRegister(srcID, community, addr, hdr.Sequence, string(payload))
 	case protocol.TypeUnregister:
 		s.UnregisterEdge(srcID, community)
 	case protocol.TypeHeartbeat:
@@ -335,17 +371,19 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		s.debugLog("Received ACK from edge %s", srcID)
 	default:
 		log.Printf("Supernode: Unknown packet type %d from %v", hdr.PacketType, addr)
+		s.stats.PacketsDropped.Add(1)
 	}
 }
 
 // handleRegister processes a registration packet
-func (s *Supernode) handleRegister(srcID, community string, addr *net.UDPAddr, seq uint16, payload []byte) {
-	payloadStr := strings.TrimSpace(string(payload))
+func (s *Supernode) handleRegister(srcID, community string, addr *net.UDPAddr, seq uint16, payload string) {
+	payloadStr := strings.TrimSpace(payload)
 	edge, err := s.RegisterEdge(srcID, community, addr, seq, true, payloadStr)
 
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", srcID, err)
 		s.SendAck(addr, "ERR Registration failed")
+		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
@@ -357,8 +395,11 @@ func (s *Supernode) handleRegister(srcID, community string, addr *net.UDPAddr, s
 func (s *Supernode) handleHeartbeat(srcID, community string, addr *net.UDPAddr, seq uint16) {
 	edge, err := s.RegisterEdge(srcID, community, addr, seq, false, "")
 	if edge != nil && err == nil {
-		log.Printf("Supernode: Heartbeat from edge: id=%s, community=%s, VIP=%s, MAC=%s",
+		s.debugLog("Heartbeat from edge: id=%s, community=%s, VIP=%s, MAC=%s",
 			srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
+
+		// Update statistics
+		s.stats.HeartbeatsReceived.Add(1)
 	}
 	s.SendAck(addr, "ACK")
 }
@@ -374,6 +415,7 @@ func (s *Supernode) handleData(packet []byte, srcID, community, destMAC string, 
 
 	if !exists {
 		log.Printf("Supernode: Received data packet from unregistered edge %s; dropping packet", srcID)
+		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
@@ -427,10 +469,12 @@ func (s *Supernode) tryDeliverToMAC(packet []byte, destMAC, community, srcID str
 	// Forward packet to the target
 	if err := s.forwardPacket(packet, target); err != nil {
 		log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
+		s.stats.PacketsDropped.Add(1)
 		return false
 	}
 
 	s.debugLog("Forwarded packet to edge %s", target.ID)
+	s.stats.PacketsForwarded.Add(1)
 	return true
 }
 
@@ -458,36 +502,102 @@ func (s *Supernode) broadcast(packet []byte, community, senderID string) {
 	s.edgeMu.RUnlock()
 
 	// Now send to all targets without holding the lock
+	sentCount := 0
 	for _, target := range targets {
 		if err := s.forwardPacket(packet, target); err != nil {
 			log.Printf("Supernode: Failed to broadcast packet to edge %s: %v", target.ID, err)
+			s.stats.PacketsDropped.Add(1)
 		} else {
 			s.debugLog("Broadcasted packet from %s to edge %s", senderID, target.ID)
+			sentCount++
 		}
+	}
+
+	if sentCount > 0 {
+		s.stats.PacketsForwarded.Add(uint64(sentCount))
+	}
+}
+
+// GetStats returns a copy of the current statistics
+func (s *Supernode) GetStats() SupernodeStats {
+	return SupernodeStats{
+		PacketsProcessed:   atomic.Uint64{},
+		PacketsForwarded:   atomic.Uint64{},
+		PacketsDropped:     atomic.Uint64{},
+		EdgesRegistered:    atomic.Uint64{},
+		EdgesUnregistered:  atomic.Uint64{},
+		HeartbeatsReceived: atomic.Uint64{},
+		LastCleanupTime:    s.stats.LastCleanupTime,
+		LastCleanupEdges:   s.stats.LastCleanupEdges,
 	}
 }
 
 // Listen begins processing incoming packets
 func (s *Supernode) Listen() {
-	buf := make([]byte, 1600)
-	for {
-		n, addr, err := s.Conn.ReadFromUDP(buf)
-		if err != nil {
-			log.Printf("Supernode: UDP read error: %v", err)
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				return
+	// Use a consistent buffer size
+	//bufSize := 2048
+
+	// Create a worker pool to process packets
+	const numWorkers = 4
+	packetChan := make(chan packetData, 100)
+
+	// Start worker goroutines
+	for i := 0; i < numWorkers; i++ {
+		s.shutdownWg.Add(1)
+		go func() {
+			defer s.shutdownWg.Done()
+			for pkt := range packetChan {
+				s.ProcessPacket(pkt.data[:pkt.size], pkt.addr)
+				s.packetBufPool.Put(pkt.data)
 			}
-			continue
-		}
-
-		s.debugLog("Received %d bytes from %v", n, addr)
-
-		// Create a copy of the packet to avoid data races
-		packetCopy := make([]byte, n)
-		copy(packetCopy, buf[:n])
-
-		go s.ProcessPacket(packetCopy, addr)
+		}()
 	}
+
+	// Main receive loop
+	go func() {
+		defer close(packetChan)
+
+		for {
+			select {
+			case <-s.shutdownCh:
+				return
+			default:
+				// Get a buffer from the pool
+				buf := s.packetBufPool.Get()
+
+				// Read a packet
+				n, addr, err := s.Conn.ReadFromUDP(buf)
+				if err != nil {
+					log.Printf("Supernode: UDP read error: %v", err)
+					s.packetBufPool.Put(buf)
+
+					if strings.Contains(err.Error(), "use of closed network connection") {
+						return
+					}
+					continue
+				}
+
+				s.debugLog("Received %d bytes from %v", n, addr)
+
+				// Send to worker pool
+				packetChan <- packetData{
+					data: buf,
+					size: n,
+					addr: addr,
+				}
+			}
+		}
+	}()
+
+	// Block until shutdown
+	<-s.shutdownCh
+}
+
+// packetData represents a received packet and its metadata
+type packetData struct {
+	data []byte
+	size int
+	addr *net.UDPAddr
 }
 
 // Shutdown performs a clean shutdown of the supernode
