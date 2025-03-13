@@ -34,18 +34,49 @@ type Edge struct {
 	MACAddr string
 }
 
+type GlobalID struct {
+	id        string
+	community string
+}
+
+func NewGlobalID(id string, community string) *GlobalID {
+	return &GlobalID{
+		id:        id,
+		community: community,
+	}
+}
+
+func ParseGlobalID(s string) (*GlobalID, error) {
+	parts := strings.Split(s, ".communities/")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("cannot parse invalid GID")
+	}
+	return NewGlobalID(parts[1], parts[0]), nil
+}
+
+func (gid *GlobalID) String() string {
+	return fmt.Sprintf("%s.communities/%s", gid.community, gid.id)
+}
+
+func (e *Edge) GID() *GlobalID {
+	return NewGlobalID(e.ID, e.Community)
+}
+
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
 type Supernode struct {
-	edgeMu sync.RWMutex     // protects edges
-	edges  map[string]*Edge // keyed by edge ID
+	edgeMu sync.RWMutex       // protects edges
+	edges  map[GlobalID]*Edge // keyed by edge GlobalID
 
 	netAllocator *NetworkAllocator
 
-	vipMu    sync.RWMutex        // protects vipPools
-	vipPools map[string]*VIPPool // keyed by community
+	comMu       sync.RWMutex
+	communities map[string]*Community
 
-	macMu     sync.RWMutex      // protects macToEdge mapping
-	macToEdge map[string]string // maps normalized MAC string to edge ID
+	/*vipMu    sync.RWMutex         // protects vipPools
+	vipPools map[string]*AddrPool // keyed by community*/
+
+	macMu     sync.RWMutex        // protects macToEdge mapping
+	macToEdge map[string]GlobalID // maps normalized MAC string to edge ID
 
 	Conn            *net.UDPConn
 	expiry          time.Duration // edge expiry duration
@@ -55,10 +86,11 @@ type Supernode struct {
 func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.Duration) *Supernode {
 	netAllocator := NewNetworkAllocator(net.ParseIP(communitySubnetFrom), net.CIDRMask(communitySubnetCIDR, 32))
 	sn := &Supernode{
-		edges:           make(map[string]*Edge),
-		netAllocator:    netAllocator,
-		vipPools:        make(map[string]*VIPPool),
-		macToEdge:       make(map[string]string),
+		edges:        make(map[GlobalID]*Edge),
+		netAllocator: netAllocator,
+		communities:  make(map[string]*Community),
+		//vipPools:        make(map[string]*AddrPool),
+		macToEdge:       make(map[string]GlobalID),
 		Conn:            conn,
 		expiry:          expiry,
 		cleanupInterval: cleanupInterval,
@@ -67,128 +99,76 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.
 	return sn
 }
 
-func (s *Supernode) getVIPPool(community string) (*VIPPool, error) {
-	s.vipMu.Lock()
-	defer s.vipMu.Unlock()
-	pool, exists := s.vipPools[community]
+func (s *Supernode) GetCommunity(community string, create bool) (*Community, error) {
+	s.comMu.Lock()
+	defer s.comMu.Unlock()
+	c, exists := s.communities[community]
 	if !exists {
+		if !create {
+			return nil, fmt.Errorf("unknown community")
+		}
 		prefix, err := s.netAllocator.ProposeVirtualNetwork(community)
 		if err != nil {
 			return nil, err
 		}
-		pool = NewVIPPool(prefix)
-		s.vipPools[community] = pool
+		c := NewCommunity(community, prefix)
+		s.communities[community] = c
 	}
-	return pool, nil
+	return c, nil
 }
 
 // RegisterEdge now expects payload to contain "REGISTER <edgeID> <tapMAC>"
 // The tapMAC is expected in its standard string representation (e.g., "aa:bb:cc:dd:ee:ff")
 // We convert it to a net.HardwareAddr.
-func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) *Edge {
+func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
+
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
-	var macAddr net.HardwareAddr
-	if isReg {
-		parts := strings.Fields(payload)
-		if len(parts) >= 3 {
-			// Parse the MAC address.
-			mac, err := net.ParseMAC(parts[2])
-			if err != nil {
-				log.Printf("Supernode: Failed to parse MAC address %s: %v", parts[2], err)
-			} else {
-				macAddr = mac
-			}
-		} else {
-			log.Printf("Supernode: Registration payload format invalid: %s", payload)
-		}
+
+	gid := NewGlobalID(srcID, community)
+	edge, exists := s.edges[*gid]
+	if !exists && !isReg {
+		return nil, fmt.Errorf("unknown edge with !isReg. Droping")
 	}
-	edge, exists := s.edges[srcID]
-	if !exists {
-		var vip netip.Addr
-		var masklen int
-		if isReg {
-			pool, err := s.getVIPPool(community)
-			if err != nil {
-				if debug {
-					log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", community, err)
-				}
-			} else {
-				vip, masklen, err = pool.Allocate(srcID)
-				if err != nil {
-					if debug {
-						log.Printf("Supernode: VIP allocation failed for edge %s: %v", srcID, err)
-					}
-					return nil
-				}
-			}
-		}
-		edge = &Edge{
-			ID:            srcID,
-			PublicIP:      addr.IP,
-			Port:          addr.Port,
-			Community:     community,
-			VirtualIP:     vip,
-			VNetMaskLen:   masklen,
-			LastHeartbeat: time.Now(),
-			LastSequence:  seq,
-			MACAddr:       "", // We store MAC as empty string in Edge, but update mapping below.
-		}
-		s.edges[srcID] = edge
-		if macAddr != nil {
-			edge.MACAddr = macAddr.String()
-			s.macMu.Lock()
-			s.macToEdge[edge.MACAddr] = srcID // store edge ID keyed by MAC string
-			s.macMu.Unlock()
-		}
-		log.Printf("Supernode: +edge.register: id=%s, community=%s, assigned VIP=%s, MAC=%s", srcID, community, vip, edge.MACAddr)
-	} else {
-		if community != edge.Community {
-			log.Printf("Supernode: Community mismatch for edge %s: packet community %q vs registered %q; dropping", srcID, community, edge.Community)
-			return nil
-		}
-		edge.PublicIP = addr.IP
-		edge.Port = addr.Port
-		edge.LastHeartbeat = time.Now()
-		edge.LastSequence = seq
-		if isReg && macAddr != nil {
-			edge.MACAddr = macAddr.String()
-			s.macMu.Lock()
-			s.macToEdge[edge.MACAddr] = srcID
-			s.macMu.Unlock()
-		}
-		if debug {
-			log.Printf("Supernode: ~edge.update: id=%s, community=%s", srcID, community)
-		}
+
+	// from there (exists || isReg) is always true, so the community either exists or should be created
+	cm, err := s.GetCommunity(community, isReg)
+	if err != nil {
+		return nil, err
 	}
-	return edge
+
+	// transfer registering to communityScope
+	edge, err = cm.EdgeUpdate(srcID, addr, seq, isReg, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	s.edges[*gid] = edge
+	return edge, nil
 }
 
-func (s *Supernode) UnregisterEdge(srcID string) {
+func (s *Supernode) UnregisterEdge(srcID string, community string) {
 	s.edgeMu.Lock()
 	defer s.edgeMu.Unlock()
-	if edge, exists := s.edges[srcID]; exists {
-		pool, err := s.getVIPPool(edge.Community)
+	gid := *NewGlobalID(srcID, community)
+	if edge, exists := s.edges[gid]; exists {
+		cm, err := s.GetCommunity(community, false)
 		if err != nil {
-			if debug {
-				log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", edge.Community, err)
-			}
-		} else {
-			pool.Free(srcID)
+			log.Printf("%v", err)
+			return
 		}
-		if edge.MACAddr != "" {
+		if cm.Unregister(srcID) {
 			s.macMu.Lock()
 			delete(s.macToEdge, edge.MACAddr)
 			s.macMu.Unlock()
+			delete(s.edges, gid)
 		}
-		delete(s.edges, srcID)
-		log.Printf("Supernode: -edge.unregister: id=%s, community=%s, freed VIP=%s, MAC=%s, ", srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
 	}
 }
 
 // CleanupStaleEdges and periodicCleanup remain unchanged.
 func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
-	var stale []string
+	var stale []GlobalID
 	now := time.Now()
 	s.edgeMu.RLock()
 	for id, edge := range s.edges {
@@ -198,27 +178,11 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 	}
 	s.edgeMu.RUnlock()
 	if len(stale) > 0 {
-		s.edgeMu.Lock()
+		//s.edgeMu.Lock()
 		for _, id := range stale {
-			if edge, exists := s.edges[id]; exists {
-				pool, err := s.getVIPPool(edge.Community)
-				if err != nil {
-					if debug {
-						log.Printf("Supernode: VIP getVIPPool failed for community %s: %v", edge.Community, err)
-					}
-				} else {
-					pool.Free(id)
-				}
-				if edge.MACAddr != "" {
-					s.macMu.Lock()
-					delete(s.macToEdge, edge.MACAddr)
-					s.macMu.Unlock()
-				}
-				delete(s.edges, id)
-				log.Printf("Supernode: -edge.unregister (removed due to stale heartbeat): id=%s, community=%s, freed VIP=%s, MAC=%s, ", id, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
-			}
+			s.UnregisterEdge(id.id, id.community)
 		}
-		s.edgeMu.Unlock()
+		//s.edgeMu.Unlock()
 	}
 }
 
@@ -251,6 +215,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	payload := packet[protocol.TotalHeaderSize:]
 	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
 	srcID := strings.TrimRight(string(hdr.SourceID[:]), "\x00")
+	gid := *NewGlobalID(srcID, community)
 	// Interpret Destination field as destination MAC address.
 	// Here we extract the first 6 bytes as the MAC.
 	destMACRaw := hdr.DestinationID[0:6]
@@ -275,25 +240,25 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	switch hdr.PacketType {
 	case protocol.TypeRegister:
 		payloadStr := strings.TrimSpace(string(payload))
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, true, payloadStr)
-		if edge == nil {
+		edge, err := s.RegisterEdge(srcID, community, addr, hdr.Sequence, true, payloadStr)
+		if edge == nil || err != nil {
 			s.SendAck(addr, "ERR Registration failed")
 			return
 		}
 		ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
 		s.SendAck(addr, ackMsg)
 	case protocol.TypeUnregister:
-		s.UnregisterEdge(srcID)
+		s.UnregisterEdge(srcID, community)
 	case protocol.TypeHeartbeat:
-		edge := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
-		if edge != nil {
+		edge, err := s.RegisterEdge(srcID, community, addr, hdr.Sequence, false, "")
+		if edge != nil && err == nil {
 			log.Printf("Supernode: !edge.heartbeat: id=%s, community=%s, VIP=%s, MAC=%s, ", srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
 		}
 		s.SendAck(addr, "ACK")
 	case protocol.TypeData:
 		// Look up the sender edge. If not registered, ignore the packet.
 		s.edgeMu.RLock()
-		senderEdge, exists := s.edges[srcID]
+		senderEdge, exists := s.edges[gid]
 		s.edgeMu.RUnlock()
 		if !exists {
 			log.Printf("Supernode: Received data packet from unregistered edge %s; dropping packet", srcID)
