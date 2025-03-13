@@ -111,9 +111,7 @@ func (s *Supernode) GetCommunity(community string, create bool) (*Community, err
 		if err != nil {
 			return nil, err
 		}
-		log.Println(community, prefix)
-		c := NewCommunity(community, prefix)
-		log.Println(c)
+		c = NewCommunity(community, prefix)
 		s.communities[community] = c
 	}
 	return c, nil
