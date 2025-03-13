@@ -4,8 +4,15 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/edge"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/supernode"
+	"n2n-go/pkg/tuntap"
 	"net"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,6 +28,8 @@ type LatencyResults struct {
 	PacketsSent   int
 	PacketsRecv   int
 	TotalTime     time.Duration
+	PacketSize    int
+	Component     Component
 }
 
 // Component specifies which component to benchmark
@@ -49,31 +58,220 @@ func (c Component) String() string {
 	}
 }
 
+// BenchmarkOptions provides configuration for benchmarks
+type BenchmarkOptions struct {
+	Component      Component
+	Iterations     int
+	PacketSize     int
+	SupernodeAddr  string
+	Community      string
+	TAPInterfaceID int
+}
+
+// DefaultBenchmarkOptions returns sensible defaults
+func DefaultBenchmarkOptions() *BenchmarkOptions {
+	return &BenchmarkOptions{
+		Component:      ComponentUDPOnly,
+		Iterations:     1000,
+		PacketSize:     1024,
+		SupernodeAddr:  "127.0.0.1:7777",
+		Community:      "benchcommunity",
+		TAPInterfaceID: 10,
+	}
+}
+
 // BenchmarkLatency measures latency for a specific component
-func BenchmarkLatency(component Component, iterations int) (*LatencyResults, error) {
-	switch component {
+func BenchmarkLatency(opts *BenchmarkOptions) (*LatencyResults, error) {
+	switch opts.Component {
 	case ComponentAll:
-		return benchmarkEndToEnd(iterations)
+		return benchmarkEndToEnd(opts)
 	case ComponentUDPOnly:
-		return benchmarkUDPOnly(iterations)
+		return benchmarkUDPOnly(opts)
 	case ComponentTAPOnly:
-		return benchmarkTAPOnly(iterations)
+		return benchmarkTAPOnly(opts)
 	case ComponentProtocolOnly:
-		return benchmarkProtocolOnly(iterations)
+		return benchmarkProtocolOnly(opts)
 	default:
-		return nil, fmt.Errorf("unknown component: %d", component)
+		return nil, fmt.Errorf("unknown component: %d", opts.Component)
 	}
 }
 
 // benchmarkEndToEnd measures complete end-to-end latency
-func benchmarkEndToEnd(iterations int) (*LatencyResults, error) {
-	// Implementation specific to your architecture
-	// This would involve setting up actual edge nodes and measuring ping times
-	return nil, fmt.Errorf("not implemented")
+func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
+	// This implementation creates a local supernode and two edges
+	// and measures ping latency between them
+
+	// 1. Start a supernode
+	log.Println("Starting temporary supernode...")
+	snPort := 17777
+	snAddr := fmt.Sprintf("127.0.0.1:%d", snPort)
+
+	udpAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", snPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve supernode address: %w", err)
+	}
+
+	snConn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to listen on UDP for supernode: %w", err)
+	}
+	defer snConn.Close()
+
+	snConfig := supernode.DefaultConfig()
+	snConfig.Debug = false
+
+	sn := supernode.NewSupernodeWithConfig(snConn, snConfig)
+
+	go sn.Listen()
+	defer sn.Shutdown()
+
+	// 2. Create two tap interfaces for edges
+	tap1Name := fmt.Sprintf("n2ntest%d", opts.TAPInterfaceID)
+	tap2Name := fmt.Sprintf("n2ntest%d", opts.TAPInterfaceID+1)
+
+	log.Printf("Creating TAP interfaces %s and %s...", tap1Name, tap2Name)
+
+	// 3. Start Edge 1
+	edge1, err := edge.NewEdgeClient("edge1", opts.Community, tap1Name, 0, snAddr, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create edge1: %w", err)
+	}
+	defer edge1.Close()
+
+	if err := edge1.Register(); err != nil {
+		return nil, fmt.Errorf("failed to register edge1: %w", err)
+	}
+
+	// Configure interface for edge1
+	if err := configureInterface(tap1Name, edge1.VirtualIP); err != nil {
+		return nil, fmt.Errorf("failed to configure interface for edge1: %w", err)
+	}
+
+	go edge1.Run()
+
+	// 4. Start Edge 2
+	edge2, err := edge.NewEdgeClient("edge2", opts.Community, tap2Name, 0, snAddr, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create edge2: %w", err)
+	}
+	defer edge2.Close()
+
+	if err := edge2.Register(); err != nil {
+		return nil, fmt.Errorf("failed to register edge2: %w", err)
+	}
+
+	// Configure interface for edge2
+	if err := configureInterface(tap2Name, edge2.VirtualIP); err != nil {
+		return nil, fmt.Errorf("failed to configure interface for edge2: %w", err)
+	}
+
+	go edge2.Run()
+
+	// 5. Extract IP addresses for ping test
+	ip1 := strings.Split(edge1.VirtualIP, "/")[0]
+	ip2 := strings.Split(edge2.VirtualIP, "/")[0]
+
+	log.Printf("Edge1 VIP: %s, Edge2 VIP: %s", ip1, ip2)
+
+	// 6. Wait for interfaces to be ready
+	time.Sleep(1 * time.Second)
+
+	// 7. Ping from edge1 to edge2
+	log.Printf("Starting ping test for %d iterations...", opts.Iterations)
+
+	latencies, err := runPingTest(ip2, opts.Iterations, opts.PacketSize)
+	if err != nil {
+		return nil, fmt.Errorf("ping test failed: %w", err)
+	}
+
+	// 8. Calculate statistics
+	results := calculateStats(latencies, opts.Iterations, latencies[0]*time.Duration(len(latencies)))
+	results.PacketSize = opts.PacketSize
+	results.Component = opts.Component
+
+	return results, nil
+}
+
+// runPingTest uses the ping command to measure latency
+func runPingTest(targetIP string, count, packetSize int) ([]time.Duration, error) {
+	args := []string{
+		"-c", strconv.Itoa(count),
+		"-s", strconv.Itoa(packetSize),
+		"-i", "0.01", // 10ms interval
+		targetIP,
+	}
+
+	cmd := exec.Command("ping", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("ping command failed: %w, output: %s", err, string(output))
+	}
+
+	// Parse ping output to extract latencies
+	return parsePingOutput(string(output))
+}
+
+// parsePingOutput extracts latency values from ping command output
+func parsePingOutput(output string) ([]time.Duration, error) {
+	var latencies []time.Duration
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "time=") {
+			parts := strings.Split(line, "time=")
+			if len(parts) >= 2 {
+				timeStr := strings.Split(parts[1], " ")[0]
+				timeVal, err := strconv.ParseFloat(timeStr, 64)
+				if err != nil {
+					continue
+				}
+
+				// Convert milliseconds to nanoseconds
+				latency := time.Duration(timeVal * float64(time.Millisecond))
+				latencies = append(latencies, latency)
+			}
+		}
+	}
+
+	if len(latencies) == 0 {
+		return nil, fmt.Errorf("no latency data found in ping output")
+	}
+
+	return latencies, nil
+}
+
+// configureInterface brings up a TAP interface with the given IP
+func configureInterface(ifName, ipAddr string) error {
+	// Create TAP interface if it doesn't exist
+	cmd := exec.Command("ip", "tuntap", "add", "dev", ifName, "mode", "tap")
+	if err := cmd.Run(); err != nil {
+		// If it already exists, that's okay
+		log.Printf("Note: TAP device creation returned: %v (might already exist)", err)
+	}
+
+	// Bring the interface up
+	cmd = exec.Command("ip", "link", "set", "dev", ifName, "up")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to bring up interface: %w", err)
+	}
+
+	// Assign IP address
+	cmd = exec.Command("ip", "addr", "add", ipAddr, "dev", ifName)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to assign IP address: %w", err)
+	}
+
+	return nil
+}
+
+// cleanupInterface removes a TAP interface
+func cleanupInterface(ifName string) error {
+	cmd := exec.Command("ip", "link", "delete", ifName)
+	return cmd.Run()
 }
 
 // benchmarkUDPOnly measures pure UDP socket performance
-func benchmarkUDPOnly(iterations int) (*LatencyResults, error) {
+func benchmarkUDPOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 	// Create two UDP sockets to communicate with each other
 	addr1, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
 	if err != nil {
@@ -109,23 +307,24 @@ func benchmarkUDPOnly(iterations int) (*LatencyResults, error) {
 	conn2.SetWriteBuffer(1024 * 1024)
 
 	// Set a reasonable deadline
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(1 * time.Minute)
 	conn1.SetReadDeadline(deadline)
 	conn2.SetReadDeadline(deadline)
 
-	// Prepare buffers
-	sendBuf := make([]byte, 1000)
-	recvBuf := make([]byte, 1000)
+	// Prepare buffers with the specified packet size
+	sendBuf := make([]byte, opts.PacketSize)
+	recvBuf := make([]byte, opts.PacketSize)
 
 	var wg sync.WaitGroup
 	var latencies []time.Duration
+	var latenciesMu sync.Mutex
 
 	// Start receiver goroutine
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 
-		for i := 0; i < iterations; i++ {
+		for i := 0; i < opts.Iterations; i++ {
 			n, addr, err := conn2.ReadFromUDP(recvBuf)
 			if err != nil {
 				log.Printf("Error reading from conn2: %v", err)
@@ -143,7 +342,7 @@ func benchmarkUDPOnly(iterations int) (*LatencyResults, error) {
 	// Send and measure round trip time
 	startTime := time.Now()
 
-	for i := 0; i < iterations; i++ {
+	for i := 0; i < opts.Iterations; i++ {
 		// Send packet
 		sendTime := time.Now()
 		_, err := conn1.WriteToUDP(sendBuf, localAddr2)
@@ -161,7 +360,10 @@ func benchmarkUDPOnly(iterations int) (*LatencyResults, error) {
 
 		// Calculate latency
 		rtt := time.Since(sendTime)
+
+		latenciesMu.Lock()
 		latencies = append(latencies, rtt)
+		latenciesMu.Unlock()
 	}
 
 	totalTime := time.Since(startTime)
@@ -170,55 +372,234 @@ func benchmarkUDPOnly(iterations int) (*LatencyResults, error) {
 	wg.Wait()
 
 	// Calculate statistics
-	results := calculateStats(latencies, iterations, totalTime)
+	results := calculateStats(latencies, opts.Iterations, totalTime)
+	results.PacketSize = opts.PacketSize
+	results.Component = opts.Component
 
 	return results, nil
 }
 
 // benchmarkTAPOnly measures TAP device read/write performance
-func benchmarkTAPOnly(iterations int) (*LatencyResults, error) {
-	// This would require setting up a TAP device and measuring read/write times
-	return nil, fmt.Errorf("not implemented - requires TAP device setup")
+func benchmarkTAPOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
+	// Create two TAP devices
+	tap1Name := fmt.Sprintf("n2ntest%d", opts.TAPInterfaceID)
+	tap2Name := fmt.Sprintf("n2ntest%d", opts.TAPInterfaceID+1)
+
+	log.Printf("Creating TAP interfaces %s and %s...", tap1Name, tap2Name)
+
+	// Create and configure TAP interfaces
+	tap1, err := tuntap.NewInterface(tap1Name, "tap")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TAP interface %s: %w", tap1Name, err)
+	}
+	defer tap1.Close()
+	defer cleanupInterface(tap1Name)
+
+	tap2, err := tuntap.NewInterface(tap2Name, "tap")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create TAP interface %s: %w", tap2Name, err)
+	}
+	defer tap2.Close()
+	defer cleanupInterface(tap2Name)
+
+	// Configure IP addresses
+	ip1 := "10.0.0.1/24"
+	ip2 := "10.0.0.2/24"
+
+	if err := configureInterface(tap1Name, ip1); err != nil {
+		return nil, fmt.Errorf("failed to configure %s: %w", tap1Name, err)
+	}
+
+	if err := configureInterface(tap2Name, ip2); err != nil {
+		return nil, fmt.Errorf("failed to configure %s: %w", tap2Name, err)
+	}
+
+	// Create a bridge to connect the two interfaces
+	bridgeName := "n2nbridge"
+	if err := createBridge(bridgeName, []string{tap1Name, tap2Name}); err != nil {
+		return nil, fmt.Errorf("failed to create bridge: %w", err)
+	}
+	defer cleanupBridge(bridgeName)
+
+	// Prepare buffers
+	sendBuf := make([]byte, opts.PacketSize)
+	recvBuf := make([]byte, 2048) // Larger for ethernet headers
+
+	// Create ethernet frame
+	for i := 0; i < 6; i++ {
+		sendBuf[i] = 0xFF // Broadcast destination MAC
+	}
+
+	// Get MAC address of TAP1 for source
+	mac1 := tap1.HardwareAddr()
+	copy(sendBuf[6:12], mac1)
+
+	// Set ethertype to IPv4
+	sendBuf[12] = 0x08
+	sendBuf[13] = 0x00
+
+	// Setup IPv4 header
+	// ...basic header for ping-like functionality
+
+	// Measure using fixed ping-like packets
+	var latencies []time.Duration
+
+	// Start goroutine to listen on tap2
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < opts.Iterations; i++ {
+			n, err := tap2.Read(recvBuf)
+			if err != nil {
+				log.Printf("Error reading from TAP2: %v", err)
+				continue
+			}
+
+			// Swap source and destination MACs
+			for j := 0; j < 6; j++ {
+				recvBuf[j], recvBuf[j+6] = recvBuf[j+6], recvBuf[j]
+			}
+
+			// Send response
+			_, err = tap2.Write(recvBuf[:n])
+			if err != nil {
+				log.Printf("Error writing to TAP2: %v", err)
+			}
+		}
+	}()
+
+	// Send packets and measure RTT
+	startTime := time.Now()
+
+	for i := 0; i < opts.Iterations; i++ {
+		sendTime := time.Now()
+
+		// Send packet
+		_, err = tap1.Write(sendBuf)
+		if err != nil {
+			log.Printf("Error writing to TAP1: %v", err)
+			continue
+		}
+
+		// Receive response
+		_, err = tap1.Read(recvBuf)
+		if err != nil {
+			log.Printf("Error reading from TAP1: %v", err)
+			continue
+		}
+
+		// Calculate RTT
+		rtt := time.Since(sendTime)
+		latencies = append(latencies, rtt)
+	}
+
+	totalTime := time.Since(startTime)
+
+	// Wait for the reader to finish
+	wg.Wait()
+
+	// Calculate statistics
+	results := calculateStats(latencies, opts.Iterations, totalTime)
+	results.PacketSize = opts.PacketSize
+	results.Component = opts.Component
+
+	return results, nil
+}
+
+// createBridge creates a network bridge and adds interfaces to it
+func createBridge(bridgeName string, interfaces []string) error {
+	// Create bridge
+	cmd := exec.Command("ip", "link", "add", "name", bridgeName, "type", "bridge")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create bridge: %w", err)
+	}
+
+	// Add interfaces to bridge
+	for _, iface := range interfaces {
+		cmd = exec.Command("ip", "link", "set", "dev", iface, "master", bridgeName)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to add %s to bridge: %w", iface, err)
+		}
+	}
+
+	// Bring up bridge
+	cmd = exec.Command("ip", "link", "set", "dev", bridgeName, "up")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to bring up bridge: %w", err)
+	}
+
+	return nil
+}
+
+// cleanupBridge removes a network bridge
+func cleanupBridge(bridgeName string) error {
+	cmd := exec.Command("ip", "link", "delete", bridgeName)
+	return cmd.Run()
 }
 
 // benchmarkProtocolOnly measures protocol serialization/deserialization performance
-func benchmarkProtocolOnly(iterations int) (*LatencyResults, error) {
+func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 	// Setup
 	var latencies []time.Duration
+
+	// Use provided packet size for test data
+	testData := make([]byte, opts.PacketSize)
+	for i := range testData {
+		testData[i] = byte(i % 256)
+	}
+
 	header := protocol.NewHeader(3, 64, protocol.TypeData, 1234, "testcommunity", "source", "dest")
 
-	buf := buffers.HeaderBufferPool.Get()
-	defer buffers.HeaderBufferPool.Put(buf)
+	// Get buffer pools
+	headerBuf := buffers.HeaderBufferPool.Get()
+	defer buffers.HeaderBufferPool.Put(headerBuf)
 
-	totalTime := time.Now()
+	// Create payload buffer - header + test data
+	packetBuf := make([]byte, protocol.TotalHeaderSize+opts.PacketSize)
 
-	for i := 0; i < iterations; i++ {
-		start := time.Now()
+	startTime := time.Now()
 
-		// Marshal
-		err := header.MarshalBinaryTo(buf)
-		if err != nil {
-			log.Printf("Error marshaling: %v", err)
+	for i := 0; i < opts.Iterations; i++ {
+		iterStart := time.Now()
+
+		// Marshal header into packet buffer
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+			log.Printf("Error marshaling header: %v", err)
 			continue
 		}
 
-		// Unmarshal
+		// Copy test data after header
+		copy(packetBuf[protocol.TotalHeaderSize:], testData)
+
+		// Now unmarshal and decode
 		var newHeader protocol.Header
-		err = newHeader.UnmarshalBinary(buf[:protocol.TotalHeaderSize])
-		if err != nil {
-			log.Printf("Error unmarshaling: %v", err)
+		if err := newHeader.UnmarshalBinary(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+			log.Printf("Error unmarshaling header: %v", err)
 			continue
+		}
+
+		// Extract payload
+		payload := packetBuf[protocol.TotalHeaderSize:]
+
+		// Simple verification to make sure the compiler doesn't optimize away
+		if len(payload) != opts.PacketSize || newHeader.Version != header.Version {
+			log.Printf("Verification failed!")
 		}
 
 		// Calculate latency
-		latency := time.Since(start)
+		iterEnd := time.Now()
+		latency := iterEnd.Sub(iterStart)
 		latencies = append(latencies, latency)
 	}
 
-	totalDuration := time.Since(totalTime)
+	totalDuration := time.Since(startTime)
 
 	// Calculate statistics
-	results := calculateStats(latencies, iterations, totalDuration)
+	results := calculateStats(latencies, opts.Iterations, totalDuration)
+	results.PacketSize = opts.PacketSize
+	results.Component = opts.Component
 
 	return results, nil
 }
@@ -286,12 +667,47 @@ func sortDurations(durations []time.Duration) {
 	}
 }
 
+// RunAllBenchmarks runs benchmarks for all components with the given options
+func RunAllBenchmarks(baseOpts *BenchmarkOptions) ([]*LatencyResults, error) {
+	var results []*LatencyResults
+
+	components := []Component{
+		ComponentProtocolOnly,
+		ComponentUDPOnly,
+		ComponentTAPOnly,
+		ComponentAll,
+	}
+
+	for _, component := range components {
+		opts := *baseOpts // Copy options
+		opts.Component = component
+
+		log.Printf("Running benchmark for %s...", component)
+		result, err := BenchmarkLatency(&opts)
+		if err != nil {
+			log.Printf("Error benchmarking %s: %v", component, err)
+			continue
+		}
+
+		results = append(results, result)
+		PrintResults(component, result)
+	}
+
+	return results, nil
+}
+
 // PrintResults prints the results of a latency benchmark
 func PrintResults(component Component, results *LatencyResults) {
 	fmt.Printf("=== Latency Benchmark: %s ===\n", component)
+	fmt.Printf("Packet Size: %d bytes\n", results.PacketSize)
 	fmt.Printf("Packets Sent: %d\n", results.PacketsSent)
 	fmt.Printf("Packets Received: %d\n", results.PacketsRecv)
-	fmt.Printf("Packet Loss: %.2f%%\n", 100.0-float64(results.PacketsRecv)/float64(results.PacketsSent)*100.0)
+
+	if results.PacketsSent > 0 {
+		lossPercent := 100.0 - (float64(results.PacketsRecv)/float64(results.PacketsSent))*100.0
+		fmt.Printf("Packet Loss: %.2f%%\n", lossPercent)
+	}
+
 	fmt.Printf("Total Time: %v\n", results.TotalTime)
 	fmt.Printf("Min Latency: %v\n", results.MinLatency)
 	fmt.Printf("Avg Latency: %v\n", results.AvgLatency)
@@ -300,4 +716,34 @@ func PrintResults(component Component, results *LatencyResults) {
 	fmt.Printf("99th Percentile: %v\n", results.P99Latency)
 	fmt.Printf("Max Latency: %v\n", results.MaxLatency)
 	fmt.Println("==========================================")
+}
+
+// SaveResultsToFile saves benchmark results to a CSV file
+func SaveResultsToFile(results []*LatencyResults, filename string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// Write header
+	f.WriteString("Component,PacketSize,PacketsSent,PacketsReceived,MinLatency,AvgLatency,MedianLatency,P95Latency,P99Latency,MaxLatency,TotalTime\n")
+
+	// Write data
+	for _, r := range results {
+		f.WriteString(fmt.Sprintf("%s,%d,%d,%d,%v,%v,%v,%v,%v,%v,%v\n",
+			r.Component,
+			r.PacketSize,
+			r.PacketsSent,
+			r.PacketsRecv,
+			r.MinLatency.Nanoseconds(),
+			r.AvgLatency.Nanoseconds(),
+			r.MedianLatency.Nanoseconds(),
+			r.P95Latency.Nanoseconds(),
+			r.P99Latency.Nanoseconds(),
+			r.MaxLatency.Nanoseconds(),
+			r.TotalTime.Nanoseconds()))
+	}
+
+	return nil
 }
