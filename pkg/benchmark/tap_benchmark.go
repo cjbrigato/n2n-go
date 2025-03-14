@@ -39,8 +39,8 @@ func DefaultTAPBenchmarkOptions() *TAPBenchmarkOptions {
 		Iterations:    1000,
 		UseBridge:     true,
 		BridgeName:    "n2nbridge",
-		Timeout:       500 * time.Millisecond, // Per-packet timeout
-		MaxDuration:   2 * time.Minute,        // Overall benchmark timeout
+		Timeout:       1000 * time.Millisecond, // Per-packet timeout
+		MaxDuration:   2 * time.Minute,         // Overall benchmark timeout
 	}
 }
 
@@ -132,14 +132,14 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 		ip2 = ip2[:idx]
 	}
 
-	pingCmd := exec.Command("ping", "-c", "1", "-W", "1", ip2)
+	/*pingCmd := exec.Command("ping", "-c", "1", "-W", "1", ip2)
 	pingCmd.Env = append(pingCmd.Env, fmt.Sprintf("LANG=C"))
 	if output, err := pingCmd.CombinedOutput(); err != nil {
 		log.Printf("Ping test failed: %v", err)
 		log.Printf("Ping output: %s", string(output))
 	} else {
 		debugLog("Ping test successful: %s", string(output))
-	}
+	}*/
 
 	// Prepare packet buffers
 	sendBuf := make([]byte, opts.PacketSize)
@@ -150,7 +150,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 	debugLog("TAP1 MAC: %s, TAP2 MAC: %s", mac1, mac2)
 
 	// Create an IPv4 ping packet
-	debugLog("Creating ping packet from %s to %s", ip1, ip2)
+	//debugLog("Creating ping packet from %s to %s", ip1, ip2)
 	createPingPacket(sendBuf, mac1, ip1, ip2, 1)
 	debugPrintPacket(sendBuf, opts.PacketSize)
 
@@ -171,8 +171,11 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 		responderWg.Wait()
 	}()
 
+	// Wait a moment to see if we get any response
+	//time.Sleep(100 * time.Millisecond)
+
 	// Test the responder with a single packet
-	debugLog("Sending test packet to ensure responder is working...")
+	/*debugLog("Sending test packet to ensure responder is working...")
 	_, err = tap1.Write(sendBuf)
 	if err != nil {
 		log.Printf("Error sending test packet: %v", err)
@@ -182,7 +185,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 
 	// Wait a moment to see if we get any response
 	time.Sleep(200 * time.Millisecond)
-
+	*/
 	// Collect results
 	var latencies []time.Duration
 	var latenciesMu sync.Mutex
@@ -200,10 +203,10 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 	startTime := time.Now()
 
 	// First, specially create our packet with sequence 0
-	updateICMPSequence(sendBuf, uint16(0))
-	updateICMPChecksum(sendBuf)
-	debugLog("First packet using sequence number 0")
-
+	/*	updateICMPSequence(sendBuf, uint16(0))
+		updateICMPChecksum(sendBuf)
+		debugLog("First packet using sequence number 0")
+	*/
 	// Send packets and measure RTT
 	for i := 0; i < opts.Iterations && time.Now().Before(benchmarkDeadline); i++ {
 		// Update sequence number correctly - using i as the sequence number
@@ -226,7 +229,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 		// Read response with timeout
 		responseReceived := make(chan bool, 1)
 
-		go func(seq uint16, sentAt time.Time) {
+		func(seq uint16, sentAt time.Time) {
 			recvBuf := make([]byte, opts.PacketSize*2)
 			n, err := tap1.Read(recvBuf)
 
@@ -668,28 +671,29 @@ func runResponder(tap *tuntap.Interface, stopChan <-chan struct{}) {
 		recvBuf := make([]byte, 2048) // Large enough for any packet
 		readDone := make(chan int, 1)
 
-		go func() {
-			n, err := tap.Read(recvBuf)
-			if err != nil {
-				readDone <- 0
-				return
-			}
+		//go func() {
+		n, err := tap.Read(recvBuf)
+		if err != nil {
+			readDone <- 0
+			return
+		} else {
 			readDone <- n
-		}()
+		}
+		//}()
 
 		// Wait for read or timeout
-		var n int
+		var na int
 		select {
 		case <-stopChan:
 			debugLog("Responder stopping during read")
 			return
 
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(1000 * time.Millisecond):
 			// Short timeout, try again
 			continue
 
-		case n = <-readDone:
-			if n == 0 {
+		case na = <-readDone:
+			if na == 0 {
 				// Read error
 				continue
 			}

@@ -34,7 +34,7 @@ func init() {
 	flag.BoolVar(&useBridgeFlag, "bridge", true, "Whether to create a bridge between interfaces")
 	flag.StringVar(&bridgeFlag, "bridgename", "n2nbridge", "Name of the bridge (if used)")
 	flag.BoolVar(&debugFlag, "debug", false, "Enable debug output")
-	flag.IntVar(&timeoutFlag, "timeout", 500, "Timeout in milliseconds for packet responses")
+	flag.IntVar(&timeoutFlag, "timeout", 1000, "Timeout in milliseconds for packet responses")
 	flag.BoolVar(&helpFlag, "help", false, "Show help")
 
 	// Parse flags

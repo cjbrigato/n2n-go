@@ -1,6 +1,2 @@
-github.com/cjbrigato/water v0.0.0-20250311002614-be32dd34a224 h1:yAy5r/Oa+bs4KWPKaqsxWDIjnqMJTb/6oLVK4jd6VvY=
-github.com/cjbrigato/water v0.0.0-20250311002614-be32dd34a224/go.mod h1:z6JgtTrT9od9hP8imc+Mi1Mn9MXjgOhOKalNmTSltPw=
-github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8 h1:TG/diQgUe0pntT/2D9tmUCz4VNwm9MfrtPr0SU2qSX8=
-github.com/songgao/water v0.0.0-20200317203138-2b4b6d7c09d8/go.mod h1:P5HUIBuIWKbyjl083/loAegFkfbFNx5i2qEP4CNbm7E=
 golang.org/x/sys v0.31.0 h1:ioabZlmFYtWhL+TRYpcnNlLwhyxaM9kWTDEmfnprqik=
 golang.org/x/sys v0.31.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
