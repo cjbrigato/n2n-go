@@ -7,7 +7,8 @@ import (
 	"os"
 	"syscall"
 	"time"
-	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -51,97 +52,77 @@ type Device struct {
 	Config  Config
 }
 
-// ifReq is used for ioctl calls to configure the TUN/TAP device
-type ifReq struct {
-	Name  [16]byte
-	Flags uint16
-	pad   [22]byte // Padding to match struct ifreq in Linux
+func ioctl(f int, request uint32, argp uintptr) error {
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(f), uintptr(request), argp)
+	if errno != 0 {
+		return fmt.Errorf("ioctl failed with '%s'", errno)
+	}
+	return nil
 }
 
 // Create creates and configures a new TUN/TAP device with the given configuration
 func Create(config Config) (*Device, error) {
 	// Open the clone device
-	file, err := os.OpenFile("/dev/net/tun", os.O_RDWR, 0)
+	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open /dev/net/tun: %w", err)
+		return nil, err
 	}
 
-	// Prepare the ioctl request
-	var req ifReq
-	if len(config.Name) > 15 {
-		return nil, errors.New("interface name too long")
+	ifr, err := unix.NewIfreq(config.Name)
+	if err != nil {
+		return nil, err
 	}
-	copy(req.Name[:], config.Name)
 
 	// Set flags according to device type
 	var flags uint16
 	switch config.DevType {
 	case TUN:
-		flags = IFF_TUN
+		flags = unix.IFF_TUN
 	case TAP:
-		flags = IFF_TAP
+		flags = unix.IFF_TAP
 	default:
-		file.Close()
+		unix.Close(fd)
 		return nil, errors.New("unknown device type")
 	}
 	// Add IFF_NO_PI to exclude packet information
 	flags |= IFF_NO_PI
-	req.Flags = flags
 
-	// Configure the TUN/TAP device through ioctl
-	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), uintptr(TUNSETIFF), uintptr(unsafe.Pointer(&req)))
-	if errno != 0 {
-		file.Close()
-		return nil, errno
+	ifr.SetUint16(flags)
+	if err := unix.IoctlIfreq(fd, unix.TUNSETIFF, ifr); err != nil {
+		return nil, err
 	}
 
-	// Extract the actual device name assigned by the kernel
-	deviceName := string(req.Name[:])
-	for i := 0; i < len(deviceName); i++ {
-		if deviceName[i] == 0 {
-			deviceName = deviceName[:i]
-			break
-		}
+	if err := unix.SetNonblock(fd, true); err != nil {
+		return nil, err
 	}
 
+	if err = unix.IoctlSetInt(fd, unix.TUNSETOWNER, 0); err != nil {
+		return nil, err
+	}
+
+	if err = ioctl(fd, unix.TUNSETGROUP, 0); err != nil {
+		return nil, err
+	}
 	// Set additional options if specified
 	if config.Persist {
-		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), uintptr(TUNSETPERSIST), uintptr(1))
-		if errno != 0 {
-			file.Close()
-			return nil, errno
-		}
-	}
-
-	if config.Owner != -1 {
-		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), uintptr(TUNSETOWNER), uintptr(config.Owner))
-		if errno != 0 {
-			file.Close()
-			return nil, errno
-		}
-	}
-
-	if config.Group != -1 {
-		_, _, errno = syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), uintptr(TUNSETGROUP), uintptr(config.Group))
-		if errno != 0 {
-			file.Close()
-			return nil, errno
+		if err = ioctl(fd, unix.TUNSETPERSIST, uintptr(1)); err != nil {
+			return nil, err
 		}
 	}
 
 	// Create the device
 	dev := &Device{
-		File:    file,
-		Name:    deviceName,
+		File:    os.NewFile(uintptr(fd), "tun"),
+		Name:    config.Name,
 		DevType: config.DevType,
 		Config:  config,
 	}
 
 	// Set non-blocking mode by default
-	if err := dev.SetNonblocking(true); err != nil {
+	/*if err := dev.SetNonblocking(true); err != nil {
 		file.Close()
 		return nil, fmt.Errorf("failed to set non-blocking mode: %w", err)
-	}
+	}*/
 
 	return dev, nil
 }
