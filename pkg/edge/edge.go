@@ -7,13 +7,25 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
+	"n2n-go/pkg/util"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// Config holds the edge node configuration
+type Config struct {
+	EdgeID            string
+	Community         string
+	TapName           string
+	LocalPort         int
+	SupernodeAddr     string
+	HeartbeatInterval time.Duration
+}
 
 // EdgeClient encapsulates the state and configuration of an edge.
 type EdgeClient struct {
@@ -42,13 +54,22 @@ type EdgeClient struct {
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
-func NewEdgeClient(id, community, tapName string, localPort int, supernode string, heartbeatInterval time.Duration) (*EdgeClient, error) {
-	snAddr, err := net.ResolveUDPAddr("udp4", supernode)
+func NewEdgeClient(cfg Config) (*EdgeClient, error) {
+
+	if cfg.EdgeID == "" {
+		h, err := os.Hostname()
+		if err != nil {
+			return nil, err
+		}
+		cfg.EdgeID = h
+	}
+
+	snAddr, err := net.ResolveUDPAddr("udp4", cfg.SupernodeAddr)
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to resolve supernode address: %w", err)
 	}
 
-	localAddr, err := net.ResolveUDPAddr("udp4", ":"+strconv.Itoa(localPort))
+	localAddr, err := net.ResolveUDPAddr("udp4", ":"+strconv.Itoa(cfg.LocalPort))
 	if err != nil {
 		return nil, fmt.Errorf("edge: failed to resolve local UDP address: %w", err)
 	}
@@ -67,7 +88,7 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 		log.Printf("Warning: couldn't increase UDP write buffer size: %v", err)
 	}
 
-	tap, err := tuntap.NewInterface(tapName, "tap")
+	tap, err := tuntap.NewInterface(cfg.TapName, "tap")
 	if err != nil {
 		conn.Close() // Clean up on error
 		return nil, fmt.Errorf("edge: failed to create TAP interface: %w", err)
@@ -76,13 +97,13 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &EdgeClient{
-		ID:                id,
-		Community:         community,
+		ID:                cfg.EdgeID,
+		Community:         cfg.Community,
 		SupernodeAddr:     snAddr,
 		Conn:              conn,
 		TAP:               tap,
 		seq:               0,
-		heartbeatInterval: heartbeatInterval,
+		heartbeatInterval: cfg.HeartbeatInterval,
 		ctx:               ctx,
 		cancel:            cancel,
 		packetBufPool:     buffers.PacketBufferPool,
@@ -93,6 +114,9 @@ func NewEdgeClient(id, community, tapName string, localPort int, supernode strin
 // Register sends a registration packet to the supernode.
 // Registration payload format: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form).
 func (e *EdgeClient) Register() error {
+
+	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
+
 	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
 	// Get MAC address
@@ -158,7 +182,29 @@ func (e *EdgeClient) Register() error {
 	}
 
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
+
 	return nil
+}
+
+func (e *EdgeClient) Setup() error {
+
+	if err := e.Register(); err != nil {
+		return err
+	}
+
+	if err := e.TunUp(); err != nil {
+		return err
+	}
+
+	if err := e.sendGratuitousARP(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (e *EdgeClient) sendGratuitousARP() error {
+	return SendGratuitousARP(e.TAP.Name(), e.TAP.HardwareAddr(), net.ParseIP(e.VirtualIP))
 }
 
 // Unregister sends an unregister packet to the supernode.
@@ -422,6 +468,13 @@ func (e *EdgeClient) Close() {
 
 	e.running.Store(false)
 	log.Printf("Edge: Shutdown complete")
+}
+
+func (e *EdgeClient) TunUp() error {
+	if e.VirtualIP == "" {
+		return fmt.Errorf("cannot configure TAP link before VirtualIP is set")
+	}
+	return util.IfUp(e.TAP.Name(), e.VirtualIP)
 }
 
 // isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.

@@ -89,3 +89,4 @@ func (i *Interface) hardwareAddr() (net.HardwareAddr, error) {
 	// Return the first 6 bytes.
 	return iface.HardwareAddr[:6], nil
 }
+

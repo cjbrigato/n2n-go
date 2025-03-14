@@ -132,7 +132,15 @@ func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
 	log.Printf("Creating TAP interfaces %s and %s...", tap1Name, tap2Name)
 
 	// 3. Start Edge 1
-	edge1, err := edge.NewEdgeClient("edge1", opts.Community, tap1Name, 0, snAddr, 30*time.Second)
+	edge1Config := edge.Config{
+		EdgeID:            "edge1",
+		Community:         opts.Community,
+		TapName:           tap1Name,
+		LocalPort:         0,
+		SupernodeAddr:     snAddr,
+		HeartbeatInterval: 30 * time.Second,
+	}
+	edge1, err := edge.NewEdgeClient(edge1Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create edge1: %w", err)
 	}
@@ -150,7 +158,15 @@ func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
 	go edge1.Run()
 
 	// 4. Start Edge 2
-	edge2, err := edge.NewEdgeClient("edge2", opts.Community, tap2Name, 0, snAddr, 30*time.Second)
+	edge2Config := edge.Config{
+		EdgeID:            "edge2",
+		Community:         opts.Community,
+		TapName:           tap2Name,
+		LocalPort:         0,
+		SupernodeAddr:     snAddr,
+		HeartbeatInterval: 30 * time.Second,
+	}
+	edge2, err := edge.NewEdgeClient(edge2Config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create edge2: %w", err)
 	}
