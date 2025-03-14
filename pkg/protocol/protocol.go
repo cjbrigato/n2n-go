@@ -356,8 +356,12 @@ func NewCompactHeader(version, ttl uint8, pType PacketType, seq uint16, communit
 	}
 
 	// Set extended addressing flag if necessary
-	if len(src) > 6 || len(dest) > 6 || len(community) > 10 {
+	/*if len(src) > 6 || len(dest) > 6 || len(community) > 10 {
 		h.Flags |= FlagExtendedAddressing
+	}*/
+
+	if pType == TypeRegister {
+		h.SetExtendedAddressing(true)
 	}
 
 	return h
