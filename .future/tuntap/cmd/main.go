@@ -64,7 +64,7 @@ func (a *AESEncryption) Decrypt(ciphertext []byte) ([]byte, error) {
 	// Extract nonce and decrypt
 	nonce := ciphertext[:a.nonceSize]
 	ciphertext = ciphertext[a.nonceSize:]
-	
+
 	plaintext, err := a.gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
 		return nil, err
@@ -78,13 +78,13 @@ type LoggingProcessor struct{}
 
 func (l *LoggingProcessor) ProcessPacket(packet []byte, packetType tuntap.PacketType) ([]byte, error) {
 	header, _, _ := tuntap.ParseEthernetHeader(packet)
-	
+
 	fmt.Printf("Packet: %s -> %s, Type: %v, Size: %d bytes\n",
 		fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", header.Source[0], header.Source[1], header.Source[2], header.Source[3], header.Source[4], header.Source[5]),
 		fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", header.Destination[0], header.Destination[1], header.Destination[2], header.Destination[3], header.Destination[4], header.Destination[5]),
 		packetType,
 		len(packet))
-		
+
 	return packet, nil
 }
 
@@ -125,7 +125,7 @@ func main() {
 
 	// Create and register processors
 	vpnDev.RegisterProcessor(&LoggingProcessor{})
-	
+
 	// Create and register encryption processor
 	encryptProcessor := tuntap.NewEncryptionProcessor(
 		encryption.Encrypt,
@@ -143,7 +143,7 @@ func main() {
 
 	// Start packet processing
 	vpnDev.StartPacketProcessing()
-	
+
 	// Print stats periodically
 	statsTicker := time.NewTicker(5 * time.Second)
 	go func() {
@@ -165,7 +165,7 @@ func main() {
 	fmt.Println("VPN device is running. Press Ctrl+C to exit.")
 	<-sigCh
 	fmt.Println("Shutting down...")
-	
+
 	// Clean up
 	statsTicker.Stop()
 	vpnDev.StopPacketProcessing()

@@ -7,6 +7,7 @@ import (
 	"n2n-go/pkg/protocol"
 	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,8 @@ type Config struct {
 	ExpiryDuration      time.Duration // Time after which an edge is considered stale
 	CleanupInterval     time.Duration // Interval for the cleanup routine
 	UDPBufferSize       int           // Size of UDP socket buffers
+	SupportCompact      bool          // Whether to support compact header format
+	StrictHashChecking  bool          // Whether to strictly enforce community hash validation
 }
 
 // DefaultConfig returns a default configuration
@@ -32,6 +35,8 @@ func DefaultConfig() *Config {
 		ExpiryDuration:      10 * time.Minute,
 		CleanupInterval:     5 * time.Minute,
 		UDPBufferSize:       1024 * 1024, // 1MB buffer
+		SupportCompact:      true,        // Enable compact header support by default
+		StrictHashChecking:  true,        // Enforce hash validation by default
 	}
 }
 
@@ -46,6 +51,7 @@ type Edge struct {
 	LastHeartbeat time.Time  // Time of last heartbeat
 	LastSequence  uint16     // Last sequence number received
 	MACAddr       string     // MAC address provided during registration
+	UseCompact    bool       // Whether this edge uses compact headers
 }
 
 // GlobalID represents a unique identifier for an edge across all communities
@@ -74,14 +80,17 @@ func (e *Edge) GID() *GlobalID {
 
 // SupernodeStats holds runtime statistics
 type SupernodeStats struct {
-	PacketsProcessed   atomic.Uint64
-	PacketsForwarded   atomic.Uint64
-	PacketsDropped     atomic.Uint64
-	EdgesRegistered    atomic.Uint64
-	EdgesUnregistered  atomic.Uint64
-	HeartbeatsReceived atomic.Uint64
-	LastCleanupTime    time.Time
-	LastCleanupEdges   int
+	PacketsProcessed       atomic.Uint64
+	PacketsForwarded       atomic.Uint64
+	PacketsDropped         atomic.Uint64
+	EdgesRegistered        atomic.Uint64
+	EdgesUnregistered      atomic.Uint64
+	HeartbeatsReceived     atomic.Uint64
+	CompactPacketsRecv     atomic.Uint64
+	LegacyPacketsRecv      atomic.Uint64
+	HashCollisionsDetected atomic.Uint64
+	LastCleanupTime        time.Time
+	LastCleanupEdges       int
 }
 
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
@@ -93,6 +102,10 @@ type Supernode struct {
 
 	comMu       sync.RWMutex
 	communities map[string]*Community
+
+	// Track community hash-to-name mappings for collision detection
+	hashMu          sync.RWMutex
+	communityHashes map[uint32]string
 
 	macMu     sync.RWMutex        // protects macToEdge mapping
 	macToEdge map[string]GlobalID // maps normalized MAC string to edge ID
@@ -131,14 +144,15 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	netAllocator := NewNetworkAllocator(net.ParseIP(config.CommunitySubnet), net.CIDRMask(config.CommunitySubnetCIDR, 32))
 
 	sn := &Supernode{
-		edges:         make(map[GlobalID]*Edge),
-		netAllocator:  netAllocator,
-		communities:   make(map[string]*Community),
-		macToEdge:     make(map[string]GlobalID),
-		Conn:          conn,
-		config:        config,
-		shutdownCh:    make(chan struct{}),
-		packetBufPool: buffers.PacketBufferPool,
+		edges:           make(map[GlobalID]*Edge),
+		netAllocator:    netAllocator,
+		communities:     make(map[string]*Community),
+		communityHashes: make(map[uint32]string),
+		macToEdge:       make(map[string]GlobalID),
+		Conn:            conn,
+		config:          config,
+		shutdownCh:      make(chan struct{}),
+		packetBufPool:   buffers.PacketBufferPool,
 	}
 
 	sn.shutdownWg.Add(1)
@@ -191,12 +205,74 @@ func (s *Supernode) GetCommunity(community string, create bool) (*Community, err
 	c = NewCommunityWithConfig(community, prefix, s.config)
 	s.communities[community] = c
 
+	// Register community hash for collision detection
+	communityHash := protocol.HashCommunity(community)
+	if err := s.registerCommunityHash(community, communityHash); err != nil {
+		log.Printf("Warning: %v", err)
+		if s.config.StrictHashChecking {
+			return nil, err
+		}
+	}
+
 	return c, nil
 }
 
+// registerCommunityHash adds a community hash to the tracking map, checking for collisions
+func (s *Supernode) registerCommunityHash(community string, hash uint32) error {
+	s.hashMu.Lock()
+	defer s.hashMu.Unlock()
+
+	// Check for collision
+	if existingCommunity, exists := s.communityHashes[hash]; exists {
+		if existingCommunity != community {
+			s.stats.HashCollisionsDetected.Add(1)
+			return fmt.Errorf("community hash collision detected: %s and %s both hash to %d",
+				community, existingCommunity, hash)
+		}
+	}
+
+	// No collision, register the hash
+	s.communityHashes[hash] = community
+	return nil
+}
+
+// validateCommunityHash checks if a hash matches the expected community
+func (s *Supernode) validateCommunityHash(community string, hash uint32) error {
+	if !s.config.SupportCompact {
+		return nil // Don't validate for legacy mode
+	}
+
+	// Verify the hash matches the community
+	expectedHash := protocol.HashCommunity(community)
+	if hash != expectedHash {
+		return fmt.Errorf("community hash mismatch: expected %d, got %d for community %s",
+			expectedHash, hash, community)
+	}
+
+	// Check for collisions
+	s.hashMu.RLock()
+	existingCommunity, exists := s.communityHashes[hash]
+	s.hashMu.RUnlock()
+
+	if exists && existingCommunity != community {
+		s.stats.HashCollisionsDetected.Add(1)
+		return fmt.Errorf("community hash collision detected: %s and %s both hash to %d",
+			community, existingCommunity, hash)
+	}
+
+	return nil
+}
+
 // RegisterEdge registers or updates an edge in the supernode
-func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
+func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq uint16, isReg bool, payload string, useCompact bool, communityHash uint32) (*Edge, error) {
 	gid := NewGlobalID(srcID, community)
+
+	// For compact headers with registration, validate the community hash
+	if useCompact && isReg && s.config.StrictHashChecking {
+		if err := s.validateCommunityHash(community, communityHash); err != nil {
+			return nil, err
+		}
+	}
 
 	// Fast path for updates with read lock first
 	if !isReg {
@@ -219,6 +295,11 @@ func (s *Supernode) RegisterEdge(srcID, community string, addr *net.UDPAddr, seq
 	edge, err := cm.EdgeUpdate(srcID, addr, seq, isReg, payload)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update protocol version preference
+	if isReg {
+		edge.UseCompact = useCompact && s.config.SupportCompact
 	}
 
 	// Update global edge map
@@ -310,10 +391,25 @@ func (s *Supernode) cleanupRoutine() {
 	}
 }
 
+// formatAckForEdge formats an ACK message, potentially including header format negotiation
+func (s *Supernode) formatAckForEdge(edge *Edge, baseAck string) string {
+	if !s.config.SupportCompact {
+		return baseAck
+	}
+
+	// If this is a new registration and we support compact headers, inform the edge
+	return baseAck + " COMPACT"
+}
+
 // SendAck sends an acknowledgment message to an edge
-func (s *Supernode) SendAck(addr *net.UDPAddr, msg string) error {
-	s.debugLog("Sending ACK to %v: %s", addr, msg)
-	_, err := s.Conn.WriteToUDP([]byte(msg), addr)
+func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
+	formattedMsg := msg
+	if edge != nil {
+		formattedMsg = s.formatAckForEdge(edge, msg)
+	}
+
+	s.debugLog("Sending ACK to %v: %s", addr, formattedMsg)
+	_, err := s.Conn.WriteToUDP([]byte(formattedMsg), addr)
 	return err
 }
 
@@ -321,79 +417,135 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, msg string) error {
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	s.stats.PacketsProcessed.Add(1)
 
-	if len(packet) < protocol.TotalHeaderSize {
+	if len(packet) < protocol.CompactHeaderSize {
 		log.Printf("Supernode: Packet too short from %v", addr)
 		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
-	var hdr protocol.Header
-	if err := hdr.UnmarshalBinary(packet[:protocol.TotalHeaderSize]); err != nil {
-		log.Printf("Supernode: Failed to unmarshal header from %v: %v", addr, err)
+	// First check the version byte to determine header format
+	version := packet[0]
+
+	var hdr protocol.IHeader
+	var headerSize int
+	var isCompact bool
+	var communityHash uint32
+
+	switch version {
+	case protocol.VersionLegacy:
+		// Legacy header format
+		if len(packet) < protocol.TotalHeaderSize {
+			log.Printf("Supernode: Packet too short for legacy header from %v", addr)
+			s.stats.PacketsDropped.Add(1)
+			return
+		}
+
+		var legacyHeader protocol.Header
+		if err := legacyHeader.UnmarshalBinary(packet[:protocol.TotalHeaderSize]); err != nil {
+			log.Printf("Supernode: Failed to unmarshal legacy header from %v: %v", addr, err)
+			s.stats.PacketsDropped.Add(1)
+			return
+		}
+
+		hdr = &legacyHeader
+		headerSize = protocol.TotalHeaderSize
+		isCompact = false
+		s.stats.LegacyPacketsRecv.Add(1)
+
+	case protocol.VersionCompact:
+		// Compact header format
+		if !s.config.SupportCompact {
+			log.Printf("Supernode: Compact header received but not supported, from %v", addr)
+			s.stats.PacketsDropped.Add(1)
+			return
+		}
+
+		var compactHeader protocol.CompactHeader
+		if err := compactHeader.UnmarshalBinary(packet[:protocol.CompactHeaderSize]); err != nil {
+			log.Printf("Supernode: Failed to unmarshal compact header from %v: %v", addr, err)
+			s.stats.PacketsDropped.Add(1)
+			return
+		}
+
+		hdr = &compactHeader
+		headerSize = protocol.CompactHeaderSize
+		isCompact = true
+		communityHash = compactHeader.CommunityID
+		s.stats.CompactPacketsRecv.Add(1)
+
+	default:
+		log.Printf("Supernode: Unknown header version %d from %v", version, addr)
 		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
-	payload := packet[protocol.TotalHeaderSize:]
-	community := strings.TrimRight(string(hdr.Community[:]), "\x00")
-	srcID := strings.TrimRight(string(hdr.SourceID[:]), "\x00")
+	// Extract common header information
+	community := hdr.GetCommunity()
+	srcID := hdr.GetSourceID()
+	packetType := hdr.GetPacketType()
+	seq := hdr.GetSequence()
 
-	// Extract destination MAC address
-	destMACRaw := hdr.DestinationID[0:6]
+	// Get destination MAC if available
 	var destMAC string
-
-	// Check if destMAC is non-zero
-	empty := true
-	for _, b := range destMACRaw {
-		if b != 0 {
-			empty = false
-			break
-		}
+	if mac := hdr.GetDestinationMAC(); mac != nil {
+		destMAC = mac.String()
 	}
 
-	if !empty {
-		destMAC = net.HardwareAddr(destMACRaw).String()
-	}
+	// Extract payload based on header size
+	payload := packet[headerSize:]
 
-	s.debugLog("Received packet: Type=%d, srcID=%q, destMAC=%q, community=%q, seq=%d, payloadLen=%d",
-		hdr.PacketType, srcID, destMAC, community, hdr.Sequence, len(payload))
+	s.debugLog("Received packet: Type=%d, srcID=%q, destMAC=%q, community=%q, seq=%d, payloadLen=%d, isCompact=%v",
+		packetType, srcID, destMAC, community, seq, len(payload), isCompact)
 
-	switch hdr.PacketType {
+	switch packetType {
 	case protocol.TypeRegister:
-		s.handleRegister(srcID, community, addr, hdr.Sequence, string(payload))
+		s.handleRegister(srcID, community, addr, seq, string(payload), isCompact, communityHash)
 	case protocol.TypeUnregister:
 		s.UnregisterEdge(srcID, community)
 	case protocol.TypeHeartbeat:
-		s.handleHeartbeat(srcID, community, addr, hdr.Sequence)
+		s.handleHeartbeat(srcID, community, addr, seq, isCompact, communityHash)
 	case protocol.TypeData:
-		s.handleData(packet, srcID, community, destMAC, hdr.Sequence)
+		s.handleData(packet, srcID, community, destMAC, seq)
 	case protocol.TypeAck:
 		s.debugLog("Received ACK from edge %s", srcID)
 	default:
-		log.Printf("Supernode: Unknown packet type %d from %v", hdr.PacketType, addr)
+		log.Printf("Supernode: Unknown packet type %d from %v", packetType, addr)
 		s.stats.PacketsDropped.Add(1)
 	}
 }
 
 // handleRegister processes a registration packet
-func (s *Supernode) handleRegister(srcID, community string, addr *net.UDPAddr, seq uint16, payload string) {
+func (s *Supernode) handleRegister(srcID, community string, addr *net.UDPAddr, seq uint16, payload string, isCompact bool, communityHash uint32) {
 	payloadStr := strings.TrimSpace(payload)
-	edge, err := s.RegisterEdge(srcID, community, addr, seq, true, payloadStr)
+
+	// For compact headers, parse community hash from payload if present
+	if isCompact && strings.HasPrefix(payloadStr, "REGISTER") {
+		parts := strings.Fields(payloadStr)
+		// Format: REGISTER <edgeID> <MAC> <community> <communityHash>
+		if len(parts) >= 5 {
+			hashFromPayload, err := strconv.ParseUint(parts[4], 10, 32)
+			if err == nil {
+				communityHash = uint32(hashFromPayload)
+			}
+		}
+	}
+
+	edge, err := s.RegisterEdge(srcID, community, addr, seq, true, payloadStr, isCompact, communityHash)
 
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", srcID, err)
-		s.SendAck(addr, "ERR Registration failed")
+		s.SendAck(addr, nil, "ERR Registration failed")
 		s.stats.PacketsDropped.Add(1)
 		return
 	}
 
 	ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
-	s.SendAck(addr, ackMsg)
+	s.SendAck(addr, edge, ackMsg)
 }
 
 // handleHeartbeat processes a heartbeat packet
-func (s *Supernode) handleHeartbeat(srcID, community string, addr *net.UDPAddr, seq uint16) {
-	edge, err := s.RegisterEdge(srcID, community, addr, seq, false, "")
+func (s *Supernode) handleHeartbeat(srcID, community string, addr *net.UDPAddr, seq uint16, isCompact bool, communityHash uint32) {
+	edge, err := s.RegisterEdge(srcID, community, addr, seq, false, "", isCompact, communityHash)
 	if edge != nil && err == nil {
 		s.debugLog("Heartbeat from edge: id=%s, community=%s, VIP=%s, MAC=%s",
 			srcID, edge.Community, edge.VirtualIP.String(), edge.MACAddr)
@@ -401,7 +553,7 @@ func (s *Supernode) handleHeartbeat(srcID, community string, addr *net.UDPAddr, 
 		// Update statistics
 		s.stats.HeartbeatsReceived.Add(1)
 	}
-	s.SendAck(addr, "ACK")
+	s.SendAck(addr, edge, "ACK")
 }
 
 // handleData processes a data packet
@@ -466,6 +618,29 @@ func (s *Supernode) tryDeliverToMAC(packet []byte, destMAC, community, srcID str
 		return false
 	}
 
+	// Check if we need to convert the packet format for the target edge
+	needConvert := false
+
+	// Get header version (first byte)
+	version := packet[0]
+
+	// If sender uses legacy but target uses compact, or vice versa, we need to convert
+	if (version == protocol.VersionLegacy && target.UseCompact) ||
+		(version == protocol.VersionCompact && !target.UseCompact) {
+		needConvert = true
+	}
+
+	// Convert the packet format if needed
+	if needConvert {
+		convertedPacket, err := s.convertPacketFormat(packet, target.UseCompact)
+		if err != nil {
+			log.Printf("Supernode: Failed to convert packet format: %v", err)
+			s.stats.PacketsDropped.Add(1)
+			return false
+		}
+		packet = convertedPacket
+	}
+
 	// Forward packet to the target
 	if err := s.forwardPacket(packet, target); err != nil {
 		log.Printf("Supernode: Failed to forward packet to edge %s: %v", target.ID, err)
@@ -476,6 +651,69 @@ func (s *Supernode) tryDeliverToMAC(packet []byte, destMAC, community, srcID str
 	s.debugLog("Forwarded packet to edge %s", target.ID)
 	s.stats.PacketsForwarded.Add(1)
 	return true
+}
+
+// convertPacketFormat converts between legacy and compact header formats
+func (s *Supernode) convertPacketFormat(packet []byte, toCompact bool) ([]byte, error) {
+	// Parse the source header
+	sourceHeader, err := protocol.ParseHeader(packet)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse source header: %w", err)
+	}
+
+	var targetHeaderSize int
+	var targetHeader protocol.IHeader
+
+	// Get payload based on source header type
+	var payload []byte
+
+	switch h := sourceHeader.(type) {
+	case *protocol.Header:
+		payload = packet[protocol.TotalHeaderSize:]
+		if toCompact {
+			// Convert Legacy -> Compact
+			targetHeader = protocol.ConvertToCompactHeader(h)
+			targetHeaderSize = protocol.CompactHeaderSize
+		} else {
+			// No conversion needed
+			return packet, nil
+		}
+
+	case *protocol.CompactHeader:
+		payload = packet[protocol.CompactHeaderSize:]
+		if !toCompact {
+			// Convert Compact -> Legacy
+			targetHeader = protocol.ConvertToLegacyHeader(h)
+			targetHeaderSize = protocol.TotalHeaderSize
+		} else {
+			// No conversion needed
+			return packet, nil
+		}
+
+	default:
+		return nil, fmt.Errorf("unknown header type")
+	}
+
+	// Create new packet with converted header
+	newPacket := make([]byte, targetHeaderSize+len(payload))
+
+	// Marshal new header
+	if h, ok := targetHeader.(*protocol.Header); ok {
+		if err := h.MarshalBinaryTo(newPacket[:protocol.TotalHeaderSize]); err != nil {
+			return nil, fmt.Errorf("failed to marshal legacy header: %w", err)
+		}
+	} else if h, ok := targetHeader.(*protocol.CompactHeader); ok {
+		if err := h.MarshalBinaryTo(newPacket[:protocol.CompactHeaderSize]); err != nil {
+			return nil, fmt.Errorf("failed to marshal compact header: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("unknown target header type")
+	}
+
+	// Copy payload
+	copy(newPacket[targetHeaderSize:], payload)
+
+	return newPacket, nil
 }
 
 // forwardPacket sends a packet to a specific edge
@@ -501,10 +739,32 @@ func (s *Supernode) broadcast(packet []byte, community, senderID string) {
 	}
 	s.edgeMu.RUnlock()
 
+	// First byte indicates the packet's header format
+	version := packet[0]
+
 	// Now send to all targets without holding the lock
 	sentCount := 0
 	for _, target := range targets {
-		if err := s.forwardPacket(packet, target); err != nil {
+		// Check if we need to convert the packet for this target
+		needConvert := false
+		if (version == protocol.VersionLegacy && target.UseCompact) ||
+			(version == protocol.VersionCompact && !target.UseCompact) {
+			needConvert = true
+		}
+
+		packetToSend := packet
+
+		if needConvert {
+			converted, err := s.convertPacketFormat(packet, target.UseCompact)
+			if err != nil {
+				log.Printf("Supernode: Failed to convert packet for broadcast to edge %s: %v", target.ID, err)
+				s.stats.PacketsDropped.Add(1)
+				continue
+			}
+			packetToSend = converted
+		}
+
+		if err := s.forwardPacket(packetToSend, target); err != nil {
 			log.Printf("Supernode: Failed to broadcast packet to edge %s: %v", target.ID, err)
 			s.stats.PacketsDropped.Add(1)
 		} else {
@@ -521,22 +781,22 @@ func (s *Supernode) broadcast(packet []byte, community, senderID string) {
 // GetStats returns a copy of the current statistics
 func (s *Supernode) GetStats() SupernodeStats {
 	return SupernodeStats{
-		PacketsProcessed:   atomic.Uint64{},
-		PacketsForwarded:   atomic.Uint64{},
-		PacketsDropped:     atomic.Uint64{},
-		EdgesRegistered:    atomic.Uint64{},
-		EdgesUnregistered:  atomic.Uint64{},
-		HeartbeatsReceived: atomic.Uint64{},
-		LastCleanupTime:    s.stats.LastCleanupTime,
-		LastCleanupEdges:   s.stats.LastCleanupEdges,
+		PacketsProcessed:       atomic.Uint64{},
+		PacketsForwarded:       atomic.Uint64{},
+		PacketsDropped:         atomic.Uint64{},
+		EdgesRegistered:        atomic.Uint64{},
+		EdgesUnregistered:      atomic.Uint64{},
+		HeartbeatsReceived:     atomic.Uint64{},
+		CompactPacketsRecv:     atomic.Uint64{},
+		LegacyPacketsRecv:      atomic.Uint64{},
+		HashCollisionsDetected: atomic.Uint64{},
+		LastCleanupTime:        s.stats.LastCleanupTime,
+		LastCleanupEdges:       s.stats.LastCleanupEdges,
 	}
 }
 
 // Listen begins processing incoming packets
 func (s *Supernode) Listen() {
-	// Use a consistent buffer size
-	//bufSize := 2048
-
 	// Create a worker pool to process packets
 	const numWorkers = 4
 	packetChan := make(chan packetData, 100)
