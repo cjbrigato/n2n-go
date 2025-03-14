@@ -242,15 +242,15 @@ func parsePingOutput(output string) ([]time.Duration, error) {
 
 // configureInterface brings up a TAP interface with the given IP
 func configureInterface(ifName, ipAddr string) error {
-	// Create TAP interface if it doesn't exist
+	/*// Create TAP interface if it doesn't exist
 	cmd := exec.Command("ip", "tuntap", "add", "dev", ifName, "mode", "tap")
 	if err := cmd.Run(); err != nil {
 		// If it already exists, that's okay
 		log.Printf("Note: TAP device creation returned: %v (might already exist)", err)
-	}
+	}*/
 
 	// Bring the interface up
-	cmd = exec.Command("ip", "link", "set", "dev", ifName, "up")
+	cmd := exec.Command("ip", "link", "set", "dev", ifName, "up")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to bring up interface: %w", err)
 	}
