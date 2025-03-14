@@ -467,6 +467,10 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 			return
 		}
 
+		if compactHeader.HasExtendedAddressing() {
+			payload := packet[protocol.CompactHeaderSize:]
+			protocol.ParseExtendedAddressing(string(payload), &compactHeader)
+		}
 		hdr = &compactHeader
 		headerSize = protocol.CompactHeaderSize
 		isCompact = true

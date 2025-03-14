@@ -698,6 +698,7 @@ func CreateRegistrationPayload(h IHeader, macAddr string) string {
 	}
 }
 
+// Format: REGISTER <edgeID> <MAC> <community> <communityHash>
 // ParseExtendedAddressing parses extended addressing information from a payload
 func ParseExtendedAddressing(payload string, h *CompactHeader) {
 	parts := strings.Fields(payload)
@@ -710,15 +711,15 @@ func ParseExtendedAddressing(payload string, h *CompactHeader) {
 			h.SetCommunityString(parts[3])
 
 			// If hash is included, verify it matches
-			if len(parts) >= 6 {
-				hashValue, err := strconv.ParseUint(parts[4], 10, 32)
-				if err == nil && HashCommunity(parts[3]) != uint32(hashValue) {
-					// This is important - log the mismatch but don't fail registration
-					// The supernode will validate this during registration
-					fmt.Printf("Warning: Community hash mismatch for %s: expected %d, got %d\n",
-						parts[3], HashCommunity(parts[3]), hashValue)
-				}
+			//if len(parts) >= 6 {
+			hashValue, err := strconv.ParseUint(parts[4], 10, 32)
+			if err == nil && HashCommunity(parts[3]) != uint32(hashValue) {
+				// This is important - log the mismatch but don't fail registration
+				// The supernode will validate this during registration
+				fmt.Printf("Warning: Community hash mismatch for %s: expected %d, got %d\n",
+					parts[3], HashCommunity(parts[3]), hashValue)
 			}
+			//}
 		}
 	}
 }
