@@ -1,5 +1,4 @@
 // Package tuntap provides a cross‑platform interface for working with TUN/TAP devices.
-// It uses the github.com/songgao/water package to create and manage virtual network interfaces.
 package tuntap
 
 import (
@@ -10,7 +9,6 @@ import (
 
 // Interface wraps a TAP interface.
 type Interface struct {
-	//ifce *water.Interface
 	Iface *Device
 }
 
@@ -30,17 +28,11 @@ func NewInterface(name, mode string) (*Interface, error) {
 		Permissions: 0666,
 	}
 
-	/*config := water.Config{
-		DeviceType: water.TAP,
-	}
-	config.Name = name
-	ifce, err := water.New(config)*/
-
 	iface, err := Create(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TAP interface %s: %v", name, err)
 	}
-	return &Interface{Iface: iface}, nil //ifce: ifce}, nil
+	return &Interface{Iface: iface}, nil
 }
 
 // Read reads data from the TAP interface.

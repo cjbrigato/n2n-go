@@ -147,6 +147,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 	// Get MAC addresses for debugging
 	mac1 := tap1.HardwareAddr()
 	mac2 := tap2.HardwareAddr()
+
 	debugLog("TAP1 MAC: %s, TAP2 MAC: %s", mac1, mac2)
 
 	// Create an IPv4 ping packet
@@ -231,7 +232,9 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 
 		func(seq uint16, sentAt time.Time) {
 			recvBuf := make([]byte, opts.PacketSize*2)
+			//_ = tap1.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 			n, err := tap1.Read(recvBuf)
+			fmt.Println("\n\\n\n\n\n", n)
 
 			if err != nil {
 				debugLog("Error reading response for packet %d: %v", seq, err)

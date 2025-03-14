@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -84,6 +83,7 @@ func Create(config Config) (*Device, error) {
 		unix.Close(fd)
 		return nil, errors.New("unknown device type")
 	}
+
 	// Add IFF_NO_PI to exclude packet information
 	flags |= IFF_NO_PI
 
@@ -100,10 +100,10 @@ func Create(config Config) (*Device, error) {
 		return nil, err
 	}
 
-	if err = ioctl(fd, unix.TUNSETGROUP, 0); err != nil {
+	if err = unix.IoctlSetInt(fd, unix.TUNSETGROUP, 0); err != nil {
 		return nil, err
 	}
-	// Set additional options if specified
+
 	if config.Persist {
 		if err = ioctl(fd, unix.TUNSETPERSIST, uintptr(1)); err != nil {
 			return nil, err
@@ -117,12 +117,6 @@ func Create(config Config) (*Device, error) {
 		DevType: config.DevType,
 		Config:  config,
 	}
-
-	// Set non-blocking mode by default
-	/*if err := dev.SetNonblocking(true); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("failed to set non-blocking mode: %w", err)
-	}*/
 
 	return dev, nil
 }
@@ -140,21 +134,6 @@ func (d *Device) Write(b []byte) (int, error) {
 // Close closes the TUN/TAP device
 func (d *Device) Close() error {
 	return d.File.Close()
-}
-
-// SetNonblocking sets the device file to non-blocking mode
-func (d *Device) SetNonblocking(nonblocking bool) error {
-	var flag int
-	if nonblocking {
-		flag = syscall.O_NONBLOCK
-	} else {
-		flag = 0
-	}
-	_, _, errno := syscall.Syscall(syscall.SYS_FCNTL, d.File.Fd(), syscall.F_SETFL, uintptr(flag))
-	if errno != 0 {
-		return errno
-	}
-	return nil
 }
 
 // GetFd returns the file descriptor for the TUN/TAP device
