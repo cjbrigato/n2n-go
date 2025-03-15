@@ -62,7 +62,6 @@ func main() {
 		CommunitySubnetCIDR: cfg.SubnetCIDR,
 		ExpiryDuration:      cfg.ExpiryDuration,
 		CleanupInterval:     cfg.CleanupInterval,
-		SupportCompact:      true,
 		StrictHashChecking:  true,
 	}
 
@@ -89,7 +88,6 @@ func main() {
 	log.Printf("- Base subnet: %s/%d", cfg.CommunitySubnet, cfg.SubnetCIDR)
 	log.Printf("- Debug mode: %v", cfg.DebugMode)
 	log.Printf("Enforced:")
-	log.Printf("- Compact Headers support: %v", snConfig.SupportCompact)
 	log.Printf("- Strict hash checking: %v", snConfig.StrictHashChecking)
 	log.Printf("Press Ctrl+C to stop.")
 

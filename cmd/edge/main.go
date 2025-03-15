@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"n2n-go/internal/fn"
 	"n2n-go/pkg/edge"
 	"n2n-go/pkg/protocol"
 )
@@ -32,11 +31,6 @@ func main() {
 	flag.IntVar(&cfg.LocalPort, "port", 0, "Local UDP port (0 for system-assigned)")
 	flag.StringVar(&cfg.SupernodeAddr, "supernode", "", "Supernode address (host:port)")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", 30*time.Second, "Heartbeat interval")
-	flag.BoolVar(&cfg.UseCompactHeader, "compact", true, "Use compact header format (reduces overhead)")
-
-	// Advanced options
-	legacyMode := flag.Bool("legacy", false, "Force legacy header format (73-byte headers)")
-	headerVersion := flag.Int("headerversion", 0, "Protocol header version (0=auto, 3=legacy, 4=compact)")
 
 	flag.Parse()
 
@@ -47,27 +41,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Apply header format options
-	if *legacyMode {
-		cfg.UseCompactHeader = false
-		cfg.ProtocolVersion = protocol.VersionLegacy
-	} else if *headerVersion > 0 {
-		cfg.ProtocolVersion = uint8(*headerVersion)
-
-		// Ensure UseCompactHeader matches the specified version
-		if cfg.ProtocolVersion == protocol.VersionCompact {
-			cfg.UseCompactHeader = true
-		} else if cfg.ProtocolVersion == protocol.VersionLegacy {
-			cfg.UseCompactHeader = false
-		}
-	} else if cfg.UseCompactHeader {
-		cfg.ProtocolVersion = protocol.VersionCompact
-	} else {
-		cfg.ProtocolVersion = protocol.VersionLegacy
-	}
+	cfg.ProtocolVersion = protocol.VersionV
 
 	log.Printf("Using %s header format (protocol version %d)",
-		fn.T(cfg.UseCompactHeader, "compact", "legacy"), cfg.ProtocolVersion)
+		"protoV", cfg.ProtocolVersion)
 
 	// Create edge client
 	client, err := edge.NewEdgeClient(cfg)
@@ -97,11 +74,7 @@ func main() {
 	log.Printf("Edge %s registered on local UDP port %s. TAP interface: %s",
 		cfg.EdgeID, strconv.Itoa(udpPort), cfg.TapName)
 
-	// Log protocol version
-	headerFormat := "legacy (73 bytes)"
-	if client.UseCompactHeader() {
-		headerFormat = "compact (28 bytes)"
-	}
+	headerFormat := "protoV"
 	log.Printf("Using %s header format - protocol v%d", headerFormat, client.ProtocolVersion())
 
 	// Start the client and block until closed

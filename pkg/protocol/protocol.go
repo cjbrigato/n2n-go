@@ -9,18 +9,10 @@ const (
 	// NoChecksum can be set to true to disable checksums for testing or performance
 	NoChecksum = false
 
-	// TotalHeaderSize is the fixed header size in bytes for legacy header
-	TotalHeaderSize = 73
 
 	// DefaultTimestampDrift is the default allowed timestamp drift for packets
 	DefaultTimestampDrift = 16 * time.Second
 
-	// Legacy vs Compact format version markers
-	VersionLegacy  = 3 // Original header format
-	VersionCompact = 4 // New compact header format
-
-	// CompactHeaderSize is the fixed size of the compact header in bytes
-	CompactHeaderSize = 30 // Updated to accommodate 32-bit community hash
 )
 
 // Common errors

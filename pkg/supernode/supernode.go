@@ -21,7 +21,6 @@ type Config struct {
 	ExpiryDuration      time.Duration // Time after which an edge is considered stale
 	CleanupInterval     time.Duration // Interval for the cleanup routine
 	UDPBufferSize       int           // Size of UDP socket buffers
-	SupportCompact      bool          // Whether to support compact header format
 	StrictHashChecking  bool          // Whether to strictly enforce community hash validation
 }
 
@@ -34,7 +33,6 @@ func DefaultConfig() *Config {
 		ExpiryDuration:      10 * time.Minute,
 		CleanupInterval:     5 * time.Minute,
 		UDPBufferSize:       1024 * 1024, // 1MB buffer
-		SupportCompact:      true,        // Enable compact header support by default
 		StrictHashChecking:  true,        // Enforce hash validation by default
 	}
 }
@@ -51,33 +49,6 @@ type Edge struct {
 	LastSequence  uint16     // Last sequence number received
 	MACAddr       string     // MAC address provided during registration
 }
-
-/*
-// GlobalID represents a unique identifier for an edge across all communities
-type GlobalID struct {
-	id        string
-	community string
-}
-
-
-// NewGlobalID creates a new GlobalID
-func NewGlobalID(id string, community string) *GlobalID {
-	return &GlobalID{
-		id:        id,
-		community: community,
-	}
-}
-
-// String returns a string representation of a GlobalID
-func (gid *GlobalID) String() string {
-	return fmt.Sprintf("%s.communities/%s", gid.community, gid.id)
-}
-
-// GID returns the GlobalID for an Edge
-func (e *Edge) GID() *GlobalID {
-	return NewGlobalID(e.ID, e.Community)
-}
-*/
 
 // SupernodeStats holds runtime statistics
 type SupernodeStats struct {
@@ -96,21 +67,10 @@ type SupernodeStats struct {
 
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
 type Supernode struct {
-	//edgeMu sync.RWMutex       // protects edges
-	//edges  map[GlobalID]*Edge // keyed by edge GlobalID
-
 	netAllocator *NetworkAllocator
 
 	comMu       sync.RWMutex
 	communities map[uint32]*Community
-	//communities map[string]*Community
-
-	// Track community hash-to-name mappings for collision detection
-	//hashMu          sync.RWMutex
-	//communityHashes map[uint32]string
-
-	//macMu     sync.RWMutex        // protects macToEdge mapping
-	//macToEdge map[string]GlobalID // maps normalized MAC string to edge ID
 
 	Conn       *net.UDPConn
 	config     *Config
@@ -313,21 +273,11 @@ func (s *Supernode) cleanupRoutine() {
 	}
 }
 
-// formatAckForEdge formats an ACK message, potentially including header format negotiation
-func (s *Supernode) formatAckForEdge(edge *Edge, baseAck string) string {
-	if !s.config.SupportCompact {
-		return baseAck
-	}
-
-	// If this is a new registration and we support compact headers, inform the edge
-	return baseAck + " COMPACT"
-}
-
 // SendAck sends an acknowledgment message to an edge
 func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
 	formattedMsg := msg
 	if edge != nil {
-		formattedMsg = s.formatAckForEdge(edge, msg)
+		formattedMsg = msg
 	}
 
 	s.debugLog("Sending ACK to %v: %s", addr, formattedMsg)

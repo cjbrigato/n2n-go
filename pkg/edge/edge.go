@@ -25,7 +25,6 @@ type Config struct {
 	LocalPort         int
 	SupernodeAddr     string
 	HeartbeatInterval time.Duration
-	UseCompactHeader  bool  // Whether to use the compact header format
 	ProtocolVersion   uint8 // Protocol version to use
 	VerifyHash        bool  // Whether to verify community hash
 }
@@ -34,7 +33,6 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		HeartbeatInterval: 30 * time.Second,
-		UseCompactHeader:  true, // Default to compact header for new clients
 		ProtocolVersion:   protocol.VersionV,
 		VerifyHash:        true, // Verify community hash by default
 	}
@@ -70,10 +68,8 @@ type EdgeClient struct {
 	headerBufPool *buffers.BufferPool
 
 	// Stats
-	compactPacketsSent atomic.Uint64
-	compactPacketsRecv atomic.Uint64
-	legacyPacketsSent  atomic.Uint64
-	legacyPacketsRecv  atomic.Uint64
+	PacketsSent atomic.Uint64
+	PacketsRecv atomic.Uint64
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
@@ -89,14 +85,6 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	// Set default values if not provided
 	if cfg.HeartbeatInterval == 0 {
 		cfg.HeartbeatInterval = 30 * time.Second
-	}
-
-	if cfg.ProtocolVersion == 0 {
-		if cfg.UseCompactHeader {
-			cfg.ProtocolVersion = protocol.VersionCompact
-		} else {
-			cfg.ProtocolVersion = protocol.VersionLegacy
-		}
 	}
 
 	snAddr, err := net.ResolveUDPAddr("udp4", cfg.SupernodeAddr)
@@ -141,7 +129,6 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		Conn:              conn,
 		TAP:               tap,
 		seq:               0,
-		useCompactHeader:  cfg.UseCompactHeader,
 		protocolVersion:   cfg.ProtocolVersion,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		verifyHash:        cfg.VerifyHash,
@@ -196,7 +183,7 @@ func (e *EdgeClient) Register() error {
 		e.ID, e.Community)
 	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
 	totalLen = protocol.ProtoVHeaderSize + payloadLen
-	e.compactPacketsSent.Add(1)
+	e.PacketsSent.Add(1)
 
 	// Send the packet
 	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
@@ -304,7 +291,7 @@ func (e *EdgeClient) Unregister() error {
 		totalLen = protocol.ProtoVHeaderSize + payloadLen
 
 		// Update stats
-		e.compactPacketsSent.Add(1)
+		e.PacketsSent.Add(1)
 
 		// Send the packet
 		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
@@ -354,7 +341,7 @@ func (e *EdgeClient) sendHeartbeat() error {
 	totalLen = protocol.ProtoVHeaderSize + payloadLen
 
 	// Update stats
-	e.compactPacketsSent.Add(1)
+	e.PacketsSent.Add(1)
 
 	// Send the packet
 	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
@@ -449,7 +436,7 @@ func (e *EdgeClient) runTAPToSupernode() {
 		}
 
 		// Update stats
-		e.compactPacketsSent.Add(1)
+		e.PacketsSent.Add(1)
 
 		// Send packet (header is already at the beginning of packetBuf)
 		totalLen := headerSize + n
@@ -535,7 +522,7 @@ func (e *EdgeClient) runUDPToTAP() {
 			payload = packetBuf[protocol.ProtoVHeaderSize:n]
 
 			// Update stats
-			e.compactPacketsRecv.Add(1)
+			e.PacketsRecv.Add(1)
 
 		} else {
 			log.Printf("Edge: Unknown header version %d from %v", version, addr)
@@ -620,11 +607,6 @@ func isBroadcastMAC(mac []byte) bool {
 	return true
 }
 
-// UseCompactHeader returns whether this edge is using compact headers
-func (e *EdgeClient) UseCompactHeader() bool {
-	return e.useCompactHeader
-}
-
 // ProtocolVersion returns the protocol version being used
 func (e *EdgeClient) ProtocolVersion() uint8 {
 	return protocol.VersionV
@@ -635,44 +617,21 @@ func (e *EdgeClient) GetHeaderSize() int {
 	return protocol.ProtoVHeaderSize
 }
 
-// GetHeaderOverheadReduction returns the percentage reduction in header overhead
-// when using compact headers compared to legacy headers
-func (e *EdgeClient) GetHeaderOverheadReduction() float64 {
-	if !e.useCompactHeader {
-		return 0.0
-	}
-
-	legacySize := float64(protocol.TotalHeaderSize)
-	compactSize := float64(protocol.CompactHeaderSize)
-
-	return ((legacySize - compactSize) / legacySize) * 100.0
-}
-
 // GetStats returns packet statistics
 type EdgeStats struct {
-	CompactPacketsSent uint64
-	CompactPacketsRecv uint64
-	LegacyPacketsSent  uint64
-	LegacyPacketsRecv  uint64
-	TotalPacketsSent   uint64
-	TotalPacketsRecv   uint64
-	CommunityHash      uint32
+	TotalPacketsSent uint64
+	TotalPacketsRecv uint64
+	CommunityHash    uint32
 }
 
 // GetStats returns current packet statistics
 func (e *EdgeClient) GetStats() EdgeStats {
-	compactSent := e.compactPacketsSent.Load()
-	compactRecv := e.compactPacketsRecv.Load()
-	legacySent := e.legacyPacketsSent.Load()
-	legacyRecv := e.legacyPacketsRecv.Load()
+	PacketsSent := e.PacketsSent.Load()
+	PacketsRecv := e.PacketsRecv.Load()
 
 	return EdgeStats{
-		CompactPacketsSent: compactSent,
-		CompactPacketsRecv: compactRecv,
-		LegacyPacketsSent:  legacySent,
-		LegacyPacketsRecv:  legacyRecv,
-		TotalPacketsSent:   compactSent + legacySent,
-		TotalPacketsRecv:   compactRecv + legacyRecv,
-		CommunityHash:      e.communityHash,
+		TotalPacketsSent: PacketsSent,
+		TotalPacketsRecv: PacketsRecv,
+		CommunityHash:    e.communityHash,
 	}
 }

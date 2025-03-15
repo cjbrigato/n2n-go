@@ -566,14 +566,14 @@ func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 		testData[i] = byte(i % 256)
 	}
 
-	header := protocol.NewHeader(3, 64, protocol.TypeData, 1234, "testcommunity", "source", "dest")
+	header, _ := protocol.NewProtoVHeader(protocol.VersionV, 64, protocol.TypeData, 1234, "testcommunity", nil, nil)
 
 	// Get buffer pools
 	headerBuf := buffers.HeaderBufferPool.Get()
 	defer buffers.HeaderBufferPool.Put(headerBuf)
 
 	// Create payload buffer - header + test data
-	packetBuf := make([]byte, protocol.TotalHeaderSize+opts.PacketSize)
+	packetBuf := make([]byte, protocol.ProtoVHeaderSize+opts.PacketSize)
 
 	startTime := time.Now()
 
@@ -581,23 +581,23 @@ func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 		iterStart := time.Now()
 
 		// Marshal header into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 			log.Printf("Error marshaling header: %v", err)
 			continue
 		}
 
 		// Copy test data after header
-		copy(packetBuf[protocol.TotalHeaderSize:], testData)
+		copy(packetBuf[protocol.ProtoVHeaderSize:], testData)
 
 		// Now unmarshal and decode
-		var newHeader protocol.Header
-		if err := newHeader.UnmarshalBinary(packetBuf[:protocol.TotalHeaderSize]); err != nil {
+		var newHeader protocol.ProtoVHeader
+		if err := newHeader.UnmarshalBinary(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 			log.Printf("Error unmarshaling header: %v", err)
 			continue
 		}
 
 		// Extract payload
-		payload := packetBuf[protocol.TotalHeaderSize:]
+		payload := packetBuf[protocol.ProtoVHeaderSize:]
 
 		// Simple verification to make sure the compiler doesn't optimize away
 		if len(payload) != opts.PacketSize || newHeader.Version != header.Version {
