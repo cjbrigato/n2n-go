@@ -22,6 +22,7 @@ type Config struct {
 	CleanupInterval     time.Duration // Interval for the cleanup routine
 	UDPBufferSize       int           // Size of UDP socket buffers
 	StrictHashChecking  bool          // Whether to strictly enforce community hash validation
+	EnableVFuze         bool
 }
 
 // DefaultConfig returns a default configuration
@@ -34,6 +35,7 @@ func DefaultConfig() *Config {
 		CleanupInterval:     5 * time.Minute,
 		UDPBufferSize:       1024 * 1024, // 1MB buffer
 		StrictHashChecking:  true,        // Enforce hash validation by default
+		EnableVFuze:         true,
 	}
 }
 
@@ -296,19 +298,20 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	s.stats.PacketsProcessed.Add(1)
 
-	if packet[0] == protocol.VersionVFuze {
-		dst := net.HardwareAddr(packet[1:7])
-		s.edgeMu.Lock()
-		edge, ok := s.edges[dst.String()]
-		s.edgeMu.Unlock()
-		if ok {
-			//payload := packet[protocol.ProtoVFuzeSize:]
-			err := s.forwardPacket(packet, edge)
-			if err != nil {
-				log.Printf("Supernode: VersionVFuze error: %w", err)
+	if s.config.EnableVFuze {
+		if packet[0] == protocol.VersionVFuze {
+			dst := net.HardwareAddr(packet[1:7])
+			s.edgeMu.Lock()
+			edge, ok := s.edges[dst.String()]
+			s.edgeMu.Unlock()
+			if ok {
+				err := s.forwardPacket(packet, edge)
+				if err != nil {
+					log.Printf("Supernode: VersionVFuze error: %w", err)
+				}
 			}
+			return
 		}
-		return
 	}
 	rawMsg, err := protocol.NewRawMessage(packet, addr)
 	if err != nil {

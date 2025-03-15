@@ -5,8 +5,8 @@ import (
 	"log"
 	"n2n-go/pkg/supernode"
 	"net"
-	"net/http"
-	_ "net/http/pprof"
+
+	//_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
@@ -27,14 +27,16 @@ type Config struct {
 	DebugMode       bool
 	CommunitySubnet string
 	SubnetCIDR      int
+	EnableVFuze     bool
 }
 
 func main() {
 
-	go func() {
+	/*go func() {
 		http.ListenAndServe("0.0.0.0:3334", nil)
 	}()
-	
+	*/
+
 	log.Printf("n2n-go supernode %s (built %s)", Version, BuildTime)
 
 	// Parse command-line flags
@@ -69,6 +71,7 @@ func main() {
 		ExpiryDuration:      cfg.ExpiryDuration,
 		CleanupInterval:     cfg.CleanupInterval,
 		StrictHashChecking:  true,
+		EnableVFuze:         true,
 	}
 
 	// Create and start supernode
@@ -93,6 +96,7 @@ func main() {
 	log.Printf("- Edge expiry: %v", cfg.ExpiryDuration)
 	log.Printf("- Base subnet: %s/%d", cfg.CommunitySubnet, cfg.SubnetCIDR)
 	log.Printf("- Debug mode: %v", cfg.DebugMode)
+	log.Printf("- VFuze Data FastPath: %v", cfg.EnableVFuze)
 	log.Printf("Enforced:")
 	log.Printf("- Strict hash checking: %v", snConfig.StrictHashChecking)
 	log.Printf("Press Ctrl+C to stop.")

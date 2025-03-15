@@ -10,8 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"net/http"
-	_ "net/http/pprof"
+	//_ "net/http/pprof"
 
 	"n2n-go/pkg/edge"
 	"n2n-go/pkg/protocol"
@@ -25,9 +24,9 @@ var (
 
 func main() {
 
-	go func() {
+	/*go func() {
 		http.ListenAndServe("0.0.0.0:3334", nil)
-	}()
+	}()*/
 
 	log.Printf("n2n-go edge node %s (built %s)", Version, BuildTime)
 

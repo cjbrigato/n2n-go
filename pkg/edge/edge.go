@@ -27,6 +27,7 @@ type Config struct {
 	HeartbeatInterval time.Duration
 	ProtocolVersion   uint8 // Protocol version to use
 	VerifyHash        bool  // Whether to verify community hash
+	EnableVFuze       bool  // if enabled, experimental fastpath when known peer
 }
 
 // DefaultConfig returns a default configuration
@@ -35,6 +36,7 @@ func DefaultConfig() *Config {
 		HeartbeatInterval: 30 * time.Second,
 		ProtocolVersion:   protocol.VersionV,
 		VerifyHash:        true, // Verify community hash by default
+		EnableVFuze:       true,
 	}
 }
 
@@ -50,6 +52,7 @@ type EdgeClient struct {
 	protocolVersion   uint8
 	heartbeatInterval time.Duration
 	verifyHash        bool
+	enableVFuze       bool
 	communityHash     uint32
 
 	ctx    context.Context
@@ -133,6 +136,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		protocolVersion:   cfg.ProtocolVersion,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		verifyHash:        cfg.VerifyHash,
+		enableVFuze:       cfg.EnableVFuze,
 		communityHash:     communityHash,
 		ctx:               ctx,
 		cancel:            cancel,
@@ -371,25 +375,26 @@ func (e *EdgeClient) runTAPToSupernode() {
 			continue
 		}
 
-		var vfuzh []byte
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
 		var destMAC net.HardwareAddr
 		if !isBroadcastMAC(payloadBuf[:6]) {
 			destMAC = net.HardwareAddr(payloadBuf[:6])
-			vfuzh = protocol.VFuzeHeaderBytes(destMAC)
-			totalLen := protocol.ProtoVFuzeSize + n
-			packet := make([]byte, totalLen)
-			copy(packet[0:7], vfuzh[0:7])
-			copy(packet[7:], payloadBuf[:n])
-			e.PacketsSent.Add(1)
-			_, err = e.Conn.WriteToUDP(packet[:totalLen], e.SupernodeAddr)
-			if err != nil {
-				if strings.Contains(err.Error(), "use of closed network connection") {
-					return
+			if e.enableVFuze {
+				vfuzh := protocol.VFuzeHeaderBytes(destMAC)
+				totalLen := protocol.ProtoVFuzeSize + n
+				packet := make([]byte, totalLen)
+				copy(packet[0:7], vfuzh[0:7])
+				copy(packet[7:], payloadBuf[:n])
+				e.PacketsSent.Add(1)
+				_, err = e.Conn.WriteToUDP(packet[:totalLen], e.SupernodeAddr)
+				if err != nil {
+					if strings.Contains(err.Error(), "use of closed network connection") {
+						return
+					}
+					log.Printf("Edge: Error sending packet to supernode: %v", err)
 				}
-				log.Printf("Edge: Error sending packet to supernode: %v", err)
+				continue
 			}
-			continue
 		}
 
 		// Create and marshal header
@@ -455,18 +460,18 @@ func (e *EdgeClient) runUDPToTAP() {
 			continue
 		}
 
-		if packetBuf[0] == protocol.VersionVFuze {
-
-			payload := packetBuf[protocol.ProtoVFuzeSize:n]
-			_, err = e.TAP.Write(payload)
-			if err != nil {
-				if strings.Contains(err.Error(), "file already closed") {
-					return
+		if e.enableVFuze {
+			if packetBuf[0] == protocol.VersionVFuze {
+				payload := packetBuf[protocol.ProtoVFuzeSize:n]
+				_, err = e.TAP.Write(payload)
+				if err != nil {
+					if strings.Contains(err.Error(), "file already closed") {
+						return
+					}
+					log.Printf("Edge: TAP write error: %v", err)
 				}
-				log.Printf("Edge: TAP write error: %v", err)
+				continue
 			}
-
-			continue
 		}
 
 		// Handle short packets and ACKs
