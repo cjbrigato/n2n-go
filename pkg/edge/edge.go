@@ -279,7 +279,7 @@ func (e *EdgeClient) Unregister() error {
 
 		// Create compact header
 		header, err := protocol.NewProtoVHeader(
-			e.protocolVersion,
+			e.ProtocolVersion(),
 			64,
 			protocol.TypeUnregister,
 			seq,
@@ -331,7 +331,7 @@ func (e *EdgeClient) sendHeartbeat() error {
 
 	// Create compact header
 	header, err := protocol.NewProtoVHeader(
-		e.protocolVersion,
+		e.ProtocolVersion(),
 		64,
 		protocol.TypeHeartbeat,
 		seq,
@@ -434,7 +434,7 @@ func (e *EdgeClient) runTAPToSupernode() {
 
 		// Create compact header with destination MAC
 		header, err := protocol.NewProtoVHeader(
-			e.protocolVersion,
+			e.ProtocolVersion(),
 			64,
 			protocol.TypeData,
 			seq,
