@@ -20,7 +20,7 @@ func IfUp(ifName, ipAddr string) error {
 		return fmt.Errorf("failed to assign IP address: %w", err)
 	}
 
-	cmdMTU := exec.Command("ip", "link", "set", "dev", ifName, "mtu", "1200")
+	cmdMTU := exec.Command("ip", "link", "set", "dev", ifName, "mtu", "1420")
 	if err := cmdMTU.Run(); err != nil {
 		return fmt.Errorf("failed to assign IP address: %w", err)
 	}
