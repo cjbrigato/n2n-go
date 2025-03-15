@@ -45,6 +45,7 @@ func main() {
 	flag.DurationVar(&cfg.CleanupInterval, "cleanup", 5*time.Minute, "Cleanup interval for stale edges")
 	flag.DurationVar(&cfg.ExpiryDuration, "expiry", 10*time.Minute, "Edge expiry duration")
 	flag.BoolVar(&cfg.DebugMode, "debug", false, "Enable debug logging")
+	flag.BoolVar(&cfg.EnableVFuze, "enableFuze", true, "enable fuze fastpath")
 	flag.StringVar(&cfg.CommunitySubnet, "subnet", "10.128.0.0", "Base subnet for communities")
 	flag.IntVar(&cfg.SubnetCIDR, "subnetcidr", 24, "CIDR prefix length for community subnets")
 	flag.Parse()
