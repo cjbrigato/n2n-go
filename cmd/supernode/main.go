@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"log"
+	"n2n-go/pkg/supernode"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"n2n-go/pkg/supernode"
 )
 
 // Version information will be set at build time
@@ -29,6 +30,10 @@ type Config struct {
 }
 
 func main() {
+
+	go func() {
+		http.ListenAndServe("0.0.0.0:3334", nil)
+	}()
 	log.Printf("n2n-go supernode %s (built %s)", Version, BuildTime)
 
 	// Parse command-line flags

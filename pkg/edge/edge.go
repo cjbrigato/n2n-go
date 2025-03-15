@@ -155,50 +155,7 @@ func (e *EdgeClient) Register() error {
 	if err != nil {
 		return err
 	}
-	/*
-		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-		// Get MAC address
-		mac := e.TAP.HardwareAddr()
-		if mac == nil {
-			return fmt.Errorf("edge: failed to get TAP MAC address")
-		}
-
-		// Get buffer for full packet
-		packetBuf := e.packetBufPool.Get()
-		defer e.packetBufPool.Put(packetBuf)
-
-		var totalLen int
-		var payloadStr string
-
-		header, err := protocol.NewProtoVHeader(
-			e.ProtocolVersion(),
-			64,
-			protocol.TypeRegister,
-			seq,
-			e.Community,
-			e.TAP.HardwareAddr(),
-			nil,
-		)
-		if err != nil {
-			return err
-		}
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-			return fmt.Errorf("edge: failed to marshal protov registration header: %w", err)
-		}
-		// Add payload after header - include community name and hash for verification
-		payloadStr = fmt.Sprintf("REGISTER %s %s",
-			e.ID, e.Community)
-		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.ProtoVHeaderSize + payloadLen
-		e.PacketsSent.Add(1)
-
-		// Send the packet
-		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
-		if err != nil {
-			return fmt.Errorf("edge: failed to send registration: %w", err)
-		}
-	*/
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("edge: failed to set read deadline: %w", err)
@@ -264,53 +221,14 @@ func (e *EdgeClient) sendGratuitousARP() error {
 func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
-		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-
-		// Get buffer for full packet
-		packetBuf := e.packetBufPool.Get()
-		defer e.packetBufPool.Put(packetBuf)
-
-		var totalLen int
-
-		// Create compact header
-		header, err := protocol.NewProtoVHeader(
-			e.ProtocolVersion(),
-			64,
-			protocol.TypeUnregister,
-			seq,
-			e.Community,
-			e.TAP.HardwareAddr(),
-			nil,
-		)
-		if err != nil {
-			unregErr = err
-			return
-		}
-
-		// Marshal header directly into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-			unregErr = fmt.Errorf("edge: failed to marshal protov unregister header: %w", err)
-			return
-		}
-
-		// Add payload after header
 		payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
-		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.ProtoVHeaderSize + payloadLen
-
-		// Update stats
-		e.PacketsSent.Add(1)
-
-		// Send the packet
-		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
 		}
-
 		log.Printf("Edge: Unregister message sent")
 	})
-
 	return unregErr
 }
 
@@ -469,7 +387,7 @@ func (e *EdgeClient) runTAPToSupernode() {
 			protocol.TypeData,
 			seq,
 			e.Community,
-			e.TAP.HardwareAddr(),
+			e.MACAddr,
 			destMAC,
 		)
 
