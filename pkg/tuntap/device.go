@@ -112,7 +112,7 @@ func Create(config Config) (*Device, error) {
 
 	// Create the device
 	dev := &Device{
-		File:    os.NewFile(uintptr(fd), "tun"),
+		File:    os.NewFile(uintptr(fd), "/dev/net/tun"),
 		Name:    config.Name,
 		DevType: config.DevType,
 		Config:  config,

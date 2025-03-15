@@ -124,7 +124,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
 	// Calculate community hash
 	communityHash := protocol.HashCommunity(cfg.Community)
-
+	log.Printf("(workaround udev tap delay changing TUNTAP MacADDR) Sleeping 3sec")
+	time.Sleep(3 * time.Second)
 	return &EdgeClient{
 		ID:                cfg.EdgeID,
 		Community:         cfg.Community,
@@ -155,7 +156,6 @@ func (e *EdgeClient) Register() error {
 
 	payloadStr := fmt.Sprintf("REGISTER %s %s",
 		e.ID, e.Community)
-	fmt.Println(e.MACAddr)
 	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr)
 	if err != nil {
 		return err
