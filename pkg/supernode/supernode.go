@@ -104,7 +104,7 @@ func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.
 // NewSupernodeWithConfig creates a new Supernode with the specified configuration
 func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	// Set UDP buffer sizes
-	if err := conn.SetReadBuffer(8192); err != nil {
+	if err := conn.SetReadBuffer(config.UDPBufferSize); err != nil {
 		log.Printf("Warning: couldn't set UDP read buffer size: %v", err)
 	}
 	if err := conn.SetWriteBuffer(config.UDPBufferSize); err != nil {
