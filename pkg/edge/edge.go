@@ -371,10 +371,25 @@ func (e *EdgeClient) runTAPToSupernode() {
 			continue
 		}
 
+		var vfuzh []byte
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
 		var destMAC net.HardwareAddr
 		if !isBroadcastMAC(payloadBuf[:6]) {
 			destMAC = net.HardwareAddr(payloadBuf[:6])
+			vfuzh = protocol.VFuzeHeaderBytes(destMAC)
+			totalLen := protocol.ProtoVFuzeSize + n
+			packet := make([]byte, totalLen)
+			copy(packet[0:7], vfuzh[0:7])
+			copy(packet[7:], payloadBuf[:n])
+			e.PacketsSent.Add(1)
+			_, err = e.Conn.WriteToUDP(packet[:totalLen], e.SupernodeAddr)
+			if err != nil {
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					return
+				}
+				log.Printf("Edge: Error sending packet to supernode: %v", err)
+			}
+			continue
 		}
 
 		// Create and marshal header

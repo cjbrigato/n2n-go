@@ -72,6 +72,9 @@ type Supernode struct {
 	comMu       sync.RWMutex
 	communities map[uint32]*Community
 
+	edgeMu sync.RWMutex
+	edges  map[string]*Edge
+
 	Conn       *net.UDPConn
 	config     *Config
 	shutdownCh chan struct{}
@@ -111,6 +114,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn := &Supernode{
 		netAllocator:      netAllocator,
 		communities:       make(map[uint32]*Community),
+		edges:             map[string]*Edge{},
 		Conn:              conn,
 		config:            config,
 		shutdownCh:        make(chan struct{}),
@@ -222,6 +226,9 @@ func (s *Supernode) UnregisterEdge(edgeMACAddr string, communityHash uint32) err
 	}
 
 	if cm.Unregister(edgeMACAddr) {
+		s.edgeMu.Lock()
+		delete(s.edges, edgeMACAddr)
+		s.edgeMu.Unlock()
 		s.stats.EdgesUnregistered.Add(1)
 	}
 	return nil
@@ -289,6 +296,20 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	s.stats.PacketsProcessed.Add(1)
 
+	if packet[0] == protocol.VersionVFuze {
+		dst := net.HardwareAddr(packet[1:7])
+		s.edgeMu.Lock()
+		edge, ok := s.edges[dst.String()]
+		s.edgeMu.Unlock()
+		if ok {
+			//payload := packet[protocol.ProtoVFuzeSize:]
+			err := s.forwardPacket(packet, edge)
+			if err != nil {
+				log.Printf("Supernode: VersionVFuze error: %w", err)
+			}
+		}
+		return
+	}
 	rawMsg, err := protocol.NewRawMessage(packet, addr)
 	if err != nil {
 		log.Printf("Supernode: ProcessPacket error: %w", err)
@@ -337,6 +358,9 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 		s.stats.PacketsDropped.Add(1)
 		return err
 	}
+	s.edgeMu.Lock()
+	s.edges[edge.MACAddr] = edge
+	s.edgeMu.Unlock()
 
 	ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
 	s.SendAck(r.Addr, edge, ackMsg)
@@ -466,7 +490,7 @@ func (s *Supernode) GetStats() SupernodeStats {
 // Listen begins processing incoming packets
 func (s *Supernode) Listen() {
 	// Create a worker pool to process packets
-	const numWorkers = 4
+	const numWorkers = 8
 	packetChan := make(chan packetData, 100)
 
 	// Start worker goroutines

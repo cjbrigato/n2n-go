@@ -34,6 +34,7 @@ func main() {
 	go func() {
 		http.ListenAndServe("0.0.0.0:3334", nil)
 	}()
+	
 	log.Printf("n2n-go supernode %s (built %s)", Version, BuildTime)
 
 	// Parse command-line flags
