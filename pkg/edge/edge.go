@@ -157,6 +157,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 // Registration payload format depends on the header type:
 // - Legacy: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form)
 // - Compact: "REGISTER <edgeID> <tapMAC> <community> <communityHash>" when extended addressing is used
+// - ProtoV: "REGISTER <edgeDesc> <CommunityName>"
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
@@ -175,60 +176,30 @@ func (e *EdgeClient) Register() error {
 	var totalLen int
 	var payloadStr string
 
-	if e.useCompactHeader {
-		// Create compact header
-		header := protocol.NewCompactHeader(
-			e.protocolVersion,
-			64,
-			protocol.TypeRegister,
-			seq,
-			e.Community,
-			e.ID,
-			"",
-		)
-
-		// Marshal header directly into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.CompactHeaderSize]); err != nil {
-			return fmt.Errorf("edge: failed to marshal compact registration header: %w", err)
-		}
-
-		// Add payload after header - include community name and hash for verification
-		payloadStr = fmt.Sprintf("REGISTER %s %s %s %d",
-			e.ID, mac.String(), e.Community, e.communityHash)
-		payloadLen := copy(packetBuf[protocol.CompactHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.CompactHeaderSize + payloadLen
-
-		// Update stats
-		e.compactPacketsSent.Add(1)
-
-	} else {
-		// Create legacy header
-		header := protocol.NewHeader(
-			protocol.VersionLegacy,
-			64,
-			protocol.TypeRegister,
-			seq,
-			e.Community,
-			e.ID,
-			"",
-		)
-
-		// Marshal header directly into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
-			return fmt.Errorf("edge: failed to marshal registration header: %w", err)
-		}
-
-		// Add payload after header
-		payloadStr = fmt.Sprintf("REGISTER %s %s", e.ID, mac.String())
-		payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.TotalHeaderSize + payloadLen
-
-		// Update stats
-		e.legacyPacketsSent.Add(1)
+	header, err := protocol.NewProtoVHeader(
+		e.ProtocolVersion(),
+		64,
+		protocol.TypeRegister,
+		seq,
+		e.Community,
+		e.TAP.HardwareAddr(),
+		nil,
+	)
+	if err != nil {
+		return err
 	}
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("edge: failed to marshal protov registration header: %w", err)
+	}
+	// Add payload after header - include community name and hash for verification
+	payloadStr = fmt.Sprintf("REGISTER %s %s",
+		e.ID, e.Community)
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+	e.compactPacketsSent.Add(1)
 
 	// Send the packet
-	_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send registration: %w", err)
 	}
@@ -271,13 +242,6 @@ func (e *EdgeClient) Register() error {
 
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 
-	// Check if registration response contains header format negotiation
-	if len(parts) >= 4 && parts[3] == "COMPACT" {
-		e.useCompactHeader = true
-		e.protocolVersion = protocol.VersionCompact
-		log.Printf("Edge: Supernode supports compact headers, switching to compact format")
-	}
-
 	return nil
 }
 
@@ -313,61 +277,37 @@ func (e *EdgeClient) Unregister() error {
 
 		var totalLen int
 
-		if e.useCompactHeader {
-			// Create compact header
-			header := protocol.NewCompactHeader(
-				e.protocolVersion,
-				64,
-				protocol.TypeUnregister,
-				seq,
-				e.Community,
-				e.ID,
-				"",
-			)
-
-			// Marshal header directly into packet buffer
-			if err := header.MarshalBinaryTo(packetBuf[:protocol.CompactHeaderSize]); err != nil {
-				unregErr = fmt.Errorf("edge: failed to marshal compact unregister header: %w", err)
-				return
-			}
-
-			// Add payload after header
-			payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
-			payloadLen := copy(packetBuf[protocol.CompactHeaderSize:], []byte(payloadStr))
-			totalLen = protocol.CompactHeaderSize + payloadLen
-
-			// Update stats
-			e.compactPacketsSent.Add(1)
-
-		} else {
-			// Create legacy header
-			header := protocol.NewHeader(
-				protocol.VersionLegacy,
-				64,
-				protocol.TypeUnregister,
-				seq,
-				e.Community,
-				e.ID,
-				"",
-			)
-
-			// Marshal header directly into packet buffer
-			if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
-				unregErr = fmt.Errorf("edge: failed to marshal unregister header: %w", err)
-				return
-			}
-
-			// Add payload after header
-			payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
-			payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
-			totalLen = protocol.TotalHeaderSize + payloadLen
-
-			// Update stats
-			e.legacyPacketsSent.Add(1)
+		// Create compact header
+		header, err := protocol.NewProtoVHeader(
+			e.protocolVersion,
+			64,
+			protocol.TypeUnregister,
+			seq,
+			e.Community,
+			e.TAP.HardwareAddr(),
+			nil,
+		)
+		if err != nil {
+			unregErr = err
+			return
 		}
 
+		// Marshal header directly into packet buffer
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+			unregErr = fmt.Errorf("edge: failed to marshal protov unregister header: %w", err)
+			return
+		}
+
+		// Add payload after header
+		payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
+		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+		totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+		// Update stats
+		e.compactPacketsSent.Add(1)
+
 		// Send the packet
-		_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
@@ -389,59 +329,35 @@ func (e *EdgeClient) sendHeartbeat() error {
 
 	var totalLen int
 
-	if e.useCompactHeader {
-		// Create compact header
-		header := protocol.NewCompactHeader(
-			e.protocolVersion,
-			64,
-			protocol.TypeHeartbeat,
-			seq,
-			e.Community,
-			e.ID,
-			"",
-		)
-
-		// Marshal header directly into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.CompactHeaderSize]); err != nil {
-			return fmt.Errorf("edge: failed to marshal compact heartbeat header: %w", err)
-		}
-
-		// Add payload after header
-		payloadStr := fmt.Sprintf("HEARTBEAT %s", e.ID)
-		payloadLen := copy(packetBuf[protocol.CompactHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.CompactHeaderSize + payloadLen
-
-		// Update stats
-		e.compactPacketsSent.Add(1)
-
-	} else {
-		// Create legacy header
-		header := protocol.NewHeader(
-			protocol.VersionLegacy,
-			64,
-			protocol.TypeHeartbeat,
-			seq,
-			e.Community,
-			e.ID,
-			"",
-		)
-
-		// Marshal header directly into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.TotalHeaderSize]); err != nil {
-			return fmt.Errorf("edge: failed to marshal heartbeat header: %w", err)
-		}
-
-		// Add payload after header
-		payloadStr := fmt.Sprintf("HEARTBEAT %s", e.ID)
-		payloadLen := copy(packetBuf[protocol.TotalHeaderSize:], []byte(payloadStr))
-		totalLen = protocol.TotalHeaderSize + payloadLen
-
-		// Update stats
-		e.legacyPacketsSent.Add(1)
+	// Create compact header
+	header, err := protocol.NewProtoVHeader(
+		e.protocolVersion,
+		64,
+		protocol.TypeHeartbeat,
+		seq,
+		e.Community,
+		e.TAP.HardwareAddr(),
+		nil,
+	)
+	if err != nil {
+		return err
 	}
 
+	// Marshal header directly into packet buffer
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("edge: failed to marshal protov heartbeat header: %w", err)
+	}
+
+	// Add payload after header
+	payloadStr := fmt.Sprintf("HEARTBEAT %s", e.Community)
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	// Update stats
+	e.compactPacketsSent.Add(1)
+
 	// Send the packet
-	_, err := e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -479,12 +395,7 @@ func (e *EdgeClient) runTAPToSupernode() {
 	defer e.packetBufPool.Put(packetBuf)
 
 	// Create separate areas for header and payload
-	var headerSize int
-	if e.useCompactHeader {
-		headerSize = protocol.CompactHeaderSize
-	} else {
-		headerSize = protocol.TotalHeaderSize
-	}
+	headerSize := protocol.ProtoVHeaderSize
 
 	headerBuf := packetBuf[:headerSize]
 	payloadBuf := packetBuf[headerSize:]
@@ -521,45 +432,24 @@ func (e *EdgeClient) runTAPToSupernode() {
 		// Create and marshal header
 		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-		if e.useCompactHeader {
-			// Create compact header with destination MAC
-			header := protocol.NewCompactHeaderWithDestMAC(
-				e.protocolVersion,
-				64,
-				protocol.TypeData,
-				seq,
-				e.Community,
-				e.ID,
-				destMAC,
-			)
+		// Create compact header with destination MAC
+		header, err := protocol.NewProtoVHeader(
+			e.protocolVersion,
+			64,
+			protocol.TypeData,
+			seq,
+			e.Community,
+			e.TAP.HardwareAddr(),
+			destMAC,
+		)
 
-			if err := header.MarshalBinaryTo(headerBuf); err != nil {
-				log.Printf("Edge: Failed to marshal compact data header: %v", err)
-				continue
-			}
-
-			// Update stats
-			e.compactPacketsSent.Add(1)
-		} else {
-			// Create legacy header with destination MAC
-			header := protocol.NewHeaderWithDestMAC(
-				protocol.VersionLegacy,
-				64,
-				protocol.TypeData,
-				seq,
-				e.Community,
-				e.ID,
-				destMAC,
-			)
-
-			if err := header.MarshalBinaryTo(headerBuf); err != nil {
-				log.Printf("Edge: Failed to marshal data header: %v", err)
-				continue
-			}
-
-			// Update stats
-			e.legacyPacketsSent.Add(1)
+		if err := header.MarshalBinaryTo(headerBuf); err != nil {
+			log.Printf("Edge: Failed to marshal protov data header: %v", err)
+			continue
 		}
+
+		// Update stats
+		e.compactPacketsSent.Add(1)
 
 		// Send packet (header is already at the beginning of packetBuf)
 		totalLen := headerSize + n
@@ -603,7 +493,7 @@ func (e *EdgeClient) runUDPToTAP() {
 		}
 
 		// Handle short packets and ACKs
-		if n < protocol.CompactHeaderSize { // Even compact headers have minimum size
+		if n < protocol.ProtoVHeaderSize { // Even compact headers have minimum size
 			msg := strings.TrimSpace(string(packetBuf[:n]))
 			if msg == "ACK" {
 				// Just an ACK - nothing to do
@@ -617,21 +507,21 @@ func (e *EdgeClient) runUDPToTAP() {
 		version := packetBuf[0]
 		var payload []byte
 
-		if version == protocol.VersionCompact {
-			if n < protocol.CompactHeaderSize {
-				log.Printf("Edge: Packet too short for compact header from %v", addr)
+		if version == protocol.VersionV {
+			if n < protocol.ProtoVHeaderSize {
+				log.Printf("Edge: Packet too short for protov header from %v", addr)
 				continue
 			}
 
-			var header protocol.CompactHeader
-			if err := header.UnmarshalBinary(packetBuf[:protocol.CompactHeaderSize]); err != nil {
-				log.Printf("Edge: Failed to unmarshal compact header from %v: %v", addr, err)
+			var header protocol.ProtoVHeader
+			if err := header.UnmarshalBinary(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+				log.Printf("Edge: Failed to unmarshal protov header from %v: %v", addr, err)
 				continue
 			}
 
 			// Verify timestamp
 			if !header.VerifyTimestamp(time.Now(), 16*time.Second) {
-				log.Printf("Edge: Compact header timestamp verification failed from %v", addr)
+				log.Printf("Edge: protov header timestamp verification failed from %v", addr)
 				continue
 			}
 
@@ -642,40 +532,10 @@ func (e *EdgeClient) runUDPToTAP() {
 				continue
 			}
 
-			payload = packetBuf[protocol.CompactHeaderSize:n]
+			payload = packetBuf[protocol.ProtoVHeaderSize:n]
 
 			// Update stats
 			e.compactPacketsRecv.Add(1)
-
-		} else if version == protocol.VersionLegacy {
-			if n < protocol.TotalHeaderSize {
-				log.Printf("Edge: Packet too short for legacy header from %v", addr)
-				continue
-			}
-
-			var header protocol.Header
-			if err := header.UnmarshalBinary(packetBuf[:protocol.TotalHeaderSize]); err != nil {
-				log.Printf("Edge: Failed to unmarshal legacy header from %v: %v", addr, err)
-				continue
-			}
-
-			// Verify timestamp
-			if !header.VerifyTimestamp(time.Now(), 16*time.Second) {
-				log.Printf("Edge: Legacy header timestamp verification failed from %v", addr)
-				continue
-			}
-
-			// Verify community matches
-			if header.GetCommunity() != e.Community {
-				log.Printf("Edge: Community mismatch: expected %s, got %s from %v",
-					e.Community, header.GetCommunity(), addr)
-				continue
-			}
-
-			payload = packetBuf[protocol.TotalHeaderSize:n]
-
-			// Update stats
-			e.legacyPacketsRecv.Add(1)
 
 		} else {
 			log.Printf("Edge: Unknown header version %d from %v", version, addr)
@@ -767,15 +627,12 @@ func (e *EdgeClient) UseCompactHeader() bool {
 
 // ProtocolVersion returns the protocol version being used
 func (e *EdgeClient) ProtocolVersion() uint8 {
-	return e.protocolVersion
+	return protocol.VersionV
 }
 
 // GetHeaderSize returns the current header size in bytes
 func (e *EdgeClient) GetHeaderSize() int {
-	if e.useCompactHeader {
-		return protocol.CompactHeaderSize // 30 bytes
-	}
-	return protocol.TotalHeaderSize // 73 bytes
+	return protocol.ProtoVHeaderSize
 }
 
 // GetHeaderOverheadReduction returns the percentage reduction in header overhead
