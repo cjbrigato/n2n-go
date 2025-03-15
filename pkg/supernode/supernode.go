@@ -306,7 +306,7 @@ func (s *Supernode) handleVFuze(packet []byte) {
 				log.Printf("Supernode: VersionVFuze error: %v", err)
 			}
 		} else {
-			log.Printf("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr")
+			log.Printf("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr %s", dst.String())
 		}
 	} else {
 		log.Printf("Supernode: received a VFuze Protocol packet but configuration disabled it")
