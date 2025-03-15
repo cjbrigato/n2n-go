@@ -457,7 +457,7 @@ func (e *EdgeClient) runUDPToTAP() {
 
 		if packetBuf[0] == protocol.VersionVFuze {
 
-			payload := packetBuf[protocol.ProtoVFuzeSize:]
+			payload := packetBuf[protocol.ProtoVFuzeSize:n]
 			_, err = e.TAP.Write(payload)
 			if err != nil {
 				if strings.Contains(err.Error(), "file already closed") {
