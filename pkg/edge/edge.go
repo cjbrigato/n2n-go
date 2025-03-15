@@ -7,7 +7,6 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/util"
 	"net"
 	"os"
 	"strconv"
@@ -589,7 +588,7 @@ func (e *EdgeClient) TunUp() error {
 	if e.VirtualIP == "" {
 		return fmt.Errorf("cannot configure TAP link before VirtualIP is set")
 	}
-	return util.IfUp(e.TAP.Name(), e.VirtualIP)
+	return e.TAP.IfUp(e.VirtualIP)
 }
 
 // isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.
