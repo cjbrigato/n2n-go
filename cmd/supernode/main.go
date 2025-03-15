@@ -73,6 +73,7 @@ func main() {
 		CleanupInterval:     cfg.CleanupInterval,
 		StrictHashChecking:  true,
 		EnableVFuze:         true,
+		UDPBufferSize:       2048 * 2048,
 	}
 
 	// Create and start supernode

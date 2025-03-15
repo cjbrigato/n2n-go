@@ -36,8 +36,8 @@ func main() {
 	flag.StringVar(&cfg.Community, "community", "default", "Community name")
 	flag.StringVar(&cfg.TapName, "tap", "n2n_tap0", "TAP interface name")
 	flag.IntVar(&cfg.LocalPort, "port", 0, "Local UDP port (0 for system-assigned)")
-	flag.StringVar(&cfg.SupernodeAddr, "supernode", "", "Supernode address (host:port)")
 	flag.BoolVar(&cfg.EnableVFuze, "enableFuze", true, "enable fuze fastpath")
+	flag.StringVar(&cfg.SupernodeAddr, "supernode", "", "Supernode address (host:port)")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", 30*time.Second, "Heartbeat interval")
 
 	flag.Parse()
