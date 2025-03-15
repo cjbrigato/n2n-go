@@ -47,7 +47,6 @@ type EdgeClient struct {
 	TAP           *tuntap.Interface
 	seq           uint32
 
-	useCompactHeader  bool
 	protocolVersion   uint8
 	heartbeatInterval time.Duration
 	verifyHash        bool
@@ -59,6 +58,7 @@ type EdgeClient struct {
 	wg sync.WaitGroup
 
 	VirtualIP string
+	MACAddr   net.HardwareAddr
 
 	unregisterOnce sync.Once
 	running        atomic.Bool
@@ -129,6 +129,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		Conn:              conn,
 		TAP:               tap,
 		seq:               0,
+		MACAddr:           tap.HardwareAddr(),
 		protocolVersion:   cfg.ProtocolVersion,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		verifyHash:        cfg.VerifyHash,
@@ -148,49 +149,56 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
-	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-
-	// Get MAC address
-	mac := e.TAP.HardwareAddr()
-	if mac == nil {
-		return fmt.Errorf("edge: failed to get TAP MAC address")
-	}
-
-	// Get buffer for full packet
-	packetBuf := e.packetBufPool.Get()
-	defer e.packetBufPool.Put(packetBuf)
-
-	var totalLen int
-	var payloadStr string
-
-	header, err := protocol.NewProtoVHeader(
-		e.ProtocolVersion(),
-		64,
-		protocol.TypeRegister,
-		seq,
-		e.Community,
-		e.TAP.HardwareAddr(),
-		nil,
-	)
+	payloadStr := fmt.Sprintf("REGISTER %s %s",
+		e.ID, e.Community)
+	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr)
 	if err != nil {
 		return err
 	}
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("edge: failed to marshal protov registration header: %w", err)
-	}
-	// Add payload after header - include community name and hash for verification
-	payloadStr = fmt.Sprintf("REGISTER %s %s",
-		e.ID, e.Community)
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-	e.PacketsSent.Add(1)
+	/*
+		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	// Send the packet
-	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send registration: %w", err)
-	}
+		// Get MAC address
+		mac := e.TAP.HardwareAddr()
+		if mac == nil {
+			return fmt.Errorf("edge: failed to get TAP MAC address")
+		}
 
+		// Get buffer for full packet
+		packetBuf := e.packetBufPool.Get()
+		defer e.packetBufPool.Put(packetBuf)
+
+		var totalLen int
+		var payloadStr string
+
+		header, err := protocol.NewProtoVHeader(
+			e.ProtocolVersion(),
+			64,
+			protocol.TypeRegister,
+			seq,
+			e.Community,
+			e.TAP.HardwareAddr(),
+			nil,
+		)
+		if err != nil {
+			return err
+		}
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+			return fmt.Errorf("edge: failed to marshal protov registration header: %w", err)
+		}
+		// Add payload after header - include community name and hash for verification
+		payloadStr = fmt.Sprintf("REGISTER %s %s",
+			e.ID, e.Community)
+		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+		totalLen = protocol.ProtoVHeaderSize + payloadLen
+		e.PacketsSent.Add(1)
+
+		// Send the packet
+		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+		if err != nil {
+			return fmt.Errorf("edge: failed to send registration: %w", err)
+		}
+	*/
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("edge: failed to set read deadline: %w", err)
@@ -304,6 +312,41 @@ func (e *EdgeClient) Unregister() error {
 	})
 
 	return unregErr
+}
+
+func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string) error {
+	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+	// Get buffer for full packet
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		e.ProtocolVersion(),
+		64,
+		pt,
+		seq,
+		e.Community,
+		e.MACAddr,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("edge: failed to protov %s header: %w", pt.String(), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+	e.PacketsSent.Add(1)
+
+	// Send the packet
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send registration: %w", err)
+	}
+	return nil
 }
 
 // sendHeartbeat sends a single heartbeat message
