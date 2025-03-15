@@ -455,6 +455,20 @@ func (e *EdgeClient) runUDPToTAP() {
 			continue
 		}
 
+		if packetBuf[0] == protocol.VersionVFuze {
+
+			payload := packetBuf[protocol.ProtoVFuzeSize:]
+			_, err = e.TAP.Write(payload)
+			if err != nil {
+				if strings.Contains(err.Error(), "file already closed") {
+					return
+				}
+				log.Printf("Edge: TAP write error: %v", err)
+			}
+
+			return
+		}
+
 		// Handle short packets and ACKs
 		if n < protocol.ProtoVHeaderSize { // Even compact headers have minimum size
 			msg := strings.TrimSpace(string(packetBuf[:n]))
