@@ -35,7 +35,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		HeartbeatInterval: 30 * time.Second,
 		UseCompactHeader:  true, // Default to compact header for new clients
-		ProtocolVersion:   protocol.VersionCompact,
+		ProtocolVersion:   protocol.VersionV,
 		VerifyHash:        true, // Verify community hash by default
 	}
 }
