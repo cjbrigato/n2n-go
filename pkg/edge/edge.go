@@ -466,7 +466,7 @@ func (e *EdgeClient) runUDPToTAP() {
 				log.Printf("Edge: TAP write error: %v", err)
 			}
 
-			return
+			continue
 		}
 
 		// Handle short packets and ACKs
