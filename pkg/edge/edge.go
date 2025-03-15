@@ -155,6 +155,7 @@ func (e *EdgeClient) Register() error {
 
 	payloadStr := fmt.Sprintf("REGISTER %s %s",
 		e.ID, e.Community)
+	fmt.Println(e.MACAddr)
 	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr)
 	if err != nil {
 		return err
