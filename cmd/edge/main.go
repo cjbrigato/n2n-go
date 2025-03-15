@@ -39,6 +39,7 @@ func main() {
 	flag.BoolVar(&cfg.EnableVFuze, "enableFuze", true, "enable fuze fastpath")
 	flag.StringVar(&cfg.SupernodeAddr, "supernode", "", "Supernode address (host:port)")
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", 30*time.Second, "Heartbeat interval")
+	flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", 8192*8192, "UDP BUffer Sizes")
 
 	flag.Parse()
 

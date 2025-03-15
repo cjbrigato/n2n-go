@@ -19,6 +19,7 @@ import (
 
 // Config holds the edge node configuration
 type Config struct {
+	UDPBufferSize     int
 	EdgeID            string
 	Community         string
 	TapName           string
@@ -37,6 +38,7 @@ func DefaultConfig() *Config {
 		ProtocolVersion:   protocol.VersionV,
 		VerifyHash:        true, // Verify community hash by default
 		EnableVFuze:       true,
+		UDPBufferSize:     8192 * 8192,
 	}
 }
 
@@ -107,10 +109,10 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	}
 
 	// Set UDP buffer sizes to reduce latency
-	if err := conn.SetReadBuffer(1024 * 1024); err != nil {
+	if err := conn.SetReadBuffer(cfg.UDPBufferSize); err != nil {
 		log.Printf("Warning: couldn't increase UDP read buffer size: %v", err)
 	}
-	if err := conn.SetWriteBuffer(1024 * 1024); err != nil {
+	if err := conn.SetWriteBuffer(cfg.UDPBufferSize); err != nil {
 		log.Printf("Warning: couldn't increase UDP write buffer size: %v", err)
 	}
 
