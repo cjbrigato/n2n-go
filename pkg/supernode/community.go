@@ -106,6 +106,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 
 		// Create new edge
 		edge = &Edge{
+			Desc:          regMsg.EdgeDesc,
 			PublicIP:      regMsg.RawMsg.Addr.IP,
 			Port:          regMsg.RawMsg.Addr.Port,
 			Community:     c.name,

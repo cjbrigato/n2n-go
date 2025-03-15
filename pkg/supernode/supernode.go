@@ -294,25 +294,39 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
 	return err
 }
 
+func (s *Supernode) handleVFuze(packet []byte) {
+	dst := net.HardwareAddr(packet[1:7])
+	s.edgeMu.Lock()
+	edge, ok := s.edges[dst.String()]
+	s.edgeMu.Unlock()
+	if s.config.EnableVFuze {
+		if ok {
+			err := s.forwardPacket(packet, edge)
+			if err != nil {
+				log.Printf("Supernode: VersionVFuze error: %v", err)
+			}
+		} else {
+			log.Printf("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr")
+		}
+	} else {
+		log.Printf("Supernode: received a VFuze Protocol packet but configuration disabled it")
+		if !ok {
+			log.Printf("         -> cannot give hint about which edge has misconfiguration")
+			log.Printf("           -> no edge found with requested HardwareAddr routing")
+		} else {
+			log.Printf("          -> Misconfigured edge Informations: Desc=%s, VIP=%s, MAC=%s", edge.Desc, edge.VirtualIP, edge.MACAddr)
+		}
+	}
+}
+
 // ProcessPacket processes an incoming packet
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	s.stats.PacketsProcessed.Add(1)
 
-	if s.config.EnableVFuze {
-		if packet[0] == protocol.VersionVFuze {
-			dst := net.HardwareAddr(packet[1:7])
-			s.edgeMu.Lock()
-			edge, ok := s.edges[dst.String()]
-			s.edgeMu.Unlock()
-			if ok {
-				err := s.forwardPacket(packet, edge)
-				if err != nil {
-					log.Printf("Supernode: VersionVFuze error: %w", err)
-				}
-			}
-			return
-		}
+	if packet[0] == protocol.VersionVFuze {
+                                     	s.handleVFuze(packet)
 	}
+
 	rawMsg, err := protocol.NewRawMessage(packet, addr)
 	if err != nil {
 		log.Printf("Supernode: ProcessPacket error: %w", err)
