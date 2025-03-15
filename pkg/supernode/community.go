@@ -29,8 +29,7 @@ func NewCommunity(name string, subnet netip.Prefix) *Community {
 		subnet:   subnet,
 		addrPool: NewAddrPool(subnet),
 		edges:    make(map[string]*Edge),
-		//macToEdge: make(map[string]string),
-		config: DefaultConfig(), // Use default config if none specified
+		config:   DefaultConfig(), // Use default config if none specified
 	}
 }
 
@@ -67,9 +66,8 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 
 	delete(c.edges, edgeMACAddr)
 
-	log.Printf("Community[%s]: Unregistered edge: id=%s, freed VIP=%s",
-		c.name, edge.MACAddr, edge.VirtualIP.String())
-
+	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s, freed VIP=%s",
+		c.name, edge.Desc, edge.MACAddr, edge.VirtualIP.String())
 	return true
 }
 
@@ -119,13 +117,13 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 
 		c.edges[regMsg.EdgeMACAddr] = edge
 
-		log.Printf("Community[%s]: Registered new edge: id=%s, assigned VIP=%s",
-			c.name, edge.MACAddr, vip)
+		log.Printf("Community[%s]: Registered new edge \"%s\" id=%s, assigned VIP=%s",
+			c.name, edge.Desc, edge.MACAddr, vip)
 	} else {
 		// Existing edge, update information
 		if c.name != edge.Community {
-			log.Printf("Community[%s]: Community mismatch for edge %s: received %q vs registered %q",
-				c.name, edge.MACAddr, c.name, edge.Community)
+			log.Printf("Community[%s]: Community mismatch for edge %s/%s: received %q vs registered %q",
+				c.name, edge.Desc, edge.MACAddr, c.name, edge.Community)
 			return nil, fmt.Errorf("community mismatch for edge %s", edge.MACAddr)
 		}
 
