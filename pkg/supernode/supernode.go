@@ -321,10 +321,11 @@ func (s *Supernode) handleVFuze(packet []byte) {
 
 // ProcessPacket processes an incoming packet
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
-	s.stats.PacketsProcessed.Add(1)
 
+	s.stats.PacketsProcessed.Add(1)
 	if packet[0] == protocol.VersionVFuze {
-                                     	s.handleVFuze(packet)
+		s.handleVFuze(packet)
+		return
 	}
 
 	rawMsg, err := protocol.NewRawMessage(packet, addr)
