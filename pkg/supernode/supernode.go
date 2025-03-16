@@ -50,6 +50,7 @@ type Edge struct {
 	LastHeartbeat time.Time  // Time of last heartbeat
 	LastSequence  uint16     // Last sequence number received
 	MACAddr       string     // MAC address provided during registration
+	
 }
 
 // SupernodeStats holds runtime statistics

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,6 +18,8 @@ import (
 	"n2n-go/pkg/protocol"
 )
 
+const banner = "ICAgICBfICAgICAgIF8KICAgIC8gL19fIF9ffCB8X18gXyAgX18gICAKIF8gLyAvIC1fKSBfYCAvIF9gIC8gLV8pICAKKF8pXy9cX19fXF9fLF9cX18sIFxfX198Ci0tLS0tLS0tLS0tLS0tfF9fXy9AbjJuLWdvLSVzIChidWlsdCAlcykgICAgICAK"
+
 // Version information will be set at build time
 var (
 	Version   = "dev"
@@ -24,11 +28,8 @@ var (
 
 func main() {
 
-	/*go func() {
-		http.ListenAndServe("0.0.0.0:3334", nil)
-	}()*/
-
-	log.Printf("n2n-go edge node %s (built %s)", Version, BuildTime)
+	b, _ := base64.StdEncoding.DecodeString(banner)
+	fmt.Printf(string(b), Version, BuildTime)
 
 	// Parse command-line flags
 	cfg := edge.Config{}

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
+	"fmt"
 	"log"
 	"n2n-go/pkg/supernode"
 	"net"
@@ -12,6 +14,8 @@ import (
 	"syscall"
 	"time"
 )
+
+const banner = "y08IHx8IHwgJ18gXC8gLV8pICdffCAnIFwvIF8gXC8gX2AgLyAtXykKKF8pXy8vX18vXF8sX3wgLl9fL1xfX198X3wgfF98fF9cX19fL1xfXyxfXF9fX3wKLS0tLS0tLS0tLS0tLXxffC0tLS0tLS0tLS1AbjJuLWdvLSVzIChidWlsdCAlcykgICAKICA="
 
 // Version information will be set at build time
 var (
@@ -37,7 +41,8 @@ func main() {
 	}()
 	*/
 
-	log.Printf("n2n-go supernode %s (built %s)", Version, BuildTime)
+	b, _ := base64.StdEncoding.DecodeString(banner)
+	fmt.Printf(string(b), Version, BuildTime)
 
 	// Parse command-line flags
 	cfg := Config{}
