@@ -113,6 +113,11 @@ type Supernode struct {
 	SnMessageHandlers protocol.MessageHandlerMap
 }
 
+func (s *Supernode) MacADDR() net.HardwareAddr {
+	mac, _ := net.ParseMAC("CA:FE:C0:FF:EE:00")
+	return mac
+}
+
 // NewSupernode creates a new Supernode instance with default config
 func NewSupernode(conn *net.UDPConn, expiry time.Duration, cleanupInterval time.Duration) *Supernode {
 	config := DefaultConfig()
@@ -368,7 +373,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 	err = handler(rawMsg)
 	if err != nil {
-		log.Printf("Supernode: Error from SnMessageHandler: %v", err)
+		log.Printf("Supernode: Error from SnMessageHandler[%s]: %v", rawMsg.Header.PacketType.String(), err)
 	}
 
 }
@@ -391,7 +396,7 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	return s.WritePacket(protocol.TypePeerInfo, peerReqMsg.CommunityName, nil, nil, string(peerResponsePayload), target)
+	return s.WritePacket(protocol.TypePeerInfo, peerReqMsg.CommunityName, s.MacADDR(), nil, string(peerResponsePayload), target)
 }
 
 func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {

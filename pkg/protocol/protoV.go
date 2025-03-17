@@ -73,7 +73,7 @@ func NewProtoVHeader(version, ttl uint8, pType PacketType, seq uint16, community
 	}
 
 	if src == nil {
-		return nil, fmt.Errorf("source macAddr cannot be nil")
+		return nil, fmt.Errorf("NewProtoVHeader: source macAddr cannot be nil")
 	}
 	copy(h.SourceID[:], src[:6])
 	if dst != nil {
