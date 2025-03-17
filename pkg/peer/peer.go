@@ -22,8 +22,9 @@ type PeerInfo struct {
 	VirtualIP netip.Addr       `json:"virtualIP"`
 	MACAddr   net.HardwareAddr `json:"macAddr"`
 	PubSocket *net.UDPAddr     `json:"pubSocket"`
-	Community string           `json:"community"`
-	Desc      string           `json:"desc"`
+	//PrivSocket *net.UDPAddr     `json:"privSocket"`
+	Community string `json:"community"`
+	Desc      string `json:"desc"`
 }
 
 type PeerInfoList struct {

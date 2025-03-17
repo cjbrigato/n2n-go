@@ -371,6 +371,20 @@ func (e *EdgeClient) handleHeartbeat() {
 	}
 }
 
+func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf []byte, udpSocket *net.UDPAddr) error {
+	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
+	totalLen := protocol.ProtoVFuzeSize + n
+	packet := make([]byte, totalLen)
+	copy(packet[0:7], vfuzh[0:7])
+	copy(packet[7:], payloadBuf[:n])
+	e.PacketsSent.Add(1)
+	_, err := e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // handleTAP reads packets from the TAP interface and (potentially) sends them to the supernode.
 func (e *EdgeClient) handleTAP() {
 	e.wg.Add(1)
@@ -415,7 +429,7 @@ func (e *EdgeClient) handleTAP() {
 			continue
 		}
 		if ethertype == tuntap.IPv6 {
-			log.Printf("Edge: (warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
+			//log.Printf("Edge: (warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
 			continue
 		}
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
@@ -428,13 +442,7 @@ func (e *EdgeClient) handleTAP() {
 				continue
 			}
 			if e.enableVFuze {
-				vfuzh := protocol.VFuzeHeaderBytes(destMAC)
-				totalLen := protocol.ProtoVFuzeSize + n
-				packet := make([]byte, totalLen)
-				copy(packet[0:7], vfuzh[0:7])
-				copy(packet[7:], payloadBuf[:n])
-				e.PacketsSent.Add(1)
-				_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
+				err = e.handleTAPVFuze(destMAC, n, payloadBuf, udpSocket)
 				if err != nil {
 					if strings.Contains(err.Error(), "use of closed network connection") {
 						return

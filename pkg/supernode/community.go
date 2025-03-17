@@ -102,10 +102,10 @@ func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) (bool, error) 
 	if !exists {
 		return false, fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr)
 	}
-	oldPort := edge.Port
+	oldPort := edge.PublicPort
 	oldPublicIP := edge.PublicIP
 	edge.PublicIP = hbMsg.RawMsg.Addr.IP
-	edge.Port = hbMsg.RawMsg.Addr.Port
+	edge.PublicPort = hbMsg.RawMsg.Addr.Port
 	edge.LastHeartbeat = time.Now()
 	edge.LastSequence = hbMsg.RawMsg.Header.Sequence
 	c.debugLog("Refreshed edge:%s from HeartBeat", c.name, hbMsg.EdgeMACAddr)
@@ -132,7 +132,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 		edge = &Edge{
 			Desc:          regMsg.EdgeDesc,
 			PublicIP:      regMsg.RawMsg.Addr.IP,
-			Port:          regMsg.RawMsg.Addr.Port,
+			PublicPort:    regMsg.RawMsg.Addr.Port,
 			Community:     c.name,
 			VirtualIP:     vip,
 			VNetMaskLen:   masklen,
@@ -155,7 +155,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 
 		// Update edge information
 		edge.PublicIP = regMsg.RawMsg.Addr.IP
-		edge.Port = regMsg.RawMsg.Addr.Port
+		edge.PublicPort = regMsg.RawMsg.Addr.Port
 		edge.LastHeartbeat = time.Now()
 		edge.LastSequence = regMsg.RawMsg.Header.Sequence
 
