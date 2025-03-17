@@ -9,10 +9,8 @@ const (
 	// NoChecksum can be set to true to disable checksums for testing or performance
 	NoChecksum = false
 
-
 	// DefaultTimestampDrift is the default allowed timestamp drift for packets
 	DefaultTimestampDrift = 16 * time.Second
-
 )
 
 // Common errors
@@ -42,11 +40,13 @@ const (
 type PacketType uint8
 
 const (
-	TypeRegister   PacketType = 1
-	TypeUnregister PacketType = 2
-	TypeHeartbeat  PacketType = 3
-	TypeData       PacketType = 4
-	TypeAck        PacketType = 5
+	TypeRegister    PacketType = 1
+	TypeUnregister  PacketType = 2
+	TypeHeartbeat   PacketType = 3
+	TypeData        PacketType = 4
+	TypeAck         PacketType = 5
+	TypePeerRequest PacketType = 6
+	TypePeerInfo    PacketType = 7
 )
 
 // String returns a human-readable name for the packet type
@@ -62,6 +62,10 @@ func (pt PacketType) String() string {
 		return "Data"
 	case TypeAck:
 		return "Ack"
+	case TypePeerRequest:
+		return "PeerRequest"
+	case TypePeerInfo:
+		return "PeerInfo"
 	default:
 		return "Unknown"
 	}

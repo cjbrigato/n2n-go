@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"fmt"
+	"n2n-go/pkg/peer"
 	"net"
 	"strings"
 )
@@ -43,6 +44,53 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 	}
 
 	return msg, nil
+
+}
+
+type PeerInfoMessage struct {
+	RawMsg        *RawMessage
+	CommunityHash uint32
+	PeerInfoList  *peer.PeerInfoList
+}
+
+func (r *RawMessage) ToPeerInfoMessage() (*PeerInfoMessage, error) {
+	if r.Header.PacketType != TypePeerInfo {
+		return nil, fmt.Errorf("not a TypePeerInfo packet")
+	}
+	pil, err := peer.ParsePeerInfoList(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &PeerInfoMessage{
+		RawMsg:        r,
+		CommunityHash: r.Header.CommunityID,
+		PeerInfoList:  pil,
+	}, nil
+}
+
+type PeerRequestMessage struct {
+	RawMsg        *RawMessage
+	EdgeMACAddr   string
+	CommunityHash uint32
+	CommunityName string
+}
+
+// Payload Format: PEERREQUEST <CommunityName>
+func (r *RawMessage) ToPeerRequestMessage() (*PeerRequestMessage, error) {
+	if r.Header.PacketType != TypePeerRequest {
+		return nil, fmt.Errorf("not a TypePeerRequest packet")
+	}
+	parts := strings.Fields(string(r.Payload))
+	if len(parts) < 2 || parts[0] != "PEERREQUEST" {
+		return nil, fmt.Errorf("invalid payload format despite TypePeerRequest")
+	}
+
+	return &PeerRequestMessage{
+		RawMsg:        r,
+		CommunityHash: r.Header.CommunityID,
+		CommunityName: parts[1],
+		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+	}, nil
 
 }
 

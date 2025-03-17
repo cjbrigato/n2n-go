@@ -75,6 +75,12 @@ type EdgeClient struct {
 	// Stats
 	PacketsSent atomic.Uint64
 	PacketsRecv atomic.Uint64
+
+	//state
+	registered bool
+
+	// Handlers
+	messageHandlers protocol.MessageHandlerMap
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
@@ -128,7 +134,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	communityHash := protocol.HashCommunity(cfg.Community)
 	log.Printf("(workaround udev tap delay changing TUNTAP MacADDR) Sleeping 3sec")
 	time.Sleep(3 * time.Second)
-	return &EdgeClient{
+	edge := &EdgeClient{
 		ID:                cfg.EdgeID,
 		Community:         cfg.Community,
 		SupernodeAddr:     snAddr,
@@ -145,7 +151,11 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		cancel:            cancel,
 		packetBufPool:     buffers.PacketBufferPool,
 		headerBufPool:     buffers.HeaderBufferPool,
-	}, nil
+		messageHandlers:   make(protocol.MessageHandlerMap),
+	}
+	edge.messageHandlers[protocol.TypeData] = edge.handleDataMessage
+	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
+	return edge, nil
 }
 
 // Register sends a registration packet to the supernode.
@@ -200,7 +210,7 @@ func (e *EdgeClient) Register() error {
 	}
 
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
-
+	e.registered = true
 	return nil
 }
 
@@ -213,6 +223,7 @@ func (e *EdgeClient) Setup() error {
 		return err
 	}
 
+	log.Printf("Edge: sending preliminary gratuitous ARP")
 	if err := e.sendGratuitousARP(); err != nil {
 		return err
 	}
@@ -226,6 +237,9 @@ func (e *EdgeClient) sendGratuitousARP() error {
 
 // Unregister sends an unregister packet to the supernode.
 func (e *EdgeClient) Unregister() error {
+	if !e.registered {
+		return fmt.Errorf("cannot unregister an unregistered edge")
+	}
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
@@ -269,15 +283,35 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 	// Send the packet
 	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send registration: %w", err)
+		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
+}
+
+// sendPeerRequest sends a PeerRequest for all but sender's peerinfos
+// scoped by community
+func (e *EdgeClient) sendPeerRequest() error {
+	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+
+	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s", e.Community))
+	if err != nil {
+		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
 	}
 	return nil
 }
 
 // sendHeartbeat sends a single heartbeat message
 func (e *EdgeClient) sendHeartbeat() error {
-	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
+	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s", e.Community))
+	if err != nil {
+		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
+	}
+	return nil
+}
+
+/*
 	// Get buffer for full packet
 	packetBuf := e.packetBufPool.Get()
 	defer e.packetBufPool.Put(packetBuf)
@@ -312,16 +346,17 @@ func (e *EdgeClient) sendHeartbeat() error {
 	e.PacketsSent.Add(1)
 
 	// Send the packet
-	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
-	if err != nil {
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)*/
+/*if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
 
 	return nil
 }
+*/
 
-// runHeartbeat sends heartbeat messages periodically
-func (e *EdgeClient) runHeartbeat() {
+// handleHeartbeat sends heartbeat messages periodically
+func (e *EdgeClient) handleHeartbeat() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
@@ -340,8 +375,8 @@ func (e *EdgeClient) runHeartbeat() {
 	}
 }
 
-// runTAPToSupernode reads packets from the TAP interface and sends them to the supernode.
-func (e *EdgeClient) runTAPToSupernode() {
+// handleTAP reads packets from the TAP interface and (potentially) sends them to the supernode.
+func (e *EdgeClient) handleTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
@@ -434,8 +469,8 @@ func (e *EdgeClient) runTAPToSupernode() {
 	}
 }
 
-// runUDPToTAP reads packets from the UDP connection and writes the payload to the TAP interface.
-func (e *EdgeClient) runUDPToTAP() {
+// handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
+func (e *EdgeClient) handleUDP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
@@ -488,11 +523,34 @@ func (e *EdgeClient) runUDPToTAP() {
 			continue
 		}
 
-		// Check first byte for version to determine header type
-		version := packetBuf[0]
-		var payload []byte
+		e.PacketsRecv.Add(1)
 
-		if version == protocol.VersionV {
+		rawMsg, err := protocol.NewRawMessage(packetBuf, addr)
+		if err != nil {
+			log.Printf("Edge: error while parsing UDP Packet: %v", err)
+			continue
+		}
+
+		handler, exists := e.messageHandlers[rawMsg.Header.PacketType]
+		if !exists {
+			log.Printf("Edge: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.Addr)
+			continue
+		}
+		err = handler(rawMsg)
+		if err != nil {
+			log.Printf("Edge: Error from messageHandler: %v", err)
+		}
+
+		/*
+			// Check first byte for version to determine header type
+			version := packetBuf[0]
+			var payload []byte
+
+			if version != protocol.VersionV {
+				log.Printf("Edge: Unknown header version %d from %v, skipping packet", version, addr)
+				continue
+			}
+
 			if n < protocol.ProtoVHeaderSize {
 				log.Printf("Edge: Packet too short for protov header from %v", addr)
 				continue
@@ -518,24 +576,49 @@ func (e *EdgeClient) runUDPToTAP() {
 			}
 
 			payload = packetBuf[protocol.ProtoVHeaderSize:n]
+		*/
 
-			// Update stats
-			e.PacketsRecv.Add(1)
+		// Update stats
 
-		} else {
-			log.Printf("Edge: Unknown header version %d from %v", version, addr)
-			continue
-		}
-
-		// Write payload to TAP
-		_, err = e.TAP.Write(payload)
-		if err != nil {
-			if strings.Contains(err.Error(), "file already closed") {
-				return
+		/*if rawMsg.Header.PacketType == protocol.TypeData {
+			// Write payload to TAP
+			_, err = e.TAP.Write(rawMsg.Payload)
+			if err != nil {
+				if strings.Contains(err.Error(), "file already closed") {
+					return
+				}
+				log.Printf("Edge: TAP write error: %v", err)
 			}
+		}*/
+	}
+}
+
+func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
+	_, err := e.TAP.Write(r.Payload)
+	if err != nil {
+		if !strings.Contains(err.Error(), "file already closed") {
 			log.Printf("Edge: TAP write error: %v", err)
+			return err
 		}
 	}
+	return nil
+}
+
+func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
+	peerMsg, err := r.ToPeerInfoMessage()
+	if err != nil {
+		return err
+	}
+	log.Printf("Edge: received PeerInfoList for community %s", e.Community)
+	for i, pi := range peerMsg.PeerInfoList.PeerInfos {
+		log.Printf("----- [Peer #%d]", i)
+		log.Printf("----- * Desc: %s", pi.Desc)
+		log.Printf("----- * VirtualIP: %s", pi.VirtualIP.String())
+		log.Printf("----- * TAPAddr: %s", pi.MACAddr.String())
+		log.Printf("----- * PublicEndpoint: %s", pi.PubSocket.String())
+	}
+	log.Printf("Edge: end of PeerInfoList")
+	return nil
 }
 
 // Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
@@ -544,10 +627,19 @@ func (e *EdgeClient) Run() {
 		log.Printf("Edge: Already running, ignoring Run() call")
 		return
 	}
+	if !e.registered {
+		log.Printf("Edge: Cannot run an unregistered edge, ignoring Run() call")
+	}
 
-	go e.runHeartbeat()
-	go e.runTAPToSupernode()
-	go e.runUDPToTAP()
+	go e.handleHeartbeat()
+	go e.handleTAP()
+	go e.handleUDP()
+
+	log.Printf("Edge: sending preliminary Peer Request")
+	err := e.sendPeerRequest()
+	if err != nil {
+		log.Printf("Edge: (warn) failed sending preliminary Peer Request: %v", err)
+	}
 
 	<-e.ctx.Done() // Block until context is cancelled
 }

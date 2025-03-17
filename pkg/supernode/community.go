@@ -3,7 +3,9 @@ package supernode
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/peer"
 	"n2n-go/pkg/protocol"
+	"net"
 	"net/netip"
 	"sync"
 	"time"
@@ -38,6 +40,28 @@ func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) *C
 	c := NewCommunity(name, subnet)
 	c.config = config
 	return c
+}
+
+func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) peer.PeerInfoList {
+	edges := c.GetAllEdges()
+	var pis []peer.PeerInfo
+	for _, e := range edges {
+		if e.MACAddr == reqMACAddr && !full {
+			continue
+		}
+		pis = append(pis, e.PeerInfo())
+	}
+	return peer.PeerInfoList{PeerInfos: pis}
+}
+
+func (c *Community) GetEdgeUDPAddr(MACAddr string) (*net.UDPAddr, error) {
+	c.edgeMu.RLock()
+	edge, exists := c.edges[MACAddr]
+	c.edgeMu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("Community[%s]: unknown edgeMacAddr: %v", c.Name(), MACAddr)
+	}
+	return edge.UDPAddr(), nil
 }
 
 // debugLog logs a message if debug mode is enabled

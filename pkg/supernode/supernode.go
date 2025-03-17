@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/peer"
 	"n2n-go/pkg/protocol"
 	"net"
 	"net/netip"
@@ -50,7 +51,25 @@ type Edge struct {
 	LastHeartbeat time.Time  // Time of last heartbeat
 	LastSequence  uint16     // Last sequence number received
 	MACAddr       string     // MAC address provided during registration
-	
+
+}
+
+func (e *Edge) UDPAddr() *net.UDPAddr {
+	return &net.UDPAddr{IP: e.PublicIP, Port: e.Port}
+}
+
+func (e *Edge) PeerInfo() peer.PeerInfo {
+	mac, _ := net.ParseMAC(e.MACAddr)
+	return peer.PeerInfo{
+		VirtualIP: e.VirtualIP,
+		MACAddr:   mac,
+		PubSocket: &net.UDPAddr{
+			IP:   e.PublicIP,
+			Port: e.Port,
+		},
+		Community: e.Community,
+		Desc:      e.Desc,
+	}
 }
 
 // SupernodeStats holds runtime statistics
@@ -75,8 +94,9 @@ type Supernode struct {
 	comMu       sync.RWMutex
 	communities map[uint32]*Community
 
-	edgeMu sync.RWMutex
-	edges  map[string]*Edge
+	edgeMu        sync.RWMutex
+	edgesByMAC    map[string]*Edge
+	edgesBySocket map[string]*Edge // UDP.Addr(String)
 
 	Conn       *net.UDPConn
 	config     *Config
@@ -117,7 +137,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn := &Supernode{
 		netAllocator:      netAllocator,
 		communities:       make(map[uint32]*Community),
-		edges:             map[string]*Edge{},
+		edgesByMAC:        map[string]*Edge{},
 		Conn:              conn,
 		config:            config,
 		shutdownCh:        make(chan struct{}),
@@ -130,6 +150,8 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[protocol.TypeAck] = sn.handleAckMessage
 	sn.SnMessageHandlers[protocol.TypeHeartbeat] = sn.handleHeartbeatMessage
 	sn.SnMessageHandlers[protocol.TypeData] = sn.handleDataMessage
+	sn.SnMessageHandlers[protocol.TypePeerRequest] = sn.handlePeerRequestMessage
+
 	sn.shutdownWg.Add(1)
 	go func() {
 		defer sn.shutdownWg.Done()
@@ -230,7 +252,9 @@ func (s *Supernode) UnregisterEdge(edgeMACAddr string, communityHash uint32) err
 
 	if cm.Unregister(edgeMACAddr) {
 		s.edgeMu.Lock()
-		delete(s.edges, edgeMACAddr)
+		edge := s.edgesByMAC[edgeMACAddr]
+		delete(s.edgesBySocket, edge.UDPAddr().String())
+		delete(s.edgesByMAC, edgeMACAddr)
 		s.edgeMu.Unlock()
 		s.stats.EdgesUnregistered.Add(1)
 	}
@@ -298,7 +322,7 @@ func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
 func (s *Supernode) handleVFuze(packet []byte) {
 	dst := net.HardwareAddr(packet[1:7])
 	s.edgeMu.Lock()
-	edge, ok := s.edges[dst.String()]
+	edge, ok := s.edgesByMAC[dst.String()]
 	s.edgeMu.Unlock()
 	if s.config.EnableVFuze {
 		if ok {
@@ -331,7 +355,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 	rawMsg, err := protocol.NewRawMessage(packet, addr)
 	if err != nil {
-		log.Printf("Supernode: ProcessPacket error: %w", err)
+		log.Printf("Supernode: ProcessPacket error: %v", err)
 		return
 	}
 
@@ -343,9 +367,30 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 	}
 	err = handler(rawMsg)
 	if err != nil {
-		log.Printf("Supernode: Error from SnMessageHandler: %w", err)
+		log.Printf("Supernode: Error from SnMessageHandler: %v", err)
 	}
 
+}
+
+func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
+	peerReqMsg, err := r.ToPeerRequestMessage()
+	if err != nil {
+		return err
+	}
+	cm, err := s.GetCommunityForEdge(peerReqMsg.EdgeMACAddr, peerReqMsg.CommunityHash)
+	if err != nil {
+		return err
+	}
+	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
+	peerResponsePayload, err := pil.Encode()
+	if err != nil {
+		return err
+	}
+	target, err := cm.GetEdgeUDPAddr(peerReqMsg.EdgeMACAddr)
+	if err != nil {
+		return err
+	}
+	return s.WritePacket(protocol.TypePeerInfo, peerReqMsg.CommunityName, nil, nil, string(peerResponsePayload), target)
 }
 
 func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {
@@ -378,7 +423,8 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	s.edgeMu.Lock()
-	s.edges[edge.MACAddr] = edge
+	s.edgesByMAC[edge.MACAddr] = edge
+	s.edgesBySocket[edge.UDPAddr().String()] = edge
 	s.edgeMu.Unlock()
 
 	ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
@@ -458,7 +504,7 @@ func (s *Supernode) handleDataMessage(r *protocol.RawMessage) error { //packet [
 
 // forwardPacket sends a packet to a specific edge
 func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
-	addr := &net.UDPAddr{IP: target.PublicIP, Port: target.Port}
+	addr := target.UDPAddr()
 	s.debugLog("Forwarding packet to edge %s at %v", target.MACAddr, addr)
 	_, err := s.Conn.WriteToUDP(packet, addr)
 	return err
@@ -487,6 +533,39 @@ func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
 	if sentCount > 0 {
 		s.stats.PacketsForwarded.Add(uint64(sentCount))
 	}
+}
+
+func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, dst net.HardwareAddr, payloadStr string, addr *net.UDPAddr) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		pt,
+		0,
+		community,
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	// Send the packet
+	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
 }
 
 // GetStats returns a copy of the current statistics
