@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
-	"n2n-go/pkg/peer"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/util"
@@ -45,6 +44,8 @@ func DefaultConfig() *Config {
 
 // EdgeClient encapsulates the state and configuration of an edge.
 type EdgeClient struct {
+	Peers *PeerRegistry
+
 	ID            string
 	Community     string
 	SupernodeAddr *net.UDPAddr
@@ -136,6 +137,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	log.Printf("(workaround udev tap delay changing TUNTAP MacADDR) Sleeping 3sec")
 	time.Sleep(3 * time.Second)
 	edge := &EdgeClient{
+		Peers:             NewPeerRegistry(),
 		ID:                cfg.EdgeID,
 		Community:         cfg.Community,
 		SupernodeAddr:     snAddr,
@@ -541,56 +543,6 @@ func (e *EdgeClient) handleUDP() {
 		if err != nil {
 			log.Printf("Edge: Error from messageHandler: %v", err)
 		}
-
-		/*
-			// Check first byte for version to determine header type
-			version := packetBuf[0]
-			var payload []byte
-
-			if version != protocol.VersionV {
-				log.Printf("Edge: Unknown header version %d from %v, skipping packet", version, addr)
-				continue
-			}
-
-			if n < protocol.ProtoVHeaderSize {
-				log.Printf("Edge: Packet too short for protov header from %v", addr)
-				continue
-			}
-
-			var header protocol.ProtoVHeader
-			if err := header.UnmarshalBinary(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-				log.Printf("Edge: Failed to unmarshal protov header from %v: %v", addr, err)
-				continue
-			}
-
-			// Verify timestamp
-			if !header.VerifyTimestamp(time.Now(), 16*time.Second) {
-				log.Printf("Edge: protov header timestamp verification failed from %v", addr)
-				continue
-			}
-
-			// Verify community hash if enabled
-			if e.verifyHash && header.CommunityID != e.communityHash {
-				log.Printf("Edge: Community hash mismatch: expected %d, got %d from %v",
-					e.communityHash, header.CommunityID, addr)
-				continue
-			}
-
-			payload = packetBuf[protocol.ProtoVHeaderSize:n]
-		*/
-
-		// Update stats
-
-		/*if rawMsg.Header.PacketType == protocol.TypeData {
-			// Write payload to TAP
-			_, err = e.TAP.Write(rawMsg.Payload)
-			if err != nil {
-				if strings.Contains(err.Error(), "file already closed") {
-					return
-				}
-				log.Printf("Edge: TAP write error: %v", err)
-			}
-		}*/
 	}
 }
 
@@ -611,7 +563,8 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	peerInfos := peerMsg.PeerInfoList
-	switch peerInfos.EventType {
+	e.Peers.HandlePeerInfoList(peerInfos, false, true)
+	/*switch peerInfos.EventType {
 	case peer.TypeList:
 		log.Printf("Edge: received PeerInfoList for community %s (ListEvent)", e.Community)
 	case peer.TypeRegister:
@@ -629,7 +582,7 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 			log.Printf("----- * PublicEndpoint: %s", pi.PubSocket.String())
 		}
 	}
-	log.Printf("Edge: end of PeerInfoList")
+	log.Printf("Edge: end of PeerInfoList")*/
 	return nil
 }
 

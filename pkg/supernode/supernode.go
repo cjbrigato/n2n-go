@@ -7,7 +7,6 @@ import (
 	"n2n-go/pkg/peer"
 	"n2n-go/pkg/protocol"
 	"net"
-	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,53 +37,6 @@ func DefaultConfig() *Config {
 		StrictHashChecking:  true,        // Enforce hash validation by default
 		EnableVFuze:         true,
 	}
-}
-
-// Edge represents a registered edge.
-type Edge struct {
-	Desc          string     // from header.SourceID
-	PublicIP      net.IP     // Public IP address
-	Port          int        // UDP port
-	Community     string     // Community name
-	VirtualIP     netip.Addr // Virtual IP assigned within the community
-	VNetMaskLen   int        // CIDR mask length for the virtual network
-	LastHeartbeat time.Time  // Time of last heartbeat
-	LastSequence  uint16     // Last sequence number received
-	MACAddr       string     // MAC address provided during registration
-
-}
-
-func (e *Edge) UDPAddr() *net.UDPAddr {
-	return &net.UDPAddr{IP: e.PublicIP, Port: e.Port}
-}
-
-func (e *Edge) PeerInfo() peer.PeerInfo {
-	mac, _ := net.ParseMAC(e.MACAddr)
-	return peer.PeerInfo{
-		VirtualIP: e.VirtualIP,
-		MACAddr:   mac,
-		PubSocket: &net.UDPAddr{
-			IP:   e.PublicIP,
-			Port: e.Port,
-		},
-		Community: e.Community,
-		Desc:      e.Desc,
-	}
-}
-
-// SupernodeStats holds runtime statistics
-type SupernodeStats struct {
-	PacketsProcessed       atomic.Uint64
-	PacketsForwarded       atomic.Uint64
-	PacketsDropped         atomic.Uint64
-	EdgesRegistered        atomic.Uint64
-	EdgesUnregistered      atomic.Uint64
-	HeartbeatsReceived     atomic.Uint64
-	CompactPacketsRecv     atomic.Uint64
-	LegacyPacketsRecv      atomic.Uint64
-	HashCollisionsDetected atomic.Uint64
-	LastCleanupTime        time.Time
-	LastCleanupEdges       int
 }
 
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
@@ -247,6 +199,22 @@ func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterMessage) (*Edge, *Comm
 	return edge, cm, nil
 }
 
+func (s *Supernode) onEdgeUnregistered(cm *Community, edgeMACAddr string) {
+	s.edgeMu.Lock()
+	edge := s.edgesByMAC[edgeMACAddr]
+	pil := newPeerInfoEvent(peer.TypeUnregister, edge)
+	delete(s.edgesBySocket, edge.UDPAddr().String())
+	delete(s.edgesByMAC, edgeMACAddr)
+	s.edgeMu.Unlock()
+	s.stats.EdgesUnregistered.Add(1)
+	peerInfoPayload, err := pil.Encode()
+	if err != nil {
+		log.Printf("Supernode: (warn) unable to send unregistration event to peers for community %s: %v", cm.Name(), err)
+	} else {
+		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
+	}
+}
+
 // UnregisterEdge removes an edge from the supernode
 func (s *Supernode) UnregisterEdge(edgeMACAddr string, communityHash uint32) error {
 
@@ -257,19 +225,7 @@ func (s *Supernode) UnregisterEdge(edgeMACAddr string, communityHash uint32) err
 	}
 
 	if cm.Unregister(edgeMACAddr) {
-		s.edgeMu.Lock()
-		edge := s.edgesByMAC[edgeMACAddr]
-		pil := newPeerInfoEvent(peer.TypeUnregister, edge)
-		delete(s.edgesBySocket, edge.UDPAddr().String())
-		delete(s.edgesByMAC, edgeMACAddr)
-		s.edgeMu.Unlock()
-		s.stats.EdgesUnregistered.Add(1)
-		peerInfoPayload, err := pil.Encode()
-		if err != nil {
-			log.Printf("Supernode: (warn) unable to send unregistration event to peers for community %s: %v", cm.Name(), err)
-		} else {
-			s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
-		}
+		s.onEdgeUnregistered(cm, edgeMACAddr)
 	}
 	return nil
 }
@@ -296,10 +252,10 @@ func (s *Supernode) CleanupStaleEdges(expiry time.Duration) {
 			if k.Unregister(id) {
 				log.Printf("Supernode: Removed stale edge %s from community %s", id, k.Name())
 				s.stats.EdgesUnregistered.Add(1)
+				s.onEdgeUnregistered(k, id)
 			}
 		}
 	}
-
 	// Update statistics
 	s.stats.LastCleanupTime = now
 	s.stats.LastCleanupEdges = totalCleanUp
