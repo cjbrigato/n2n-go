@@ -431,7 +431,7 @@ func (e *EdgeClient) handleTAP() {
 					if strings.Contains(err.Error(), "use of closed network connection") {
 						return
 					}
-					log.Printf("Edge: Error sending packet to supernode: %v", err)
+					log.Printf("Edge: Error sending packet with enableVFuze from TAP: %v with socket: %s", err, udpSocket)
 				}
 				continue
 			}
@@ -492,9 +492,6 @@ func (e *EdgeClient) handleUDP() {
 			// Continue processing
 		}
 		n, addr, err := e.Conn.ReadFromUDP(packetBuf)
-		if !e.IsSupernodeUDPAddr(addr) {
-			log.Printf("DEBUG: Packet is NOT from Supernode: %s", addr.String())
-		}
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
