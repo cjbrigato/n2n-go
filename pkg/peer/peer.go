@@ -45,38 +45,36 @@ type PeerInfoList struct {
 }
 
 func (pil *PeerInfoList) Encode() ([]byte, error) {
-	return encodePeerInfos(pil.PeerInfos)
+	return encodePeerInfos(*pil)
 }
 
 func ParsePeerInfoList(data []byte) (*PeerInfoList, error) {
-	pis, err := decodePeerInfos(data)
+	pil, err := decodePeerInfos(data)
 	if err != nil {
 		return nil, err
 	}
-	return &PeerInfoList{
-		PeerInfos: pis,
-	}, nil
+	return pil, nil
 }
 
-func encodePeerInfos(pi []PeerInfo) ([]byte, error) {
+func encodePeerInfos(pil PeerInfoList) ([]byte, error) {
 	var buffer bytes.Buffer
 	enc := gob.NewEncoder(&buffer) // Will write to network.
-	err := enc.Encode(pi)
+	err := enc.Encode(pil)
 	if err != nil {
 		return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
 	}
 	return buffer.Bytes(), nil
 }
 
-func decodePeerInfos(data []byte) ([]PeerInfo, error) {
+func decodePeerInfos(data []byte) (*PeerInfoList, error) {
 	r := bytes.NewReader(data)
 	enc := gob.NewDecoder(r) // Will write to network.
-	var pis []PeerInfo
-	err := enc.Decode(&pis)
+	var pil *PeerInfoList
+	err := enc.Decode(pil)
 	if err != nil {
 		return nil, fmt.Errorf("error while decoding PeerInfos: %w", err)
 	}
-	return pis, nil
+	return pil, nil
 }
 
 func (pi *PeerInfosPacket) UnmarshalBinary(data []byte) error {
