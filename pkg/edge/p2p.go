@@ -45,7 +45,12 @@ type Peer struct {
 	Infos      peer.PeerInfo
 	P2PStatus  P2PCapacity
 	P2PCheckID string
+	pendingTTL int
 	UpdatedAt  time.Time
+}
+
+func (p *Peer) resetPendingTTL() {
+	p.pendingTTL = 30
 }
 
 type PeerRegistry struct {
@@ -71,10 +76,28 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 }
 
 func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
-	p.P2PCheckID = checkid
-	p.P2PStatus = status
+	var forcedStatement string
+	skipLog := false
+	if (p.P2PStatus == P2PPending) && status == P2PPending {
+		p.pendingTTL = p.pendingTTL - 1
+		skipLog = true
+	} else {
+		if p.P2PStatus == P2PUnknown && status == P2PPending {
+			p.resetPendingTTL()
+		}
+	}
+	if p.pendingTTL < 1 {
+		forcedStatement = fmt.Sprintf("| Forcefull update, hole-punching TTL<0")
+		p.P2PCheckID = ""
+		p.P2PStatus = P2PUnavailable
+	} else {
+		p.P2PCheckID = checkid
+		p.P2PStatus = status
+	}
 	p.UpdatedAt = time.Now()
-	log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with P2PStatus=%s", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), status.String())
+	if !skipLog {
+		log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with P2PStatus=%s %s", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), p.P2PStatus.String(), forcedStatement)
+	}
 }
 
 func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, error) {
@@ -107,7 +130,7 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 		UpdatedAt: time.Now(),
 	}
 	reg.Peers[macAddr] = peer
-	log.Printf("Peers: Added new peer with MAC address %s", macAddr)
+	log.Printf("Peers:   Added peer with desc=%s vip=%s mac=%s", peer.Infos.Desc, peer.Infos.VirtualIP.String(), peer.Infos.MACAddr.String())
 	return peer, nil
 }
 
@@ -115,12 +138,15 @@ func (reg *PeerRegistry) RemovePeer(MACAddr string) error {
 	reg.peerMu.Lock()
 	defer reg.peerMu.Unlock()
 
-	if _, exists := reg.Peers[MACAddr]; !exists {
+	p, exists := reg.Peers[MACAddr]
+	if !exists {
 		return fmt.Errorf("peer with MAC address %s not found", MACAddr)
 	}
 
+	dDesc := p.Infos.Desc
+	dVip := p.Infos.VirtualIP.String()
 	delete(reg.Peers, MACAddr)
-	log.Printf("Peers: Removed peer with MAC address %s", MACAddr)
+	log.Printf("Peers: Removed peer with desc=%s vip=%s mac=%s", dDesc, dVip, MACAddr)
 	return nil
 }
 
@@ -136,6 +162,20 @@ func (reg *PeerRegistry) GetP2PUnknownPeers() []*Peer {
 	for _, p := range reg.Peers {
 		if p.P2PStatus == P2PUnknown {
 			peerlist = append(peerlist, p)
+		}
+	}
+	return peerlist
+}
+
+func (reg *PeerRegistry) GetP2PendingPeers() []*Peer {
+	var peerlist []*Peer
+	for _, p := range reg.Peers {
+		if p.P2PStatus == P2PPending {
+			if p.pendingTTL > 0 {
+				peerlist = append(peerlist, p)
+			} else {
+				p.UpdateP2PStatus(P2PUnavailable, "")
+			}
 		}
 	}
 	return peerlist
