@@ -57,6 +57,7 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 		}
 		if existingPeer.Infos.VirtualIP != infos.VirtualIP ||
 			existingPeer.Infos.PubSocket.String() != infos.PubSocket.String() {
+			log.Printf("Peers: peer with MAC %s updated with network difference: resetting P2PStatus", macAddr)
 			existingPeer.P2PStatus = P2PUnknown
 		}
 		existingPeer.Infos = infos
@@ -99,13 +100,13 @@ func (p *Peer) UDPAddr() *net.UDPAddr {
 // Depending on the event type, it may override or populate the full registry (ListEvent),
 // with an option to overwrite existing P2PStatuses, or it may add or delete peers.
 func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *peer.PeerInfoList, reset bool, overwrite bool) error {
-	reg.peerMu.Lock()
-	defer reg.peerMu.Unlock()
 
 	switch peerInfoList.EventType {
 	case peer.TypeList:
 		if reset {
+			reg.peerMu.Lock()
 			reg.Peers = make(map[string]*Peer)
+			reg.peerMu.Unlock()
 			log.Println("Peers: Resetting peer registry")
 		}
 		for _, info := range peerInfoList.PeerInfos {
@@ -114,17 +115,19 @@ func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *peer.PeerInfoList, res
 				return fmt.Errorf("failed to add peer: %v", err)
 			}
 		}
-		// Remove peers that are not in the new list
-		newPeers := make(map[string]struct{})
-		for _, info := range peerInfoList.PeerInfos {
-			macAddr := info.MACAddr.String()
-			newPeers[macAddr] = struct{}{}
-		}
+		if !reset {
+			// Remove peers that are not in the new list
+			newPeers := make(map[string]struct{})
+			for _, info := range peerInfoList.PeerInfos {
+				macAddr := info.MACAddr.String()
+				newPeers[macAddr] = struct{}{}
+			}
 
-		for macAddr := range reg.Peers {
-			if _, exists := newPeers[macAddr]; !exists {
-				delete(reg.Peers, macAddr)
-				log.Printf("Peers: Removed peer with MAC address %s not in new list", macAddr)
+			for macAddr := range reg.Peers {
+				if _, exists := newPeers[macAddr]; !exists {
+					reg.RemovePeer(macAddr)
+					log.Printf("Peers: Removed peer with MAC address %s not in new list", macAddr)
+				}
 			}
 		}
 	case peer.TypeRegister:

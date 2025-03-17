@@ -563,26 +563,11 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	peerInfos := peerMsg.PeerInfoList
-	e.Peers.HandlePeerInfoList(peerInfos, false, true)
-	/*switch peerInfos.EventType {
-	case peer.TypeList:
-		log.Printf("Edge: received PeerInfoList for community %s (ListEvent)", e.Community)
-	case peer.TypeRegister:
-		log.Printf("Edge: new peer(s) registered in community %s (RegisterEvent)", e.Community)
-	case peer.TypeUnregister:
-		log.Printf("Edge: removed peer(s) from peerlist for community %s (UnregisterEvent)", e.Community)
-	default:
-		log.Printf("Edge: received PeerInfoList with unknown EventType")
+	err = e.Peers.HandlePeerInfoList(peerInfos, false, true)
+	if err != nil {
+		log.Printf("Edge: error in HandlePeerInfoList: %v", err)
+		return err
 	}
-	for _, pi := range peerMsg.PeerInfoList.PeerInfos {
-		log.Printf("----- [Peer: %s]", pi.Desc)
-		log.Printf("----- * TunnelIP: %s", pi.VirtualIP.String())
-		log.Printf("----- * TAPAddr: %s", pi.MACAddr.String())
-		if peerInfos.EventType == peer.TypeList || peerInfos.EventType == peer.TypeRegister {
-			log.Printf("----- * PublicEndpoint: %s", pi.PubSocket.String())
-		}
-	}
-	log.Printf("Edge: end of PeerInfoList")*/
 	return nil
 }
 
