@@ -457,6 +457,10 @@ func (e *EdgeClient) handleTAP() {
 	}
 }
 
+func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
+	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
+}
+
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {
 	e.wg.Add(1)
@@ -473,8 +477,10 @@ func (e *EdgeClient) handleUDP() {
 		default:
 			// Continue processing
 		}
-
 		n, addr, err := e.Conn.ReadFromUDP(packetBuf)
+		if !e.IsSupernodeUDPAddr(addr) {
+			log.Printf("DEBUG: Packet is NOT from Supernode: %s", addr.String())
+		}
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return

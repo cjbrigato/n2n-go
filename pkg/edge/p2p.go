@@ -26,6 +26,21 @@ const (
 	P2PUnavailable P2PCapacity = 3
 )
 
+func (pt P2PCapacity) String() string {
+	switch pt {
+	case P2PUnknown:
+		return "Unknown"
+	case P2PPending:
+		return "Pending"
+	case P2PAvailable:
+		return "Available"
+	case P2PUnavailable:
+		return "Unavailable"
+	default:
+		return "Unknown"
+	}
+}
+
 type Peer struct {
 	Infos      peer.PeerInfo
 	P2PStatus  P2PCapacity
@@ -59,7 +74,7 @@ func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
 	p.P2PCheckID = checkid
 	p.P2PStatus = status
 	p.UpdatedAt = time.Now()
-	log.Printf("Peers: peer with MAC address %s P2PStatus set to %v with Checkid=%s", p.Infos.MACAddr.String(), p.P2PStatus, p.P2PCheckID)
+	log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with P2PStatus=%s", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), status.String())
 }
 
 func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, error) {
@@ -68,6 +83,7 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 
 	macAddr := infos.MACAddr.String()
 	if existingPeer, exists := reg.Peers[macAddr]; exists {
+		origPeer := *existingPeer
 		if !overwrite {
 			return nil, fmt.Errorf("peer with MAC address %s already exists", macAddr)
 		}
@@ -79,7 +95,9 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 		}
 		existingPeer.Infos = infos
 		existingPeer.UpdatedAt = time.Now()
-		log.Printf("Peers: Updated existing peer with MAC address %s", macAddr)
+		log.Printf("Peers: updated known holde of %s MACAddr:", macAddr)
+		log.Printf("  was: vip=%s PubSocket=%s desc=%s", origPeer.Infos.VirtualIP, origPeer.Infos.PubSocket, origPeer.Infos.Desc)
+		log.Printf("  now: vip=%s PubSocket=%s desc=%s", existingPeer.Infos.VirtualIP, existingPeer.Infos.PubSocket, existingPeer.Infos.Desc)
 		return existingPeer, nil
 	}
 

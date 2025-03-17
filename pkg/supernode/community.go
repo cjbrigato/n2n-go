@@ -106,7 +106,7 @@ func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) error {
 	edge.Port = hbMsg.RawMsg.Addr.Port
 	edge.LastHeartbeat = time.Now()
 	edge.LastSequence = hbMsg.RawMsg.Header.Sequence
-	log.Printf("Community[%s]: Refreshed edge:%s from HeartBeat", c.name, hbMsg.EdgeMACAddr)
+	c.debugLog("Refreshed edge:%s from HeartBeat", c.name, hbMsg.EdgeMACAddr)
 	return nil
 }
 
