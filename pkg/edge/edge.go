@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/peer"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/util"
@@ -609,13 +610,24 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Edge: received PeerInfoList for community %s", e.Community)
-	for i, pi := range peerMsg.PeerInfoList.PeerInfos {
-		log.Printf("----- [Peer #%d]", i)
-		log.Printf("----- * Desc: %s", pi.Desc)
-		log.Printf("----- * VirtualIP: %s", pi.VirtualIP.String())
+	peerInfos := peerMsg.PeerInfoList
+	switch peerInfos.EventType {
+	case peer.TypeList:
+		log.Printf("Edge: received PeerInfoList for community %s (ListEvent)", e.Community)
+	case peer.TypeRegister:
+		log.Printf("Edge: new peer(s) registered in community %s (RegisterEvent)", e.Community)
+	case peer.TypeUnregister:
+		log.Printf("Edge: removed peer(s) from peerlist for community %s (UnregisterEvent)", e.Community)
+	default:
+		log.Printf("Edge: received PeerInfoList with unknown EventType")
+	}
+	for _, pi := range peerMsg.PeerInfoList.PeerInfos {
+		log.Printf("----- [Peer: %s]", pi.Desc)
+		log.Printf("----- * TunnelIP: %s", pi.VirtualIP.String())
 		log.Printf("----- * TAPAddr: %s", pi.MACAddr.String())
-		log.Printf("----- * PublicEndpoint: %s", pi.PubSocket.String())
+		if peerInfos.EventType == peer.TypeList || peerInfos.EventType == peer.TypeRegister {
+			log.Printf("----- * PublicEndpoint: %s", pi.PubSocket.String())
+		}
 	}
 	log.Printf("Edge: end of PeerInfoList")
 	return nil

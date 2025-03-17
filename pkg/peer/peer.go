@@ -13,6 +13,14 @@ import (
 
 const PeerInfoPacketMinSize = 4 + 6 + 4 + 2 + 4 + 1
 
+type PeerInfoEventType uint8
+
+const (
+	TypeList       PeerInfoEventType = 1
+	TypeRegister   PeerInfoEventType = 2
+	TypeUnregister PeerInfoEventType = 3
+)
+
 type PeerInfo struct {
 	VirtualIP netip.Addr       `json:"virtualIP"`
 	MACAddr   net.HardwareAddr `json:"macAddr"`
@@ -33,6 +41,7 @@ type PeerInfosPacket struct {
 
 type PeerInfoList struct {
 	PeerInfos []PeerInfo
+	EventType PeerInfoEventType
 }
 
 func (pil *PeerInfoList) Encode() ([]byte, error) {

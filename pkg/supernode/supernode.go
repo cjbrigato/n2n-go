@@ -229,22 +229,22 @@ func (s *Supernode) GetCommunityForEdge(edgeMACAddr string, communityHash uint32
 }
 
 // RegisterEdge registers or updates an edge in the supernode
-func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterMessage) (*Edge, error) {
+func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterMessage) (*Edge, *Community, error) {
 
 	cm, err := s.RegisterCommunity(regMsg.CommunityName, regMsg.CommunityHash)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Update edge in community scope
 	edge, err := cm.EdgeUpdate(regMsg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	s.stats.EdgesRegistered.Add(1)
 
-	return edge, nil
+	return edge, cm, nil
 }
 
 // UnregisterEdge removes an edge from the supernode
@@ -259,10 +259,17 @@ func (s *Supernode) UnregisterEdge(edgeMACAddr string, communityHash uint32) err
 	if cm.Unregister(edgeMACAddr) {
 		s.edgeMu.Lock()
 		edge := s.edgesByMAC[edgeMACAddr]
+		pil := newPeerInfoEvent(peer.TypeUnregister, edge)
 		delete(s.edgesBySocket, edge.UDPAddr().String())
 		delete(s.edgesByMAC, edgeMACAddr)
 		s.edgeMu.Unlock()
 		s.stats.EdgesUnregistered.Add(1)
+		peerInfoPayload, err := pil.Encode()
+		if err != nil {
+			log.Printf("Supernode: (warn) unable to send unregistration event to peers for community %s: %v", cm.Name(), err)
+		} else {
+			s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
+		}
 	}
 	return nil
 }
@@ -378,6 +385,15 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 }
 
+func newPeerInfoEvent(eventType peer.PeerInfoEventType, edge *Edge) *peer.PeerInfoList {
+	return &peer.PeerInfoList{
+		PeerInfos: []peer.PeerInfo{
+			edge.PeerInfo(),
+		},
+		EventType: eventType,
+	}
+}
+
 func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	peerReqMsg, err := r.ToPeerRequestMessage()
 	if err != nil {
@@ -387,7 +403,7 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
+	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, false)
 	peerResponsePayload, err := pil.Encode()
 	if err != nil {
 		return err
@@ -421,7 +437,7 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	edge, err := s.RegisterEdge(regMsg)
+	edge, cm, err := s.RegisterEdge(regMsg)
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", regMsg.EdgeMACAddr, err)
 		s.SendAck(r.Addr, nil, "ERR Registration failed")
@@ -432,6 +448,13 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	s.edgesByMAC[edge.MACAddr] = edge
 	s.edgesBySocket[edge.UDPAddr().String()] = edge
 	s.edgeMu.Unlock()
+	pil := newPeerInfoEvent(peer.TypeRegister, edge)
+	peerInfoPayload, err := pil.Encode()
+	if err != nil {
+		log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
+	} else {
+		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), regMsg.EdgeMACAddr)
+	}
 
 	ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
 	s.SendAck(r.Addr, edge, ackMsg)
@@ -571,6 +594,35 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
+	return nil
+}
+
+func (s *Supernode) BroadcastPacket(pt protocol.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		pt,
+		0,
+		cm.Name(),
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	s.broadcast(packetBuf[:totalLen], cm, senderMac)
 	return nil
 }
 

@@ -51,7 +51,7 @@ func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) peer.PeerInfoL
 		}
 		pis = append(pis, e.PeerInfo())
 	}
-	return peer.PeerInfoList{PeerInfos: pis}
+	return peer.PeerInfoList{PeerInfos: pis, EventType: peer.TypeList}
 }
 
 func (c *Community) GetEdgeUDPAddr(MACAddr string) (*net.UDPAddr, error) {
