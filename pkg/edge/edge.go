@@ -257,8 +257,7 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
-func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy UDPWriteStrategy) error {
-
+func (e *EdgeClient) UDPAddrWithStrategy(dst net.HardwareAddr, strategy UDPWriteStrategy) (*net.UDPAddr, error) {
 	var udpSocket *net.UDPAddr
 	switch strategy {
 	case UDPEnforceSupernode:
@@ -266,7 +265,7 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 	case UDPBestEffort, UDPEnforceP2P:
 		if dst == nil {
 			if strategy == UDPEnforceP2P {
-				return fmt.Errorf("cannot write packet with UDPEnforceP2P flag and a nil destMACAddr")
+				return nil, fmt.Errorf("cannot write packet with UDPEnforceP2P flag and a nil destMACAddr")
 			}
 			udpSocket = e.SupernodeAddr
 			break
@@ -274,7 +273,7 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 		peer, err := e.Peers.GetPeer(dst.String())
 		if err != nil {
 			if strategy == UDPEnforceP2P {
-				return fmt.Errorf("cannot write packet with UDPEnforceP2P flag: %v", err)
+				return nil, fmt.Errorf("cannot write packet with UDPEnforceP2P (peer not found) %v", err)
 			}
 			udpSocket = e.SupernodeAddr
 			break
@@ -284,6 +283,15 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 			break
 		}
 		udpSocket = peer.UDPAddr()
+	}
+	return udpSocket, nil
+}
+
+func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy UDPWriteStrategy) error {
+
+	udpSocket, err := e.UDPAddrWithStrategy(dst, strategy)
+	if err != nil {
+		return err
 	}
 
 	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
@@ -402,9 +410,15 @@ func (e *EdgeClient) handleTAP() {
 		}
 
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
+		udpSocket := e.SupernodeAddr
 		var destMAC net.HardwareAddr
 		if !isBroadcastMAC(payloadBuf[:6]) {
 			destMAC = net.HardwareAddr(payloadBuf[:6])
+			udpSocket, err = e.UDPAddrWithStrategy(destMAC, UDPBestEffort)
+			if err != nil {
+				log.Printf("Edge: Error getting udpSocket with Strategy in handleTAP with destMAC: %v", err)
+				continue
+			}
 			if e.enableVFuze {
 				vfuzh := protocol.VFuzeHeaderBytes(destMAC)
 				totalLen := protocol.ProtoVFuzeSize + n
@@ -412,7 +426,7 @@ func (e *EdgeClient) handleTAP() {
 				copy(packet[0:7], vfuzh[0:7])
 				copy(packet[7:], payloadBuf[:n])
 				e.PacketsSent.Add(1)
-				_, err = e.Conn.WriteToUDP(packet[:totalLen], e.SupernodeAddr)
+				_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
 				if err != nil {
 					if strings.Contains(err.Error(), "use of closed network connection") {
 						return
@@ -447,7 +461,7 @@ func (e *EdgeClient) handleTAP() {
 
 		// Send packet (header is already at the beginning of packetBuf)
 		totalLen := headerSize + n
-		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], udpSocket)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
