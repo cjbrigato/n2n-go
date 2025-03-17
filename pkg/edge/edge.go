@@ -172,7 +172,7 @@ func (e *EdgeClient) Register() error {
 
 	payloadStr := fmt.Sprintf("REGISTER %s %s ",
 		e.ID, e.Community)
-	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr)
+	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr, UDPEnforceSupernode)
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
-		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr)
+		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr, UDPEnforceSupernode)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
@@ -257,7 +257,35 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
-func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string) error {
+func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy UDPWriteStrategy) error {
+
+	var udpSocket *net.UDPAddr
+	switch strategy {
+	case UDPEnforceSupernode:
+		udpSocket = e.SupernodeAddr
+	case UDPBestEffort, UDPEnforceP2P:
+		if dst == nil {
+			if strategy == UDPEnforceP2P {
+				return fmt.Errorf("cannot write packet with UDPEnforceP2P flag and a nil destMACAddr")
+			}
+			udpSocket = e.SupernodeAddr
+			break
+		}
+		peer, err := e.Peers.GetPeer(dst.String())
+		if err != nil {
+			if strategy == UDPEnforceP2P {
+				return fmt.Errorf("cannot write packet with UDPEnforceP2P flag: %v", err)
+			}
+			udpSocket = e.SupernodeAddr
+			break
+		}
+		if peer.P2PStatus != P2PAvailable && strategy == UDPBestEffort {
+			udpSocket = e.SupernodeAddr
+			break
+		}
+		udpSocket = peer.UDPAddr()
+	}
+
 	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 	// Get buffer for full packet
 	packetBuf := e.packetBufPool.Get()
@@ -285,7 +313,7 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 	e.PacketsSent.Add(1)
 
 	// Send the packet
-	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], udpSocket)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
@@ -297,7 +325,7 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 func (e *EdgeClient) sendPeerRequest() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community))
+	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
 	}
@@ -308,7 +336,7 @@ func (e *EdgeClient) sendPeerRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community))
+	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -543,14 +571,12 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
 		payloadStr := fmt.Sprintf("PONG %s ", pingMsg.CheckID)
-		fmt.Println("DEBUGCHECKIDMKPONG: ", payloadStr)
-		e.WritePacket(protocol.TypePing, dst, payloadStr)
+		e.WritePacket(protocol.TypePing, dst, payloadStr, UDPBestEffort)
 	} else {
 		peer, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
 		if err != nil {
 			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
 		}
-		fmt.Println("DEBUGCHECKIDGOTPONG: ", string(pingMsg.RawMsg.Payload))
 		if peer.P2PCheckID == pingMsg.CheckID {
 			peer.UpdateP2PStatus(P2PAvailable, pingMsg.CheckID)
 		} else {
@@ -575,7 +601,7 @@ func (e *EdgeClient) PingPeer(p *Peer) error {
 	checkid := fmt.Sprintf("%s.%s.%s.%d", e.ID, e.MACAddr.String(), p.Infos.MACAddr.String(), time.Now().Unix())
 	payloadStr := fmt.Sprintf("PING %s ", checkid)
 	p.UpdateP2PStatus(P2PPending, checkid)
-	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr)
+	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, UDPEnforceP2P)
 }
 
 // handleHeartbeat sends heartbeat messages periodically

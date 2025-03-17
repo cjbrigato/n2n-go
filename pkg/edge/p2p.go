@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+type UDPWriteStrategy uint8
+
+const (
+	UDPEnforceSupernode UDPWriteStrategy = 0 //enforce relaying packet through supernode (e.g. for SUPER directed control messages)
+	UDPBestEffort       UDPWriteStrategy = 1 //will send to Peer Socket if Peerlist Checked P2PAvailable
+	UDPEnforceP2P       UDPWriteStrategy = 2 //will enforce PeerSocket whatever the state (e.g. for P2PAvailability check routine)
+)
+
 type P2PCapacity uint8
 
 const (
