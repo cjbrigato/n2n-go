@@ -138,6 +138,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 		netAllocator:      netAllocator,
 		communities:       make(map[uint32]*Community),
 		edgesByMAC:        map[string]*Edge{},
+		edgesBySocket:     map[string]*Edge{},
 		Conn:              conn,
 		config:            config,
 		shutdownCh:        make(chan struct{}),
