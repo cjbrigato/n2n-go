@@ -27,7 +27,7 @@ type PacketFlag uint8
 // Flag constants for compact header
 const (
 	FlagExtendedAddressing PacketFlag = 0x01 // Indicates full IDs are in payload
-	FlagReserved1          PacketFlag = 0x02
+	FlagFromSuperNode      PacketFlag = 0x02
 	FlagReserved2          PacketFlag = 0x04
 	FlagReserved3          PacketFlag = 0x08
 	FlagUserDefined1       PacketFlag = 0x10
@@ -47,6 +47,7 @@ const (
 	TypeAck         PacketType = 5
 	TypePeerRequest PacketType = 6
 	TypePeerInfo    PacketType = 7
+	TypePing        PacketType = 8
 )
 
 // String returns a human-readable name for the packet type
@@ -66,6 +67,8 @@ func (pt PacketType) String() string {
 		return "PeerRequest"
 	case TypePeerInfo:
 		return "PeerInfo"
+	case TypePing:
+		return "Ping"
 	default:
 		return "Unknown"
 	}

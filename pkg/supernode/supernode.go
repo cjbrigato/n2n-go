@@ -109,6 +109,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[protocol.TypeHeartbeat] = sn.handleHeartbeatMessage
 	sn.SnMessageHandlers[protocol.TypeData] = sn.handleDataMessage
 	sn.SnMessageHandlers[protocol.TypePeerRequest] = sn.handlePeerRequestMessage
+	sn.SnMessageHandlers[protocol.TypePing] = sn.handlePingMessage
 
 	sn.shutdownWg.Add(1)
 	go func() {
@@ -434,6 +435,53 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 	edge, exists := cm.GetEdge(heartbeatMsg.EdgeMACAddr)
 	if exists {
 		return s.SendAck(r.Addr, edge, "ACK")
+	}
+	return nil
+}
+
+// handleDataMessage processes a data packet
+func (s *Supernode) handlePingMessage(r *protocol.RawMessage) error { //packet []byte, srcID, community, destMAC string, seq uint16) {
+
+	pingMsg, err := r.ToPingMessage()
+	if err != nil {
+		return err
+	}
+	cm, err := s.GetCommunityForEdge(pingMsg.EdgeMACAddr, pingMsg.CommunityHash)
+	if err != nil {
+		return err
+	}
+	senderEdge, found := cm.GetEdge(pingMsg.EdgeMACAddr)
+	if !found {
+		return fmt.Errorf("cannot find senderEdge %v in community for pingMsg packet handling", pingMsg.EdgeMACAddr)
+	}
+	var targetEdge *Edge
+	if pingMsg.DestMACAddr != "" {
+		te, found := cm.GetEdge(pingMsg.DestMACAddr)
+		if found {
+			targetEdge = te
+		} else {
+
+		}
+	}
+	// Update sender's heartbeat and sequence
+	cm.edgeMu.Lock()
+	if e, ok := cm.edges[pingMsg.EdgeMACAddr]; ok {
+		e.LastHeartbeat = time.Now()
+		e.LastSequence = pingMsg.RawMsg.Header.Sequence
+	}
+	cm.edgeMu.Unlock()
+
+	s.debugLog("Ping packet received from edge %s", senderEdge.MACAddr)
+
+	if targetEdge != nil {
+		if err := s.forwardPacket(pingMsg.ToPacket(), targetEdge); err != nil {
+			s.stats.PacketsDropped.Add(1)
+			log.Printf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
+		} else {
+			s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
+			s.stats.PacketsForwarded.Add(1)
+			return nil
+		}
 	}
 	return nil
 }

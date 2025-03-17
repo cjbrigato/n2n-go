@@ -158,6 +158,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	}
 	edge.messageHandlers[protocol.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
+	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePingMessage
 	return edge, nil
 }
 
@@ -313,50 +314,6 @@ func (e *EdgeClient) sendHeartbeat() error {
 	}
 	return nil
 }
-
-/*
-	// Get buffer for full packet
-	packetBuf := e.packetBufPool.Get()
-	defer e.packetBufPool.Put(packetBuf)
-
-	var totalLen int
-
-	// Create compact header
-	header, err := protocol.NewProtoVHeader(
-		e.ProtocolVersion(),
-		64,
-		protocol.TypeHeartbeat,
-		seq,
-		e.Community,
-		e.TAP.HardwareAddr(),
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Marshal header directly into packet buffer
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("edge: failed to marshal protov heartbeat header: %w", err)
-	}
-
-	// Add payload after header
-	payloadStr := fmt.Sprintf("HEARTBEAT %s", e.Community)
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-
-	// Update stats
-	e.PacketsSent.Add(1)
-
-	// Send the packet
-	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], e.SupernodeAddr)*/
-/*if err != nil {
-		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
-	}
-
-	return nil
-}
-*/
 
 // handleHeartbeat sends heartbeat messages periodically
 func (e *EdgeClient) handleHeartbeat() {
@@ -571,6 +528,72 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 	return nil
 }
 
+func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
+	pingMsg, err := r.ToPingMessage()
+	if err != nil {
+		return err
+	}
+	if !pingMsg.IsPong {
+		// swap dst/src
+		dst, err := net.ParseMAC(pingMsg.EdgeMACAddr)
+		if err != nil {
+			return fmt.Errorf("cannot parse dst EdgeMACAddr for swaping")
+		}
+		if pingMsg.DestMACAddr != e.MACAddr.String() {
+			return fmt.Errorf("ping recipient differs from this edge MACAddress")
+		}
+		payloadStr := fmt.Sprintf("PONG %s", pingMsg.CheckID)
+		e.WritePacket(protocol.TypePing, dst, payloadStr)
+	} else {
+		peer, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
+		if err != nil {
+			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
+		}
+		if peer.P2PCheckID == pingMsg.CheckID {
+			peer.UpdateP2PStatus(P2PAvailable, pingMsg.CheckID)
+		} else {
+			peer.UpdateP2PStatus(P2PUnknown, "")
+			return fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, peer.P2PCheckID, pingMsg.CheckID)
+		}
+	}
+	return nil
+}
+
+func (e *EdgeClient) UpdatePeersP2PStates() {
+	peers := e.Peers.GetP2PUnknownPeers()
+	for _, p := range peers {
+		err := e.PingPeer(p)
+		if err != nil {
+			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
+		}
+	}
+}
+
+func (e *EdgeClient) PingPeer(p *Peer) error {
+	checkid := fmt.Sprintf("%s.%s.%s.%d", e.ID, e.MACAddr.String(), p.Infos.MACAddr.String(), time.Now().Unix())
+	payloadStr := fmt.Sprintf("PING %s", checkid)
+	p.UpdateP2PStatus(P2PPending, checkid)
+	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr)
+}
+
+// handleHeartbeat sends heartbeat messages periodically
+func (e *EdgeClient) handleP2PUpdates() {
+	e.wg.Add(1)
+	defer e.wg.Done()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			e.UpdatePeersP2PStates()
+		case <-e.ctx.Done():
+			return
+		}
+	}
+}
+
 // Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
 func (e *EdgeClient) Run() {
 	if !e.running.CompareAndSwap(false, true) {
@@ -590,6 +613,9 @@ func (e *EdgeClient) Run() {
 	if err != nil {
 		log.Printf("Edge: (warn) failed sending preliminary Peer Request: %v", err)
 	}
+
+	log.Printf("Edge: starting P2PUpdate routine...")
+	go e.handleP2PUpdates()
 
 	<-e.ctx.Done() // Block until context is cancelled
 }

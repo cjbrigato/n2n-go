@@ -19,9 +19,10 @@ const (
 )
 
 type Peer struct {
-	Infos     peer.PeerInfo
-	P2PStatus P2PCapacity
-	UpdatedAt time.Time
+	Infos      peer.PeerInfo
+	P2PStatus  P2PCapacity
+	P2PCheckID string
+	UpdatedAt  time.Time
 }
 
 type PeerRegistry struct {
@@ -46,6 +47,13 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 	return peer, nil
 }
 
+func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
+	p.P2PCheckID = checkid
+	p.P2PStatus = status
+	p.UpdatedAt = time.Now()
+	log.Printf("Peers: peer with MAC address %s P2PStatus set to %v with Checkid=%s", p.Infos.MACAddr.String(), p.P2PStatus, p.P2PCheckID)
+}
+
 func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, error) {
 	reg.peerMu.Lock()
 	defer reg.peerMu.Unlock()
@@ -59,6 +67,7 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 			existingPeer.Infos.PubSocket.String() != infos.PubSocket.String() {
 			log.Printf("Peers: peer with MAC %s updated with network difference: resetting P2PStatus", macAddr)
 			existingPeer.P2PStatus = P2PUnknown
+			existingPeer.P2PCheckID = ""
 		}
 		existingPeer.Infos = infos
 		existingPeer.UpdatedAt = time.Now()
@@ -94,6 +103,16 @@ func (p *Peer) UDPAddr() *net.UDPAddr {
 		IP:   p.Infos.PubSocket.IP,
 		Port: p.Infos.PubSocket.Port,
 	}
+}
+
+func (reg *PeerRegistry) GetP2PUnknownPeers() []*Peer {
+	var peerlist []*Peer
+	for _, p := range reg.Peers {
+		if p.P2PStatus == P2PUnknown {
+			peerlist = append(peerlist, p)
+		}
+	}
+	return peerlist
 }
 
 // HandlePeerInfoList processes a peer.PeerInfoList and updates the registry accordingly.

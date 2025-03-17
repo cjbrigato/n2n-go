@@ -47,6 +47,41 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 
 }
 
+type PingMessage struct {
+	RawMsg        *RawMessage
+	EdgeMACAddr   string
+	CommunityHash uint32
+	CheckID       string
+	IsPong        bool
+	DestMACAddr   string
+}
+
+// Payload Format request: PING sharedid
+//
+//	response: PONG sharedid
+func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
+	if r.Header.PacketType != TypePing {
+		return nil, fmt.Errorf("not a TypePing packet")
+	}
+	parts := strings.Fields(string(r.Payload))
+	if len(parts) < 2 || (parts[0] != "PING" && parts[0] != "PONG") {
+		return nil, fmt.Errorf("invalid payload format despite TypePing")
+	}
+	isPong := (parts[0] == "PONG")
+	return &PingMessage{
+		RawMsg:        r,
+		CommunityHash: r.Header.CommunityID,
+		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+		DestMACAddr:   r.Header.GetDstMACAddr().String(),
+		CheckID:       parts[1],
+		IsPong:        isPong,
+	}, nil
+}
+
+func (pmsg *PingMessage) ToPacket() []byte {
+	return pmsg.RawMsg.RawPacket()
+}
+
 type PeerInfoMessage struct {
 	RawMsg        *RawMessage
 	CommunityHash uint32
