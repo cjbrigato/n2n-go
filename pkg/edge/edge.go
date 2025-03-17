@@ -623,21 +623,21 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 func (e *EdgeClient) UpdatePeersP2PStates() {
 	peers := e.Peers.GetP2PUnknownPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 2, 300*time.Second, P2PPending)
+		err := e.PingPeer(p, 5, 300*time.Second, P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PendingPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 2, 300*time.Second, P2PPending)
+		err := e.PingPeer(p, 5, 300*time.Second, P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PAvailablePeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 2, 300*time.Millisecond, P2PAvailable)
+		err := e.PingPeer(p, 5, 300*time.Millisecond, P2PAvailable)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
@@ -650,7 +650,6 @@ func (e *EdgeClient) PingPeer(p *Peer, n int, interval time.Duration, status P2P
 	p.UpdateP2PStatus(status, checkid)
 	for range n {
 		e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, UDPEnforceP2P)
-		time.Sleep(interval)
 	}
 	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, UDPEnforceP2P)
 }
