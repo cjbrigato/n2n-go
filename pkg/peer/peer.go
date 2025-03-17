@@ -69,7 +69,7 @@ func encodePeerInfos(pil PeerInfoList) ([]byte, error) {
 func decodePeerInfos(data []byte) (*PeerInfoList, error) {
 	r := bytes.NewReader(data)
 	enc := gob.NewDecoder(r) // Will write to network.
-	var pil *PeerInfoList
+	pil := &PeerInfoList{}
 	err := enc.Decode(pil)
 	if err != nil {
 		return nil, fmt.Errorf("error while decoding PeerInfos: %w", err)
