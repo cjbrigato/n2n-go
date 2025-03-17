@@ -95,19 +95,21 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 	return true
 }
 
-func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) error {
+func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) (bool, error) {
 	c.edgeMu.Lock()
 	defer c.edgeMu.Unlock()
 	edge, exists := c.edges[hbMsg.EdgeMACAddr]
 	if !exists {
-		return fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr)
+		return false, fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr)
 	}
+	oldPort := edge.Port
+	oldPublicIP := edge.PublicIP
 	edge.PublicIP = hbMsg.RawMsg.Addr.IP
 	edge.Port = hbMsg.RawMsg.Addr.Port
 	edge.LastHeartbeat = time.Now()
 	edge.LastSequence = hbMsg.RawMsg.Header.Sequence
 	c.debugLog("Refreshed edge:%s from HeartBeat", c.name, hbMsg.EdgeMACAddr)
-	return nil
+	return (oldPort != hbMsg.RawMsg.Addr.Port) || (!oldPublicIP.Equal(hbMsg.RawMsg.Addr.IP)), nil
 }
 
 // EdgeUpdate registers a new edge or updates an existing one

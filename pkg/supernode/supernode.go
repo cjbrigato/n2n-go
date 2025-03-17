@@ -428,12 +428,21 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	s.stats.HeartbeatsReceived.Add(1)
-	err = cm.RefreshEdge(heartbeatMsg)
+	changed, err := cm.RefreshEdge(heartbeatMsg)
 	if err != nil {
 		return err
 	}
 	edge, exists := cm.GetEdge(heartbeatMsg.EdgeMACAddr)
 	if exists {
+		if changed {
+			pil := newPeerInfoEvent(peer.TypeRegister, edge)
+			peerInfoPayload, err := pil.Encode()
+			if err != nil {
+				log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
+			} else {
+				s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), heartbeatMsg.EdgeMACAddr)
+			}
+		}
 		return s.SendAck(r.Addr, edge, "ACK")
 	}
 	return nil

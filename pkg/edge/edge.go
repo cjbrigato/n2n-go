@@ -420,9 +420,8 @@ func (e *EdgeClient) handleTAP() {
 		}
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
 		udpSocket := e.SupernodeAddr
-		var destMAC net.HardwareAddr
-		if !isBroadcastMAC(payloadBuf[:6]) {
-			destMAC = net.HardwareAddr(payloadBuf[:6])
+		destMAC := tuntap.FastDestination(payloadBuf)
+		if !tuntap.IsBroadcast(destMAC) {
 			udpSocket, err = e.UDPAddrWithStrategy(destMAC, UDPBestEffort)
 			if err != nil {
 				log.Printf("Edge: Error getting udpSocket with Strategy in handleTAP with destMAC: %v", err)
