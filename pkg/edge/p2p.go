@@ -78,9 +78,11 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
 	var forcedStatement string
 	skipLog := false
-	if (p.P2PStatus == P2PPending) && status == P2PPending {
-		p.pendingTTL = p.pendingTTL - 1
+	if p.P2PStatus == status {
 		skipLog = true
+		if status == P2PPending {
+			p.pendingTTL = p.pendingTTL - 1
+		}
 	} else {
 		if p.P2PStatus == P2PUnknown && status == P2PPending {
 			p.resetPendingTTL()
@@ -176,6 +178,16 @@ func (reg *PeerRegistry) GetP2PendingPeers() []*Peer {
 			} else {
 				p.UpdateP2PStatus(P2PUnavailable, "")
 			}
+		}
+	}
+	return peerlist
+}
+
+func (reg *PeerRegistry) GetP2PAvailablePeers() []*Peer {
+	var peerlist []*Peer
+	for _, p := range reg.Peers {
+		if p.P2PStatus == P2PAvailable {
+			peerlist = append(peerlist, p)
 		}
 	}
 	return peerlist
