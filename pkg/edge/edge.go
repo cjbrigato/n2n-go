@@ -543,17 +543,19 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
 		payloadStr := fmt.Sprintf("PONG %s", pingMsg.CheckID)
+		fmt.Println("DEBUGCHECKIDMKPONG: ", payloadStr)
 		e.WritePacket(protocol.TypePing, dst, payloadStr)
 	} else {
 		peer, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
 		if err != nil {
 			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
 		}
+		fmt.Println("DEBUGCHECKIDGOTPONG: ", pingMsg.RawMsg.Payload)
 		if peer.P2PCheckID == pingMsg.CheckID {
 			peer.UpdateP2PStatus(P2PAvailable, pingMsg.CheckID)
 		} else {
+			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, peer.P2PCheckID, pingMsg.CheckID)
 			peer.UpdateP2PStatus(P2PUnknown, "")
-			return fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, peer.P2PCheckID, pingMsg.CheckID)
 		}
 	}
 	return nil
