@@ -170,7 +170,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
-	payloadStr := fmt.Sprintf("REGISTER %s %s",
+	payloadStr := fmt.Sprintf("REGISTER %s %s ",
 		e.ID, e.Community)
 	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr)
 	if err != nil {
@@ -246,7 +246,7 @@ func (e *EdgeClient) Unregister() error {
 	}
 	var unregErr error
 	e.unregisterOnce.Do(func() {
-		payloadStr := fmt.Sprintf("UNREGISTER %s", e.ID)
+		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
 		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
@@ -297,7 +297,7 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 func (e *EdgeClient) sendPeerRequest() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s", e.Community))
+	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community))
 	if err != nil {
 		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
 	}
@@ -308,7 +308,7 @@ func (e *EdgeClient) sendPeerRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s", e.Community))
+	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community))
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -542,7 +542,7 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 		if pingMsg.DestMACAddr != e.MACAddr.String() {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
-		payloadStr := fmt.Sprintf("PONG %s", pingMsg.CheckID)
+		payloadStr := fmt.Sprintf("PONG %s ", pingMsg.CheckID)
 		fmt.Println("DEBUGCHECKIDMKPONG: ", payloadStr)
 		e.WritePacket(protocol.TypePing, dst, payloadStr)
 	} else {
@@ -550,7 +550,7 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 		if err != nil {
 			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
 		}
-		fmt.Println("DEBUGCHECKIDGOTPONG: ", pingMsg.RawMsg.Payload)
+		fmt.Println("DEBUGCHECKIDGOTPONG: ", string(pingMsg.RawMsg.Payload))
 		if peer.P2PCheckID == pingMsg.CheckID {
 			peer.UpdateP2PStatus(P2PAvailable, pingMsg.CheckID)
 		} else {
@@ -573,7 +573,7 @@ func (e *EdgeClient) UpdatePeersP2PStates() {
 
 func (e *EdgeClient) PingPeer(p *Peer) error {
 	checkid := fmt.Sprintf("%s.%s.%s.%d", e.ID, e.MACAddr.String(), p.Infos.MACAddr.String(), time.Now().Unix())
-	payloadStr := fmt.Sprintf("PING %s", checkid)
+	payloadStr := fmt.Sprintf("PING %s ", checkid)
 	p.UpdateP2PStatus(P2PPending, checkid)
 	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr)
 }
