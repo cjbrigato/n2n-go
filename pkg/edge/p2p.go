@@ -89,6 +89,7 @@ func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
 		}
 	}
 	if p.pendingTTL < 1 {
+		skipLog = false
 		forcedStatement = fmt.Sprintf("| Forcefull update, hole-punching TTL<0")
 		p.P2PCheckID = ""
 		p.P2PStatus = P2PUnavailable
@@ -133,6 +134,7 @@ func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, er
 	}
 	reg.Peers[macAddr] = peer
 	log.Printf("Peers:   Added peer with desc=%s vip=%s mac=%s", peer.Infos.Desc, peer.Infos.VirtualIP.String(), peer.Infos.MACAddr.String())
+	log.Printf("                         PubSocket=%s", peer.Infos.PubSocket)
 	return peer, nil
 }
 
