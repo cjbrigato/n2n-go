@@ -414,8 +414,9 @@ func (e *EdgeClient) handleTAP() {
 			log.Printf("Edge: Cannot parse link layer frame for Ethertype, skipping: %v", err)
 			continue
 		}
-		if ethertype != tuntap.IPv4 {
-			log.Printf("Edge: warning: not an IPv4 Ethertype frame: %v", ethertype)
+		if ethertype == tuntap.IPv6 {
+			log.Printf("Edge: (warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
+			continue
 		}
 		// Extract destination MAC address from Ethernet header (first 6 bytes)
 		udpSocket := e.SupernodeAddr
