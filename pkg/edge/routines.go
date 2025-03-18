@@ -5,7 +5,6 @@ import (
 	"log"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/util"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -124,14 +123,6 @@ func (e *EdgeClient) Close() {
 
 	e.running.Store(false)
 	log.Printf("Edge: Shutdown complete")
-}
-
-func (e *EdgeClient) TunUp() error {
-	if e.VirtualIP == "" {
-		return fmt.Errorf("cannot configure TAP link before VirtualIP is set")
-	}
-	//return e.TAP.IfUp(e.VirtualIP)
-	return util.IfUp(e.TAP.Name(), e.VirtualIP)
 }
 
 // sendPeerRequest sends a PeerRequest for all but sender's peerinfos

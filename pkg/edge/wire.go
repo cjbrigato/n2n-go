@@ -38,7 +38,6 @@ func (e *EdgeClient) UDPAddrWithStrategy(dst net.HardwareAddr, strategy UDPWrite
 }
 
 func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy UDPWriteStrategy) error {
-
 	udpSocket, err := e.UDPAddrWithStrategy(dst, strategy)
 	if err != nil {
 		return err

@@ -18,6 +18,11 @@ const (
 	TypeUnregister PeerInfoEventType = 3
 )
 
+type ReachablesP4P struct {
+	Reachables []PeerInfo
+	For        PeerInfo
+}
+
 type PeerInfo struct {
 	VirtualIP netip.Addr       `json:"virtualIP"`
 	MACAddr   net.HardwareAddr `json:"macAddr"`

@@ -203,3 +203,11 @@ func (e *EdgeClient) Setup() error {
 func (e *EdgeClient) sendGratuitousARP() error {
 	return util.SendGratuitousARP(e.TAP.Name(), e.TAP.HardwareAddr(), net.ParseIP(e.VirtualIP))
 }
+
+func (e *EdgeClient) TunUp() error {
+	if e.VirtualIP == "" {
+		return fmt.Errorf("cannot configure TAP link before VirtualIP is set")
+	}
+	//return e.TAP.IfUp(e.VirtualIP)
+	return util.IfUp(e.TAP.Name(), e.VirtualIP)
+}
