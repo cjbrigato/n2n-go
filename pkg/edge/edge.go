@@ -7,6 +7,7 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
+	"n2n-go/pkg/upnp"
 	"n2n-go/pkg/util"
 	"net"
 	"os"
@@ -63,6 +64,8 @@ type EdgeClient struct {
 	cancel context.CancelFunc
 
 	wg sync.WaitGroup
+
+	IgdClient *upnp.UPnPClient
 
 	VirtualIP string
 	MACAddr   net.HardwareAddr
@@ -134,8 +137,39 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
 	// Calculate community hash
 	communityHash := protocol.HashCommunity(cfg.Community)
-	log.Printf("(workaround udev tap delay changing TUNTAP MacADDR) Sleeping 3sec")
-	time.Sleep(3 * time.Second)
+
+	/*log.Printf("(workaround udev tap delay changing TUNTAP MacADDR) Sleeping 3sec")
+	time.Sleep(3 * time.Second)*/
+	udpPort := uint16(conn.LocalAddr().(*net.UDPAddr).Port)
+	log.Printf("Edge: seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
+	igdClient, err := upnp.NewUPnPClient()
+	if err != nil {
+		log.Printf("Edge: unable to use UPnP/IGD on this network: %v", err)
+	} else {
+		description := fmt.Sprintf("n2n-go.portmap for %s client", cfg.EdgeID)
+		leaseDuration := uint32(0)
+		protocol := "udp"
+		log.Printf("Edge: Discovered IGD on network ! Starting upnpClient thread...")
+		log.Printf(" UPnP > Successfully connected to IGD (%s)", igdClient.GatewayType)
+		log.Printf(" UPnP > Local IP: %s", igdClient.LocalIP)
+		log.Printf(" UPnP > External IP: %s", igdClient.ExternalIP)
+		log.Printf(" UPnP > Creating port mapping: %s %d -> %s:%d (%s)",
+			"udp", udpPort, igdClient.LocalIP, udpPort, cfg.EdgeID)
+		err = igdClient.AddPortMapping(
+			protocol,
+			udpPort,
+			udpPort,
+			description,
+			leaseDuration,
+		)
+		if err != nil {
+			log.Printf("UPnP: Failed to add port mapping: %v :-(", err)
+			igdClient = nil
+		} else {
+			log.Println(" UPnP > Port mapping added successfully (will be automatically deleted when edge closes)")
+		}
+	}
+
 	edge := &EdgeClient{
 		Peers:             NewPeerRegistry(),
 		ID:                cfg.EdgeID,
@@ -144,6 +178,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		Conn:              conn,
 		TAP:               tap,
 		seq:               0,
+		IgdClient:         igdClient,
 		MACAddr:           tap.HardwareAddr(),
 		protocolVersion:   cfg.ProtocolVersion,
 		heartbeatInterval: cfg.HeartbeatInterval,
@@ -703,7 +738,10 @@ func (e *EdgeClient) Close() {
 	if err := e.Unregister(); err != nil {
 		log.Printf("Edge: Unregister failed: %v", err)
 	}
-
+	if e.IgdClient != nil {
+		log.Printf(" UPnP > Cleaning up all portMappings...")
+		e.IgdClient.CleanupAllMappings()
+	}
 	e.cancel()
 
 	// Force read operations to unblock
@@ -737,19 +775,6 @@ func (e *EdgeClient) TunUp() error {
 	}
 	//return e.TAP.IfUp(e.VirtualIP)
 	return util.IfUp(e.TAP.Name(), e.VirtualIP)
-}
-
-// isBroadcastMAC returns true if the provided MAC address (in bytes) is the broadcast address.
-func isBroadcastMAC(mac []byte) bool {
-	if len(mac) != 6 {
-		return false
-	}
-	for _, b := range mac {
-		if b != 0xFF {
-			return false
-		}
-	}
-	return true
 }
 
 // ProtocolVersion returns the protocol version being used
