@@ -1,4 +1,4 @@
-package edge
+package util
 
 import (
 	"encoding/binary"
