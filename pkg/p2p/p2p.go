@@ -1,9 +1,8 @@
-package edge
+package p2p
 
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/peer"
 	"net"
 	"sync"
 	"time"
@@ -42,7 +41,7 @@ func (pt P2PCapacity) String() string {
 }
 
 type Peer struct {
-	Infos      peer.PeerInfo
+	Infos      PeerInfo
 	P2PStatus  P2PCapacity
 	P2PCheckID string
 	pendingTTL int
@@ -103,7 +102,7 @@ func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
 	}
 }
 
-func (reg *PeerRegistry) AddPeer(infos peer.PeerInfo, overwrite bool) (*Peer, error) {
+func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) {
 	reg.peerMu.Lock()
 	defer reg.peerMu.Unlock()
 
@@ -198,10 +197,10 @@ func (reg *PeerRegistry) GetP2PAvailablePeers() []*Peer {
 // HandlePeerInfoList processes a peer.PeerInfoList and updates the registry accordingly.
 // Depending on the event type, it may override or populate the full registry (ListEvent),
 // with an option to overwrite existing P2PStatuses, or it may add or delete peers.
-func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *peer.PeerInfoList, reset bool, overwrite bool) error {
+func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *PeerInfoList, reset bool, overwrite bool) error {
 
 	switch peerInfoList.EventType {
-	case peer.TypeList:
+	case TypeList:
 		if reset {
 			reg.peerMu.Lock()
 			reg.Peers = make(map[string]*Peer)
@@ -229,14 +228,14 @@ func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *peer.PeerInfoList, res
 				}
 			}
 		}
-	case peer.TypeRegister:
+	case TypeRegister:
 		for _, info := range peerInfoList.PeerInfos {
 			_, err := reg.AddPeer(info, overwrite)
 			if err != nil {
 				return fmt.Errorf("failed to add peer: %v", err)
 			}
 		}
-	case peer.TypeUnregister:
+	case TypeUnregister:
 		for _, info := range peerInfoList.PeerInfos {
 			macAddr := info.MACAddr.String()
 			err := reg.RemovePeer(macAddr)

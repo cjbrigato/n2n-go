@@ -1,4 +1,4 @@
-package peer
+package p2p
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"net/netip"
 )
 
-const PeerInfoPacketMinSize = 4 + 6 + 4 + 2 + 4 + 1
 
 type PeerInfoEventType uint8
 

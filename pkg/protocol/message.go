@@ -2,7 +2,7 @@ package protocol
 
 import (
 	"fmt"
-	"n2n-go/pkg/peer"
+	"n2n-go/pkg/p2p"
 	"net"
 	"strings"
 )
@@ -85,14 +85,14 @@ func (pmsg *PingMessage) ToPacket() []byte {
 type PeerInfoMessage struct {
 	RawMsg        *RawMessage
 	CommunityHash uint32
-	PeerInfoList  *peer.PeerInfoList
+	PeerInfoList  *p2p.PeerInfoList
 }
 
 func (r *RawMessage) ToPeerInfoMessage() (*PeerInfoMessage, error) {
 	if r.Header.PacketType != TypePeerInfo {
 		return nil, fmt.Errorf("not a TypePeerInfo packet")
 	}
-	pil, err := peer.ParsePeerInfoList(r.Payload)
+	pil, err := p2p.ParsePeerInfoList(r.Payload)
 	if err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@ package supernode
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/peer"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"net"
 	"net/netip"
@@ -42,16 +42,16 @@ func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) *C
 	return c
 }
 
-func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) peer.PeerInfoList {
+func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) p2p.PeerInfoList {
 	edges := c.GetAllEdges()
-	var pis []peer.PeerInfo
+	var pis []p2p.PeerInfo
 	for _, e := range edges {
 		if e.MACAddr == reqMACAddr && !full {
 			continue
 		}
 		pis = append(pis, e.PeerInfo())
 	}
-	return peer.PeerInfoList{PeerInfos: pis, EventType: peer.TypeList}
+	return p2p.PeerInfoList{PeerInfos: pis, EventType: p2p.TypeList}
 }
 
 func (c *Community) GetEdgeUDPAddr(MACAddr string) (*net.UDPAddr, error) {

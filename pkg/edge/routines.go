@@ -3,6 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
 	"net"
@@ -14,35 +15,35 @@ import (
 func (e *EdgeClient) UpdatePeersP2PStates() {
 	peers := e.Peers.GetP2PUnknownPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Second, P2PPending)
+		err := e.PingPeer(p, 5, 300*time.Second, p2p.P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PendingPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Second, P2PPending)
+		err := e.PingPeer(p, 5, 300*time.Second, p2p.P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PAvailablePeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Millisecond, P2PAvailable)
+		err := e.PingPeer(p, 5, 300*time.Millisecond, p2p.P2PAvailable)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 }
 
-func (e *EdgeClient) PingPeer(p *Peer, n int, interval time.Duration, status P2PCapacity) error {
+func (e *EdgeClient) PingPeer(p *p2p.Peer, n int, interval time.Duration, status p2p.P2PCapacity) error {
 	checkid := fmt.Sprintf("%s.%s.%s.%s.%d", e.ID, e.MACAddr.String(), p.Infos.MACAddr.String(), p.Infos.PubSocket.IP.String(), p.Infos.PubSocket.Port)
 	payloadStr := fmt.Sprintf("PING %s ", checkid)
 	p.UpdateP2PStatus(status, checkid)
 	for range n {
-		e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, UDPEnforceP2P)
+		e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
 	}
-	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, UDPEnforceP2P)
+	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
 }
 
 // handleHeartbeat sends heartbeat messages periodically
@@ -130,7 +131,7 @@ func (e *EdgeClient) Close() {
 func (e *EdgeClient) sendPeerRequest() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), UDPEnforceSupernode)
+	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
 	}
@@ -141,7 +142,7 @@ func (e *EdgeClient) sendPeerRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), UDPEnforceSupernode)
+	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -232,7 +233,7 @@ func (e *EdgeClient) handleTAP() {
 		udpSocket := e.SupernodeAddr
 		destMAC := tuntap.FastDestination(payloadBuf)
 		if !tuntap.IsBroadcast(destMAC) {
-			udpSocket, err = e.UDPAddrWithStrategy(destMAC, UDPBestEffort)
+			udpSocket, err = e.UDPAddrWithStrategy(destMAC, p2p.UDPBestEffort)
 			if err != nil {
 				log.Printf("Edge: Error getting udpSocket with Strategy in handleTAP with destMAC: %v", err)
 				continue

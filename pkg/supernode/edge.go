@@ -1,7 +1,7 @@
 package supernode
 
 import (
-	"n2n-go/pkg/peer"
+	"n2n-go/pkg/p2p"
 	"net"
 	"net/netip"
 	"time"
@@ -26,9 +26,9 @@ func (e *Edge) UDPAddr() *net.UDPAddr {
 	return &net.UDPAddr{IP: e.PublicIP, Port: e.PublicPort}
 }
 
-func (e *Edge) PeerInfo() peer.PeerInfo {
+func (e *Edge) PeerInfo() p2p.PeerInfo {
 	mac, _ := net.ParseMAC(e.MACAddr)
-	return peer.PeerInfo{
+	return p2p.PeerInfo{
 		VirtualIP: e.VirtualIP,
 		MACAddr:   mac,
 		PubSocket: &net.UDPAddr{

@@ -2,42 +2,43 @@ package edge
 
 import (
 	"fmt"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"net"
 	"sync/atomic"
 )
 
-func (e *EdgeClient) UDPAddrWithStrategy(dst net.HardwareAddr, strategy UDPWriteStrategy) (*net.UDPAddr, error) {
+func (e *EdgeClient) UDPAddrWithStrategy(dst net.HardwareAddr, strategy p2p.UDPWriteStrategy) (*net.UDPAddr, error) {
 	var udpSocket *net.UDPAddr
 	switch strategy {
-	case UDPEnforceSupernode:
+	case p2p.UDPEnforceSupernode:
 		udpSocket = e.SupernodeAddr
-	case UDPBestEffort, UDPEnforceP2P:
+	case p2p.UDPBestEffort, p2p.UDPEnforceP2P:
 		if dst == nil {
-			if strategy == UDPEnforceP2P {
+			if strategy == p2p.UDPEnforceP2P {
 				return nil, fmt.Errorf("cannot write packet with UDPEnforceP2P flag and a nil destMACAddr")
 			}
 			udpSocket = e.SupernodeAddr
 			break
 		}
-		peer, err := e.Peers.GetPeer(dst.String())
+		p, err := e.Peers.GetPeer(dst.String())
 		if err != nil {
-			if strategy == UDPEnforceP2P {
+			if strategy == p2p.UDPEnforceP2P {
 				return nil, fmt.Errorf("cannot write packet with UDPEnforceP2P (peer not found) %v", err)
 			}
 			udpSocket = e.SupernodeAddr
 			break
 		}
-		if peer.P2PStatus != P2PAvailable && strategy == UDPBestEffort {
+		if p.P2PStatus != p2p.P2PAvailable && strategy == p2p.UDPBestEffort {
 			udpSocket = e.SupernodeAddr
 			break
 		}
-		udpSocket = peer.UDPAddr()
+		udpSocket = p.UDPAddr()
 	}
 	return udpSocket, nil
 }
 
-func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy UDPWriteStrategy) error {
+func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, payloadStr string, strategy p2p.UDPWriteStrategy) error {
 	udpSocket, err := e.UDPAddrWithStrategy(dst, strategy)
 	if err != nil {
 		return err

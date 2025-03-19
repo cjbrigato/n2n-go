@@ -3,6 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"net"
 	"strings"
@@ -19,7 +20,7 @@ func (e *EdgeClient) Register() error {
 
 	payloadStr := fmt.Sprintf("REGISTER %s %s ",
 		e.ID, e.Community)
-	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr, UDPEnforceSupernode)
+	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return err
 	}
@@ -73,7 +74,7 @@ func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
-		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr, UDPEnforceSupernode)
+		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr, p2p.UDPEnforceSupernode)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
@@ -123,17 +124,17 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
 		payloadStr := fmt.Sprintf("PONG %s ", pingMsg.CheckID)
-		e.WritePacket(protocol.TypePing, dst, payloadStr, UDPBestEffort)
+		e.WritePacket(protocol.TypePing, dst, payloadStr, p2p.UDPBestEffort)
 	} else {
-		peer, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
+		p, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
 		if err != nil {
 			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
 		}
-		if peer.P2PCheckID == pingMsg.CheckID {
-			peer.UpdateP2PStatus(P2PAvailable, pingMsg.CheckID)
+		if p.P2PCheckID == pingMsg.CheckID {
+			p.UpdateP2PStatus(p2p.P2PAvailable, pingMsg.CheckID)
 		} else {
-			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, peer.P2PCheckID, pingMsg.CheckID)
-			peer.UpdateP2PStatus(P2PUnknown, "")
+			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, p.P2PCheckID, pingMsg.CheckID)
+			p.UpdateP2PStatus(p2p.P2PUnknown, "")
 		}
 	}
 	return nil

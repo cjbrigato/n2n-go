@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/upnp"
@@ -18,7 +19,7 @@ import (
 
 // EdgeClient encapsulates the state and configuration of an edge.
 type EdgeClient struct {
-	Peers *PeerRegistry
+	Peers *p2p.PeerRegistry
 
 	ID            string
 	Community     string
@@ -79,7 +80,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	igdClient := SetupUPnP(conn, cfg.EdgeID)
 
 	edge := &EdgeClient{
-		Peers:             NewPeerRegistry(),
+		Peers:             p2p.NewPeerRegistry(),
 		ID:                cfg.EdgeID,
 		Community:         cfg.Community,
 		SupernodeAddr:     snAddr,

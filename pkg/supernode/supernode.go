@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
-	"n2n-go/pkg/peer"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"net"
 	"strings"
@@ -203,7 +203,7 @@ func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterMessage) (*Edge, *Comm
 func (s *Supernode) onEdgeUnregistered(cm *Community, edgeMACAddr string) {
 	s.edgeMu.Lock()
 	edge := s.edgesByMAC[edgeMACAddr]
-	pil := newPeerInfoEvent(peer.TypeUnregister, edge)
+	pil := newPeerInfoEvent(p2p.TypeUnregister, edge)
 	delete(s.edgesBySocket, edge.UDPAddr().String())
 	delete(s.edgesByMAC, edgeMACAddr)
 	s.edgeMu.Unlock()
@@ -342,9 +342,9 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 }
 
-func newPeerInfoEvent(eventType peer.PeerInfoEventType, edge *Edge) *peer.PeerInfoList {
-	return &peer.PeerInfoList{
-		PeerInfos: []peer.PeerInfo{
+func newPeerInfoEvent(eventType p2p.PeerInfoEventType, edge *Edge) *p2p.PeerInfoList {
+	return &p2p.PeerInfoList{
+		PeerInfos: []p2p.PeerInfo{
 			edge.PeerInfo(),
 		},
 		EventType: eventType,
@@ -405,7 +405,7 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	s.edgesByMAC[edge.MACAddr] = edge
 	s.edgesBySocket[edge.UDPAddr().String()] = edge
 	s.edgeMu.Unlock()
-	pil := newPeerInfoEvent(peer.TypeRegister, edge)
+	pil := newPeerInfoEvent(p2p.TypeRegister, edge)
 	peerInfoPayload, err := pil.Encode()
 	if err != nil {
 		log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
@@ -435,7 +435,7 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 	edge, exists := cm.GetEdge(heartbeatMsg.EdgeMACAddr)
 	if exists {
 		if changed {
-			pil := newPeerInfoEvent(peer.TypeRegister, edge)
+			pil := newPeerInfoEvent(p2p.TypeRegister, edge)
 			peerInfoPayload, err := pil.Encode()
 			if err != nil {
 				log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
