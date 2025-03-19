@@ -44,14 +44,20 @@ func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) *C
 
 func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) p2p.PeerInfoList {
 	edges := c.GetAllEdges()
+	var origin p2p.PeerInfo
 	var pis []p2p.PeerInfo
+	var hasOrigin bool
 	for _, e := range edges {
-		if e.MACAddr == reqMACAddr && !full {
+		if e.MACAddr == reqMACAddr {
+			if full {
+				origin = e.PeerInfo()
+				hasOrigin = true
+			}
 			continue
 		}
 		pis = append(pis, e.PeerInfo())
 	}
-	return p2p.PeerInfoList{PeerInfos: pis, EventType: p2p.TypeList}
+	return p2p.PeerInfoList{Origin: origin, HasOrigin: hasOrigin, PeerInfos: pis, EventType: p2p.TypeList}
 }
 
 func (c *Community) GetEdgeUDPAddr(MACAddr string) (*net.UDPAddr, error) {

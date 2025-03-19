@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -27,19 +26,40 @@ digraph G {
    model=subset
  `
 
-func SNPeerEdges(peersNodeIDs []string) string {
+func Header() string {
+	return header
+}
+
+func SNPeerEdges(peersNodeIDs map[string]string) string {
 	result := fmt.Sprintf("%s", "# to supernodes")
 	result = fmt.Sprintf("%s\n%s", result, "subgraph cluster1 {")
 	reverse := false
-	for _, p := range peersNodeIDs {
+	for k := range peersNodeIDs {
 		if !reverse {
-			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, p, "sn")
+			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, k, "sn")
 		} else {
-			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, "sn", p)
+			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, "sn", k)
 		}
 		reverse = !reverse
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
+	return result
+}
+
+func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
+	var result string
+	for k, v := range connections {
+		peerA, peerB, _ := k.GetPeers()
+		switch v {
+		case FullP2P:
+			result = fmt.Sprintf("%s\n%s -> %s[dir=both,style=bold, color=green]", result, peerA, peerB)
+		case PartialP2P_AtoB:
+			result = fmt.Sprintf("%s\n%s -> %s[color=orange,style=bold]", result, peerA, peerB)
+		case PartialP2P_BtoA:
+			result = fmt.Sprintf("%s\n%s -> %s[color=orange,style=bold]", result, peerB, peerA)
+		}
+	}
+	result = fmt.Sprintf("%s\n", result)
 	return result
 }
 
@@ -53,25 +73,7 @@ func PeerNodes(peersIdLabels map[string]string) string {
 	return result
 }
 
-/*
-func P2PEdges(cs *CommunityP2PState) string {
-	for k, v := range cs.p2pAvailablityDatas {
-		pA, exists := cs.CommunityPeers[k]
-		if !exists {
-			log.Printf("peer %s does not exists in cs.CommunityPeers, skipping", k)
-			continue
-		}
-		for kk, vv := range cs.p2pAvailablityDatas[k] {
 
-		}
-
-	}
-}*/
-
-type PeerP2PInfos struct {
-	From *Peer
-	To   []*Peer
-}
 
 // Connection type between two peers
 type ConnectionType int
@@ -90,50 +92,78 @@ type ConnectionInfo struct {
 	ToPeer   string
 }
 
+type PeerDirectedPairKey string
+
+func NewPeerDirectedPairKey(from, to string) PeerDirectedPairKey {
+	return PeerDirectedPairKey(from + "->" + to)
+}
+
+func (pdpk PeerDirectedPairKey) GetDirectedPeers() (from, to string, err error) {
+	peers := strings.Split(string(pdpk), "->")
+	if len(peers) < 2 {
+		err = fmt.Errorf("bogus cannot decode bogus PeerDirectedPairKey")
+		return
+	}
+	from = peers[0]
+	to = peers[1]
+	return
+}
+
+func (pdpk PeerDirectedPairKey) ToPeerPairKey() (PeerPairKey, error) {
+	from, to, err := pdpk.GetDirectedPeers()
+	if err != nil {
+		return PeerPairKey(""), err
+	}
+	return NewPeerPairKey(from, to), nil
+}
+
+type PeerPairKey string
+
+func NewPeerPairKey(peerA, peerB string) PeerPairKey {
+	pairKey := ""
+	if peerA < peerB {
+		pairKey = peerA + "," + peerB
+	} else {
+		pairKey = peerB + "," + peerA
+	}
+	return PeerPairKey(pairKey)
+}
+
+func (ppk PeerPairKey) GetPeers() (peerA, peerB string, err error) {
+	peers := strings.Split(string(ppk), ",")
+	if len(peers) < 2 {
+		err = fmt.Errorf("bogus cannot decode bogus PeerPairKey")
+		return
+	}
+	peerA = peers[0]
+	peerB = peers[1]
+	return
+}
+
 type CommunityP2PState struct {
-	CommunityName       string
-	p2pAvailablityDatas map[string]map[string]bool
-	CommunityPeers      map[string]PeerInfo
+	CommunityName        string
+	PeersDescToVIP       map[string]string
+	P2PAvailabilityInfos []PeerP2PInfos
+	ConnectionData       map[PeerDirectedPairKey]ConnectionInfo
+	PeerPairs            map[PeerPairKey]bool
+	P2PStates            map[PeerPairKey]ConnectionType
 }
 
-func (cps *CommunityP2PState) GetPeerNodeIDs() []string {
-	keys := make([]string, len(cps.CommunityPeers))
-	i := 0
-	for k := range cps.CommunityPeers {
-		keys[i] = k
-		i++
-	}
-	return keys
-}
+func NewCommunityP2PState(community string, peerInfos []PeerP2PInfos) (*CommunityP2PState, error) {
+	peersDescToVIP := make(map[string]string)
+	connectionData := make(map[PeerDirectedPairKey]ConnectionInfo)
+	peerPairs := make(map[PeerPairKey]bool)
+	P2PStates := make(map[PeerPairKey]ConnectionType)
 
-func (cps *CommunityP2PState) PeerIDtoPeerInfos(id string) (*PeerInfo, error) {
-	pA, exists := cps.CommunityPeers[id]
-	if !exists {
-		log.Printf("peer %s does not exists in cs.CommunityPeers, skipping", id)
-		return nil, fmt.Errorf("peer %s does not exists in cs.CommunityPeers", id)
-	}
-	return &pA, nil
-}
-
-func (cps *CommunityP2PState) PeerIDtoReachablePeerIDs(id string) (map[string]bool, error) {
-	pi, exists := cps.p2pAvailablityDatas[id]
-	if !exists {
-		log.Printf("peer %s does not exists in cs.p2pAvailablityDatas, skipping", id)
-		return nil, fmt.Errorf("peer %s does not exists in cs.p2pAvailablityDatas", id)
-	}
-	return pi, nil
-}
-
-func GenerateConnectionDatas(peerInfos []PeerP2PInfos) map[string]ConnectionInfo {
-	connectionData := make(map[string]ConnectionInfo)
-
-	// Collect all connection data
+	// connectionData
 	for _, peerInfo := range peerInfos {
-		fromID := peerInfo.From.Infos.VirtualIP.String()
+		fromID := peerInfo.From.Infos.Desc
+		fromVIP := peerInfo.From.Infos.VirtualIP.String()
+		peersDescToVIP[fromID] = fromVIP
 
 		for _, toPeer := range peerInfo.To {
-			toID := toPeer.Infos.VirtualIP.String()
-			connKey := fromID + "->" + toID
+			toID := toPeer.Infos.Desc
+			connKey := NewPeerDirectedPairKey(fromID, toID)
 			connectionData[connKey] = ConnectionInfo{
 				Status:   toPeer.P2PStatus,
 				FromPeer: fromID,
@@ -142,12 +172,39 @@ func GenerateConnectionDatas(peerInfos []PeerP2PInfos) map[string]ConnectionInfo
 		}
 	}
 
-	return connectionData
+	// peerPairs
+	for connKey := range connectionData {
+		pairKey, err := connKey.ToPeerPairKey()
+		if err != nil {
+			return nil, err
+		}
+		peerPairs[pairKey] = true
+	}
+
+	//P2PStates
+	for pairKey := range peerPairs {
+		peerA, peerB, err := pairKey.GetPeers()
+		if err != nil {
+			return nil, err
+		}
+		// Determine the connection type
+		connType := GetConnectionType(peerA, peerB, connectionData)
+		P2PStates[pairKey] = connType
+	}
+
+	return &CommunityP2PState{
+		CommunityName:        community,
+		PeersDescToVIP:       peersDescToVIP,
+		P2PAvailabilityInfos: peerInfos,
+		ConnectionData:       connectionData,
+		PeerPairs:            peerPairs,
+		P2PStates:            P2PStates,
+	}, nil
 }
 
-func GetConnectionType(peerA, peerB string, connectionData map[string]ConnectionInfo) ConnectionType {
-	aToB, hasAtoB := connectionData[peerA+"->"+peerB]
-	bToA, hasBtoA := connectionData[peerB+"->"+peerA]
+func GetConnectionType(peerA, peerB string, connectionData map[PeerDirectedPairKey]ConnectionInfo) ConnectionType {
+	aToB, hasAtoB := connectionData[NewPeerDirectedPairKey(peerA, peerB)]
+	bToA, hasBtoA := connectionData[NewPeerDirectedPairKey(peerB, peerA)]
 
 	aToBisP2P := hasAtoB && aToB.Status == P2PAvailable
 	bToAisP2P := hasBtoA && bToA.Status == P2PAvailable
@@ -163,60 +220,11 @@ func GetConnectionType(peerA, peerB string, connectionData map[string]Connection
 	}
 }
 
-func ProcessConnectionData(connectionData map[string]ConnectionInfo) {
-
-	// Create a set of all peer pairs we need to analyze
-	peerPairs := make(map[string]bool)
-	for connKey := range connectionData {
-		parts := strings.Split(connKey, "->")
-		peerA := parts[0]
-		peerB := parts[1]
-
-		// Create a canonical key for the pair (sorted by string to ensure uniqueness)
-		pairKey := ""
-		if peerA < peerB {
-			pairKey = peerA + "," + peerB
-		} else {
-			pairKey = peerB + "," + peerA
-		}
-
-		peerPairs[pairKey] = true
-	}
-
-	for pairKey := range peerPairs {
-		peers := strings.Split(pairKey, ",")
-		peerA := peers[0]
-		peerB := peers[1]
-
-		// Determine the connection type
-		connType := GetConnectionType(peerA, peerB, connectionData)
-
-		switch connType {
-		case FullP2P:
-
-		case PartialP2P_AtoB:
-			// Partial P2P (A->B direct, B->A via supernode)
-			// Direct connection A->B
-
-		case PartialP2P_BtoA:
-			// Partial P2P (B->A direct, A->B via supernode)
-			// Direct connection B->A
-
-		case NoP2P:
-
-		}
-	}
-
+func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
+	result := Header()
+	result = fmt.Sprintf("%s\n%s", result, SNPeerEdges(cs.PeersDescToVIP))
+	result = fmt.Sprintf("%s\n%s", result, PeerEdges(cs.P2PStates))
+	result = fmt.Sprintf("%s\n%s", result, PeerNodes(cs.PeersDescToVIP))
+	result = fmt.Sprintf("%s\n", result)
+	return result
 }
-
-/*
-   # full
-   raki -> colin[dir=both,style=bold, color=green,label=""]
-   tsd -> krali[dir=both,style=bold, color=green,label=""]
-   raki -> krali[dir=both,style=bold, color=green,label=""]
-
-   # partials
-   raki -> tsd[color=orange,style=bold]
-   tsd -> colin[color=orange,style=bold]
-   colin -> krali[color=orange,style=bold]
-*/

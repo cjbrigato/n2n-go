@@ -8,7 +8,6 @@ import (
 	"net/netip"
 )
 
-
 type PeerInfoEventType uint8
 
 const (
@@ -16,11 +15,6 @@ const (
 	TypeRegister   PeerInfoEventType = 2
 	TypeUnregister PeerInfoEventType = 3
 )
-
-type ReachablesP4P struct {
-	Reachables []PeerInfo
-	For        PeerInfo
-}
 
 type PeerInfo struct {
 	VirtualIP netip.Addr       `json:"virtualIP"`
@@ -32,6 +26,8 @@ type PeerInfo struct {
 }
 
 type PeerInfoList struct {
+	HasOrigin bool
+	Origin    PeerInfo
 	PeerInfos []PeerInfo
 	EventType PeerInfoEventType
 }

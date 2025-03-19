@@ -40,6 +40,11 @@ func (pt P2PCapacity) String() string {
 	}
 }
 
+type PeerP2PInfos struct {
+	From *Peer
+	To   []*Peer
+}
+
 type Peer struct {
 	Infos      PeerInfo
 	P2PStatus  P2PCapacity
@@ -54,6 +59,7 @@ func (p *Peer) resetPendingTTL() {
 
 type PeerRegistry struct {
 	peerMu sync.RWMutex
+	Me     *Peer
 	Peers  map[string]*Peer //keyed by MACAddr.String()
 }
 
@@ -206,6 +212,14 @@ func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *PeerInfoList, reset bo
 			reg.Peers = make(map[string]*Peer)
 			reg.peerMu.Unlock()
 			log.Println("Peers: Resetting peer registry")
+		}
+		if peerInfoList.HasOrigin {
+			me := &Peer{
+				Infos:     peerInfoList.Origin,
+				UpdatedAt: time.Now(),
+			}
+			reg.Me = me
+			log.Printf("Peers: setting self PeerInfo from Origin Peerlist in supernode")
 		}
 		for _, info := range peerInfoList.PeerInfos {
 			_, err := reg.AddPeer(info, overwrite)

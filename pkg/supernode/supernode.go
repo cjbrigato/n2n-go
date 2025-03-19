@@ -360,7 +360,7 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, false)
+	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
 	peerResponsePayload, err := pil.Encode()
 	if err != nil {
 		return err
