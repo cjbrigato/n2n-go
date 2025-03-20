@@ -1,8 +1,6 @@
 package p2p
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"log"
 	"n2n-go/pkg/protocol/codec"
@@ -43,15 +41,15 @@ func (pt P2PCapacity) String() string {
 	}
 }
 
+type PeerP2PInfos struct {
+	From *Peer
+	To   []*Peer
+}
 type P2PFullState struct {
 	CommunityName string
 	IsRequest     bool
 	FullState     map[string]PeerP2PInfos
 }
-
-/*func (pfs *P2PFullState) Encode() ([]byte, error) {
-	return encodeP2PFullState(*pfs)
-}*/
 
 func (pfs *P2PFullState) Encode() ([]byte, error) {
 	return codec.NewCodec[P2PFullState]().Encode(*pfs)
@@ -61,7 +59,18 @@ func ParseP2PFullState(data []byte) (*P2PFullState, error) {
 	return codec.NewCodec[P2PFullState]().Decode(data)
 }
 
+func (pfs *PeerP2PInfos) Encode() ([]byte, error) {
+	return codec.NewCodec[PeerP2PInfos]().Encode(*pfs)
+}
+
+func ParsePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
+	return codec.NewCodec[PeerP2PInfos]().Decode(data)
+}
+
 /*
+/*func (pfs *P2PFullState) Encode() ([]byte, error) {
+	return encodeP2PFullState(*pfs)
+}
 	func ParseP2PFullState(data []byte) (*P2PFullState, error) {
 		pil, err := decodeP2PFullState(data)
 		if err != nil {
@@ -90,11 +99,6 @@ func ParseP2PFullState(data []byte) (*P2PFullState, error) {
 		}
 		return buffer.Bytes(), nil
 	}
-*/
-type PeerP2PInfos struct {
-	From *Peer
-	To   []*Peer
-}
 
 func (pil *PeerP2PInfos) Encode() ([]byte, error) {
 	return encodePeerP2PInfos(*pil)
@@ -128,6 +132,7 @@ func decodePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
 	}
 	return pil, nil
 }
+*/
 
 type Peer struct {
 	Infos      PeerInfo
