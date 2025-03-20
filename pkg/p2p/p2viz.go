@@ -11,23 +11,13 @@ import (
 
 const header = `
 digraph G {
-	graph [fontname = "monospace"];
-	node [fontname = "monospace"];
-	edge [fontname = "monospace"];
-  
+    graph [fontname = "monospace"];
+    node [fontname = "courier new" shape=underline];
+    edge [fontname = "courier new" style=underline len=5]
    bgcolor=transparent;
-   damping=0.99
-   force=12
    splines=true
    layout=neato
-   root=false
-   pin=false
-   overlap=false
-   scale=2.0
-   ratio=.7
-   sep=.3
-   start=232334
-   model=subset
+  normalize=-90
  `
 
 func Header() string {
@@ -70,9 +60,9 @@ func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
 
 func PeerNodes(peersIdLabels map[string]string) string {
 	result := fmt.Sprintf("%s", "# supernode def")
-	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\"  fontsize=25 label=\"SUPER\\nNODE\" pos=\"20,101,1,5.0,0.5,0.5\"]\n\n # nodedefs")
+	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\" label=\"SUPER\\nNODE\" pos=\"60,0!\"]\n\n # nodedefs")
 	for k, v := range peersIdLabels {
-		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\\n%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v, k)
+		result = fmt.Sprintf("%s\n \"%s\" [color=grey label=\"💻%s\\n%s\"]", result, k, v, k)
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
 	return result
