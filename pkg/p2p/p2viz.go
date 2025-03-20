@@ -14,12 +14,12 @@ digraph G {
    bgcolor=transparent;
    damping=0.99
    force=12
-   splines=curved
+   splines=true
    layout=neato
    root=false
    pin=false
    overlap=false
-   scale=1.5
+   scale=2.0
    ratio=.7
    sep=.3
    start=232334
@@ -36,9 +36,9 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 	reverse := false
 	for k := range peersNodeIDs {
 		if !reverse {
-			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, k, "sn")
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, k, "sn")
 		} else {
-			result = fmt.Sprintf("%s\n%s -> %s [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, "sn", k)
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, "sn", k)
 		}
 		reverse = !reverse
 	}
@@ -52,11 +52,11 @@ func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
 		peerA, peerB, _ := k.GetPeers()
 		switch v {
 		case FullP2P:
-			result = fmt.Sprintf("%s\n%s -> %s[dir=both,style=bold, color=green]", result, peerA, peerB)
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\"[dir=both,style=bold, color=green]", result, peerA, peerB)
 		case PartialP2P_AtoB:
-			result = fmt.Sprintf("%s\n%s -> %s[color=orange,style=bold]", result, peerA, peerB)
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\"[color=orange,style=bold]", result, peerA, peerB)
 		case PartialP2P_BtoA:
-			result = fmt.Sprintf("%s\n%s -> %s[color=orange,style=bold]", result, peerB, peerA)
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\"[color=orange,style=bold]", result, peerB, peerA)
 		}
 	}
 	result = fmt.Sprintf("%s\n", result)
@@ -65,9 +65,9 @@ func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
 
 func PeerNodes(peersIdLabels map[string]string) string {
 	result := fmt.Sprintf("%s", "# supernode def")
-	result = fmt.Sprintf("%s\n%s", result, "sn [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\"  fontsize=25 label=\"SUPER\\nNODE\" pos=\"20,101,1,5.0,0.5,0.5\"]\n\n # nodedefs")
+	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\"  fontsize=25 label=\"SUPER\\nNODE\" pos=\"20,101,1,5.0,0.5,0.5\"]\n\n # nodedefs")
 	for k, v := range peersIdLabels {
-		result = fmt.Sprintf("%s\n %s [shape=rectangle color=grey label=\"💻%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v)
+		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v)
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
 	return result

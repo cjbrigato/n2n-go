@@ -2,12 +2,14 @@ package edge
 
 import (
 	"fmt"
+	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
 type EdgeClientApi struct {
@@ -22,7 +24,7 @@ func (eapi *EdgeClientApi) GetPeers(c echo.Context) error {
 	}
 	for {
 		if eapi.Client.Peers.IsWaitingForFullState {
-			time.Sleep(1 * time.Second)
+			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
@@ -42,12 +44,17 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 		Api:    api,
 		Client: edge,
 	}
-	eapi.Api.GET("/peers", eapi.GetPeers, nil)
+	eapi.Api.HideBanner = true
+	eapi.Api.HidePort = true
+	eapi.Api.Use(middleware.Recover())
+	eapi.Api.Use(middleware.RemoveTrailingSlash())
+	eapi.Api.GET("/peers", eapi.GetPeers)
 	return eapi
 }
 
 func (eapi *EdgeClientApi) Run() {
-	eapi.Api.Logger.Fatal(eapi.Api.Start(":7778"))
+	log.Printf("Edge: started management api at localhost:7778")
+	eapi.Api.Logger.Fatal(eapi.Api.Start("localhost:7778"))
 }
 
 func (e *EdgeClient) sendP2PFullStateRequest() error {
