@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"n2n-go/pkg/protocol/codec"
 	"net"
 	"sync"
 	"time"
@@ -48,38 +49,48 @@ type P2PFullState struct {
 	FullState     map[string]PeerP2PInfos
 }
 
-func (pfs *P2PFullState) Encode() ([]byte, error) {
+/*func (pfs *P2PFullState) Encode() ([]byte, error) {
 	return encodeP2PFullState(*pfs)
+}*/
+
+func (pfs *P2PFullState) Encode() ([]byte, error) {
+	return codec.NewCodec[P2PFullState]().Encode(*pfs)
 }
+
 func ParseP2PFullState(data []byte) (*P2PFullState, error) {
-	pil, err := decodeP2PFullState(data)
-	if err != nil {
-		return nil, err
-	}
-	return pil, nil
+	return codec.NewCodec[P2PFullState]().Decode(data)
 }
 
-func decodeP2PFullState(data []byte) (*P2PFullState, error) {
-	r := bytes.NewReader(data)
-	enc := gob.NewDecoder(r) // Will write to network.
-	pil := &P2PFullState{}
-	err := enc.Decode(pil)
-	if err != nil {
-		return nil, fmt.Errorf("error while decoding P2PFullState: %w", err)
+/*
+	func ParseP2PFullState(data []byte) (*P2PFullState, error) {
+		pil, err := decodeP2PFullState(data)
+		if err != nil {
+			return nil, err
+		}
+		return pil, nil
 	}
-	return pil, nil
-}
 
-func encodeP2PFullState(state P2PFullState) ([]byte, error) {
-	var buffer bytes.Buffer
-	enc := gob.NewEncoder(&buffer) // Will write to network.
-	err := enc.Encode(state)
-	if err != nil {
-		return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
+	func decodeP2PFullState(data []byte) (*P2PFullState, error) {
+		r := bytes.NewReader(data)
+		enc := gob.NewDecoder(r) // Will write to network.
+		pil := &P2PFullState{}
+		err := enc.Decode(pil)
+		if err != nil {
+			return nil, fmt.Errorf("error while decoding P2PFullState: %w", err)
+		}
+		return pil, nil
 	}
-	return buffer.Bytes(), nil
-}
 
+	func encodeP2PFullState(state P2PFullState) ([]byte, error) {
+		var buffer bytes.Buffer
+		enc := gob.NewEncoder(&buffer) // Will write to network.
+		err := enc.Encode(state)
+		if err != nil {
+			return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
+		}
+		return buffer.Bytes(), nil
+	}
+*/
 type PeerP2PInfos struct {
 	From *Peer
 	To   []*Peer
