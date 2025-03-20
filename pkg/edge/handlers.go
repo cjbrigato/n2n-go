@@ -109,6 +109,25 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 	return nil
 }
 
+func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
+	fstateMsg, err := r.ToP2PFullStateMessage()
+	if err != nil {
+		return err
+	}
+	if fstateMsg.IsRequest {
+		return fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
+	}
+	if fstateMsg.P2PFullState.FullState == nil {
+		return fmt.Errorf("received nil FullState in P2PFullStateMessage")
+	}
+	e.Peers.FullState = fstateMsg.P2PFullState.FullState
+	if e.Peers.IsWaitingForFullState {
+		e.Peers.IsWaitingForFullState = false
+	}
+	log.Printf("Edge: updated registry P2PFullState")
+	return nil
+}
+
 func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 	pingMsg, err := r.ToPingMessage()
 	if err != nil {

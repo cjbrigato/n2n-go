@@ -18,6 +18,8 @@ type Community struct {
 	addrPool *AddrPool    // Pool of available IP addresses
 	config   *Config      // Reference to the global configuration
 
+	communityPeerP2PInfos map[string]p2p.PeerP2PInfos // known PeerP2PInfos keyed by edgeID (MACAddrString)
+
 	edgeMu sync.RWMutex     // Protects edges map
 	edges  map[string]*Edge // Map of edges by MACAddrString     // Map of edges by ID
 	//macMu     sync.RWMutex      // Protects macToEdge map
@@ -27,11 +29,12 @@ type Community struct {
 // NewCommunity creates a new community with the specified name and subnet
 func NewCommunity(name string, subnet netip.Prefix) *Community {
 	return &Community{
-		name:     name,
-		subnet:   subnet,
-		addrPool: NewAddrPool(subnet),
-		edges:    make(map[string]*Edge),
-		config:   DefaultConfig(), // Use default config if none specified
+		name:                  name,
+		subnet:                subnet,
+		addrPool:              NewAddrPool(subnet),
+		edges:                 make(map[string]*Edge),
+		communityPeerP2PInfos: make(map[string]p2p.PeerP2PInfos),
+		config:                DefaultConfig(), // Use default config if none specified
 	}
 }
 
@@ -40,6 +43,42 @@ func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) *C
 	c := NewCommunity(name, subnet)
 	c.config = config
 	return c
+}
+
+func (c *Community) ResetP2PInfos() {
+	c.communityPeerP2PInfos = make(map[string]p2p.PeerP2PInfos)
+	log.Printf("Community[%s]: reseted communityPeerP2PInfos", c.Name())
+}
+
+func (c *Community) SetP2PInfosFor(edgeMacADDR string, infos p2p.PeerP2PInfos) error {
+	c.edgeMu.RLock()
+	_, exists := c.edges[edgeMacADDR]
+	c.edgeMu.RUnlock()
+	if !exists {
+		return fmt.Errorf("Community:%s unknown edge:%s cannot set P2PInfosFor", c.name, edgeMacADDR)
+	}
+	c.communityPeerP2PInfos[edgeMacADDR] = infos
+	return nil
+}
+
+func (c *Community) CommunityP2PState() (*p2p.CommunityP2PState, error) {
+	return p2p.NewCommunityP2PState(c.Name(), c.communityPeerP2PInfos)
+}
+
+func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PFullState, error) {
+	c.edgeMu.RLock()
+	_, exists := c.edges[edgeMacADDR]
+	c.edgeMu.RUnlock()
+	if !exists {
+		return nil, fmt.Errorf("Community:%s unknown edge:%s cannot set P2PInfosFor", c.name, edgeMacADDR)
+	}
+	c.edgeMu.Lock()
+	defer c.edgeMu.Unlock()
+	return &p2p.P2PFullState{
+		CommunityName: c.Name(),
+		IsRequest:     false,
+		FullState:     c.communityPeerP2PInfos,
+	}, nil
 }
 
 func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) p2p.PeerInfoList {
@@ -95,6 +134,7 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 	}
 
 	delete(c.edges, edgeMACAddr)
+	delete(c.communityPeerP2PInfos, edgeMACAddr)
 
 	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s, freed VIP=%s",
 		c.name, edge.Desc, edge.MACAddr, edge.VirtualIP.String())

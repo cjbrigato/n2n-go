@@ -47,6 +47,54 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 
 }
 
+type P2PFullStateMessage struct {
+	RawMsg        *RawMessage
+	CommunityHash uint32
+	EdgeMACAddr   string
+	IsRequest     bool
+	P2PFullState  p2p.P2PFullState
+}
+
+func (r *RawMessage) ToP2PFullStateMessage() (*P2PFullStateMessage, error) {
+	if r.Header.PacketType != TypeP2PFullState {
+		return nil, fmt.Errorf("not a TypeP2PFullState packet")
+	}
+	pil, err := p2p.ParseP2PFullState(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &P2PFullStateMessage{
+		RawMsg:        r,
+		CommunityHash: r.Header.CommunityID,
+		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+		IsRequest:     pil.IsRequest,
+		P2PFullState:  *pil,
+	}, nil
+}
+
+type P2PStateInfoMessage struct {
+	RawMsg        *RawMessage
+	CommunityHash uint32
+	EdgeMACAddr   string
+	PeerP2PInfos  p2p.PeerP2PInfos
+}
+
+func (r *RawMessage) ToP2PStateInfoMessage() (*P2PStateInfoMessage, error) {
+	if r.Header.PacketType != TypeP2PStateInfo {
+		return nil, fmt.Errorf("not a TypeP2PStateInfo packet")
+	}
+	pil, err := p2p.ParsePeerP2PInfos(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &P2PStateInfoMessage{
+		RawMsg:        r,
+		CommunityHash: r.Header.CommunityID,
+		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+		PeerP2PInfos:  *pil,
+	}, nil
+}
+
 type PingMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string

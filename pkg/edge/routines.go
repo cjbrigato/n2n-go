@@ -84,8 +84,13 @@ func (e *EdgeClient) Run() {
 		log.Printf("Edge: (warn) failed sending preliminary Peer Request: %v", err)
 	}
 
-	log.Printf("Edge: starting P2PUpdate routine...")
+	log.Printf("Edge: starting P2PUpdate routines...")
 	go e.handleP2PUpdates()
+	go e.handleP2PInfos()
+
+	log.Printf("Edge: starting management api...")
+	eapi := NewEdgeApi(e)
+	go eapi.Run()
 
 	<-e.ctx.Done() // Block until context is cancelled
 }
@@ -147,6 +152,38 @@ func (e *EdgeClient) sendHeartbeat() error {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
 	return nil
+}
+
+func (e *EdgeClient) sendP2PInfos() error {
+	infos := e.Peers.GetPeerP2PInfos()
+	data, err := infos.Encode()
+	if err != nil {
+		return err
+	}
+	err = e.WritePacket(protocol.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
+	}
+	return nil
+}
+
+func (e *EdgeClient) handleP2PInfos() {
+	e.wg.Add(1)
+	defer e.wg.Done()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := e.sendP2PInfos(); err != nil {
+				log.Printf("Edge: sendP2PInfos error: %v", err)
+			}
+		case <-e.ctx.Done():
+			return
+		}
+	}
 }
 
 // handleHeartbeat sends heartbeat messages periodically

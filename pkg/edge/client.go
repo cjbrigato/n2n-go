@@ -103,6 +103,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	edge.messageHandlers[protocol.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
 	edge.messageHandlers[protocol.TypePing] = edge.handlePingMessage
+	edge.messageHandlers[protocol.TypeP2PFullState] = edge.handleP2PFullStateMessage
 	return edge, nil
 }
 

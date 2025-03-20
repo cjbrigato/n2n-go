@@ -40,14 +40,16 @@ const (
 type PacketType uint8
 
 const (
-	TypeRegister    PacketType = 1
-	TypeUnregister  PacketType = 2
-	TypeHeartbeat   PacketType = 3
-	TypeData        PacketType = 4
-	TypeAck         PacketType = 5
-	TypePeerRequest PacketType = 6
-	TypePeerInfo    PacketType = 7
-	TypePing        PacketType = 8
+	TypeRegister     PacketType = 1
+	TypeUnregister   PacketType = 2
+	TypeHeartbeat    PacketType = 3
+	TypeData         PacketType = 4
+	TypeAck          PacketType = 5
+	TypePeerRequest  PacketType = 6
+	TypePeerInfo     PacketType = 7
+	TypePing         PacketType = 8
+	TypeP2PStateInfo PacketType = 9
+	TypeP2PFullState PacketType = 10
 )
 
 // String returns a human-readable name for the packet type
@@ -69,6 +71,8 @@ func (pt PacketType) String() string {
 		return "PeerInfo"
 	case TypePing:
 		return "Ping"
+	case TypeP2PStateInfo:
+		return "P2PStateInfo"
 	default:
 		return "Unknown"
 	}

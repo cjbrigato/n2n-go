@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net"
@@ -40,9 +42,80 @@ func (pt P2PCapacity) String() string {
 	}
 }
 
+type P2PFullState struct {
+	CommunityName string
+	IsRequest     bool
+	FullState     map[string]PeerP2PInfos
+}
+
+func (pfs *P2PFullState) Encode() ([]byte, error) {
+	return encodeP2PFullState(*pfs)
+}
+func ParseP2PFullState(data []byte) (*P2PFullState, error) {
+	pil, err := decodeP2PFullState(data)
+	if err != nil {
+		return nil, err
+	}
+	return pil, nil
+}
+
+func decodeP2PFullState(data []byte) (*P2PFullState, error) {
+	r := bytes.NewReader(data)
+	enc := gob.NewDecoder(r) // Will write to network.
+	pil := &P2PFullState{}
+	err := enc.Decode(pil)
+	if err != nil {
+		return nil, fmt.Errorf("error while decoding P2PFullState: %w", err)
+	}
+	return pil, nil
+}
+
+func encodeP2PFullState(state P2PFullState) ([]byte, error) {
+	var buffer bytes.Buffer
+	enc := gob.NewEncoder(&buffer) // Will write to network.
+	err := enc.Encode(state)
+	if err != nil {
+		return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
+	}
+	return buffer.Bytes(), nil
+}
+
 type PeerP2PInfos struct {
 	From *Peer
 	To   []*Peer
+}
+
+func (pil *PeerP2PInfos) Encode() ([]byte, error) {
+	return encodePeerP2PInfos(*pil)
+}
+
+func ParsePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
+	pil, err := decodePeerP2PInfos(data)
+	if err != nil {
+		return nil, err
+	}
+	return pil, nil
+}
+
+func encodePeerP2PInfos(pil PeerP2PInfos) ([]byte, error) {
+	var buffer bytes.Buffer
+	enc := gob.NewEncoder(&buffer) // Will write to network.
+	err := enc.Encode(pil)
+	if err != nil {
+		return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
+	}
+	return buffer.Bytes(), nil
+}
+
+func decodePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
+	r := bytes.NewReader(data)
+	enc := gob.NewDecoder(r) // Will write to network.
+	pil := &PeerP2PInfos{}
+	err := enc.Decode(pil)
+	if err != nil {
+		return nil, fmt.Errorf("error while decoding PeerInfos: %w", err)
+	}
+	return pil, nil
 }
 
 type Peer struct {
@@ -58,14 +131,27 @@ func (p *Peer) resetPendingTTL() {
 }
 
 type PeerRegistry struct {
-	peerMu sync.RWMutex
-	Me     *Peer
-	Peers  map[string]*Peer //keyed by MACAddr.String()
+	peerMu                sync.RWMutex
+	Me                    *Peer
+	Peers                 map[string]*Peer //keyed by MACAddr.String()
+	FullState             map[string]PeerP2PInfos
+	IsWaitingForFullState bool
 }
 
 func NewPeerRegistry() *PeerRegistry {
 	return &PeerRegistry{
 		Peers: make(map[string]*Peer),
+	}
+}
+
+func (reg *PeerRegistry) GetPeerP2PInfos() PeerP2PInfos {
+	var to []*Peer
+	for _, v := range reg.Peers {
+		to = append(to, v)
+	}
+	return PeerP2PInfos{
+		From: reg.Me,
+		To:   to,
 	}
 }
 

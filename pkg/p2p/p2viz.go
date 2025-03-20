@@ -73,8 +73,6 @@ func PeerNodes(peersIdLabels map[string]string) string {
 	return result
 }
 
-
-
 // Connection type between two peers
 type ConnectionType int
 
@@ -143,13 +141,13 @@ func (ppk PeerPairKey) GetPeers() (peerA, peerB string, err error) {
 type CommunityP2PState struct {
 	CommunityName        string
 	PeersDescToVIP       map[string]string
-	P2PAvailabilityInfos []PeerP2PInfos
+	P2PAvailabilityInfos map[string]PeerP2PInfos
 	ConnectionData       map[PeerDirectedPairKey]ConnectionInfo
 	PeerPairs            map[PeerPairKey]bool
 	P2PStates            map[PeerPairKey]ConnectionType
 }
 
-func NewCommunityP2PState(community string, peerInfos []PeerP2PInfos) (*CommunityP2PState, error) {
+func NewCommunityP2PState(community string, peerInfos map[string]PeerP2PInfos) (*CommunityP2PState, error) {
 	peersDescToVIP := make(map[string]string)
 	connectionData := make(map[PeerDirectedPairKey]ConnectionInfo)
 	peerPairs := make(map[PeerPairKey]bool)

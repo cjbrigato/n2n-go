@@ -110,6 +110,8 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[protocol.TypeData] = sn.handleDataMessage
 	sn.SnMessageHandlers[protocol.TypePeerRequest] = sn.handlePeerRequestMessage
 	sn.SnMessageHandlers[protocol.TypePing] = sn.handlePingMessage
+	sn.SnMessageHandlers[protocol.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
+	sn.SnMessageHandlers[protocol.TypeP2PFullState] = sn.handleP2PFullStateMessage
 
 	sn.shutdownWg.Add(1)
 	go func() {
@@ -351,6 +353,23 @@ func newPeerInfoEvent(eventType p2p.PeerInfoEventType, edge *Edge) *p2p.PeerInfo
 	}
 }
 
+func (s *Supernode) handleP2PStateInfoMessage(r *protocol.RawMessage) error {
+	p2pMsg, err := r.ToP2PStateInfoMessage()
+	if err != nil {
+		return err
+	}
+	cm, err := s.GetCommunityForEdge(p2pMsg.EdgeMACAddr, p2pMsg.CommunityHash)
+	if err != nil {
+		return err
+	}
+	err = cm.SetP2PInfosFor(p2pMsg.EdgeMACAddr, p2pMsg.PeerP2PInfos)
+	if err != nil {
+		return err
+	}
+	s.debugLog("Community:%s updated P2PInfosFor:%s", cm.Name(), p2pMsg.EdgeMACAddr)
+	return nil
+}
+
 func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	peerReqMsg, err := r.ToPeerRequestMessage()
 	if err != nil {
@@ -446,6 +465,34 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 		return s.SendAck(r.Addr, edge, "ACK")
 	}
 	return nil
+}
+
+func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
+	fsMsg, err := r.ToP2PFullStateMessage()
+	if err != nil {
+		return err
+	}
+	if !fsMsg.IsRequest {
+		return fmt.Errorf("supernode does not handle non-requests P2PFullStatesMessage")
+	}
+	cm, err := s.GetCommunityForEdge(fsMsg.EdgeMACAddr, fsMsg.CommunityHash)
+	if err != nil {
+		return err
+	}
+	P2PFullState, err := cm.GetCommunityPeerP2PInfosDatas(fsMsg.EdgeMACAddr)
+	if err != nil {
+		return err
+	}
+	data, err := P2PFullState.Encode()
+	if err != nil {
+		return err
+	}
+	target, err := cm.GetEdgeUDPAddr(fsMsg.EdgeMACAddr)
+	if err != nil {
+		return err
+	}
+	return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
+
 }
 
 // handleDataMessage processes a data packet
