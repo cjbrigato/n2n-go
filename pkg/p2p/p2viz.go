@@ -11,9 +11,9 @@ import (
 
 const header = `
 digraph G {
-    graph [fontname = "monospace"];
+    graph [fontname = "monospace" inputscale=0];
     node [fontname = "courier new" shape=underline];
-    edge [fontname = "courier new" style=underline len=5]
+    edge [fontname = "courier new" len=4.5]
    bgcolor=transparent;
    splines=true
    layout=neato
@@ -30,9 +30,9 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 	reverse := false
 	for k := range peersNodeIDs {
 		if !reverse {
-			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, k, "sn")
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed\"  arrowhead=none, color=grey]", result, k, "sn")
 		} else {
-			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed,bold\"  arrowhead=none, color=grey]", result, "sn", k)
+			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed\"  arrowhead=none, color=grey]", result, "sn", k)
 		}
 		reverse = !reverse
 	}
