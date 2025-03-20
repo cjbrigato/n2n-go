@@ -72,7 +72,7 @@ func PeerNodes(peersIdLabels map[string]string) string {
 	result := fmt.Sprintf("%s", "# supernode def")
 	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\"  fontsize=25 label=\"SUPER\\nNODE\" pos=\"20,101,1,5.0,0.5,0.5\"]\n\n # nodedefs")
 	for k, v := range peersIdLabels {
-		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\n%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v, k)
+		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\\n%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v, k)
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
 	return result
@@ -244,7 +244,7 @@ func (cs *CommunityP2PState) GenerateP2PGraphImage() ([]byte, error) {
 		return nil, err
 	}
 	var buf bytes.Buffer
-	err = g.Render(ctx, graph, graphviz.PNG, &buf)
+	err = g.Render(ctx, graph, graphviz.SVG, &buf)
 	if err != nil {
 		return nil, err
 	}

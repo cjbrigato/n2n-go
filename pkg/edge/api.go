@@ -38,7 +38,7 @@ func (eapi *EdgeClientApi) GetPeers(c echo.Context) error {
 	return c.String(http.StatusOK, res)
 }
 
-func (eapi *EdgeClientApi) GetPeersPNG(c echo.Context) error {
+func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 	err := eapi.Client.sendP2PFullStateRequest()
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func (eapi *EdgeClientApi) GetPeersPNG(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.Blob(http.StatusOK, "image/png", res)
+	return c.Blob(http.StatusOK, "image/svg+xml", res)
 }
 
 func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
@@ -73,7 +73,7 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.Use(middleware.Recover())
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
 	eapi.Api.GET("/peers", eapi.GetPeers)
-	eapi.Api.GET("/peers.png", eapi.GetPeersPNG)
+	eapi.Api.GET("/peers.svg", eapi.GetPeersSVG)
 	return eapi
 }
 
