@@ -491,6 +491,7 @@ func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes",len(string(data)))
 	return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
 
 }

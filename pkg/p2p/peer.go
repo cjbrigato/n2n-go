@@ -1,9 +1,7 @@
 package p2p
 
 import (
-	"bytes"
-	"encoding/gob"
-	"fmt"
+	"n2n-go/pkg/protocol/codec"
 	"net"
 	"net/netip"
 )
@@ -32,35 +30,10 @@ type PeerInfoList struct {
 	EventType PeerInfoEventType
 }
 
-func (pil *PeerInfoList) Encode() ([]byte, error) {
-	return encodePeerInfos(*pil)
+func (pfs *PeerInfoList) Encode() ([]byte, error) {
+	return codec.NewCodec[PeerInfoList]().Encode(*pfs)
 }
 
 func ParsePeerInfoList(data []byte) (*PeerInfoList, error) {
-	pil, err := decodePeerInfos(data)
-	if err != nil {
-		return nil, err
-	}
-	return pil, nil
-}
-
-func encodePeerInfos(pil PeerInfoList) ([]byte, error) {
-	var buffer bytes.Buffer
-	enc := gob.NewEncoder(&buffer) // Will write to network.
-	err := enc.Encode(pil)
-	if err != nil {
-		return nil, fmt.Errorf("error while encore PeerInfos: %w", err)
-	}
-	return buffer.Bytes(), nil
-}
-
-func decodePeerInfos(data []byte) (*PeerInfoList, error) {
-	r := bytes.NewReader(data)
-	enc := gob.NewDecoder(r) // Will write to network.
-	pil := &PeerInfoList{}
-	err := enc.Decode(pil)
-	if err != nil {
-		return nil, fmt.Errorf("error while decoding PeerInfos: %w", err)
-	}
-	return pil, nil
+	return codec.NewCodec[PeerInfoList]().Decode(data)
 }
