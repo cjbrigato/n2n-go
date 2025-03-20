@@ -1,8 +1,12 @@
 package p2p
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/goccy/go-graphviz"
 )
 
 const header = `
@@ -32,7 +36,7 @@ func Header() string {
 
 func SNPeerEdges(peersNodeIDs map[string]string) string {
 	result := fmt.Sprintf("%s", "# to supernodes")
-	result = fmt.Sprintf("%s\n%s", result, "subgraph cluster1 {")
+	//result = fmt.Sprintf("%s\n%s", result, "subgraph cluster1 {")
 	reverse := false
 	for k := range peersNodeIDs {
 		if !reverse {
@@ -42,7 +46,8 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 		}
 		reverse = !reverse
 	}
-	result = fmt.Sprintf("%s\n%s\n", result, "}")
+	//result = fmt.Sprintf("%s\n%s\n", result, "}")
+	result = fmt.Sprintf("%s\n", result)
 	return result
 }
 
@@ -67,7 +72,7 @@ func PeerNodes(peersIdLabels map[string]string) string {
 	result := fmt.Sprintf("%s", "# supernode def")
 	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\"  fontsize=25 label=\"SUPER\\nNODE\" pos=\"20,101,1,5.0,0.5,0.5\"]\n\n # nodedefs")
 	for k, v := range peersIdLabels {
-		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v)
+		result = fmt.Sprintf("%s\n \"%s\" [shape=rectangle color=grey label=\"💻%s\n%s\" fontsize=25 style=\"bold,dashed\"]", result, k, v, k)
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
 	return result
@@ -225,4 +230,23 @@ func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
 	result = fmt.Sprintf("%s\n%s", result, PeerNodes(cs.PeersDescToVIP))
 	result = fmt.Sprintf("%s\n", result)
 	return result
+}
+
+func (cs *CommunityP2PState) GenerateP2PGraphImage() ([]byte, error) {
+	data := []byte(cs.GenerateP2PGraphviz())
+	graph, err := graphviz.ParseBytes(data)
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	g, err := graphviz.New(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	err = g.Render(ctx, graph, graphviz.PNG, &buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

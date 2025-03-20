@@ -38,6 +38,30 @@ func (eapi *EdgeClientApi) GetPeers(c echo.Context) error {
 	return c.String(http.StatusOK, res)
 }
 
+func (eapi *EdgeClientApi) GetPeersPNG(c echo.Context) error {
+	err := eapi.Client.sendP2PFullStateRequest()
+	if err != nil {
+		return err
+	}
+	for {
+		if eapi.Client.Peers.IsWaitingForFullState {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	state := eapi.Client.Peers.FullState
+	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	if err != nil {
+		return err
+	}
+	res, err := cp2p.GenerateP2PGraphImage()
+	if err != nil {
+		return err
+	}
+	return c.Blob(http.StatusOK, "image/png", res)
+}
+
 func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	api := echo.New()
 	eapi := &EdgeClientApi{
@@ -49,6 +73,7 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.Use(middleware.Recover())
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
 	eapi.Api.GET("/peers", eapi.GetPeers)
+	eapi.Api.GET("/peers.png", eapi.GetPeersPNG)
 	return eapi
 }
 

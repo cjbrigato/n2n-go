@@ -124,7 +124,7 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if e.Peers.IsWaitingForFullState {
 		e.Peers.IsWaitingForFullState = false
 	}
-	log.Printf("Edge: updated registry P2PFullState")
+	//log.Printf("Edge: updated registry P2PFullState")
 	return nil
 }
 
