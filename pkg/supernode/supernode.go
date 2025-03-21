@@ -644,7 +644,6 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	if err != nil {
 		return err
 	}
-	log.Printf("packetBuf[protocol.ProtoVHeaderSize:]: %d Bytes, Payload: %d Bytes", len(packetBuf[protocol.ProtoVHeaderSize:]), len(payloadStr))
 
 	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
@@ -660,6 +659,7 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	return nil
 }
 
+/*
 func (s *Supernode) WriteFragments(pt protocol.PacketType, src net.HardwareAddr, payload []byte, addr *net.UDPAddr) error {
 	frags := protocol.MakeVFragPackets(pt, src, payload)
 	for _, f := range frags {
@@ -670,6 +670,7 @@ func (s *Supernode) WriteFragments(pt protocol.PacketType, src net.HardwareAddr,
 	}
 	return nil
 }
+*/
 
 func (s *Supernode) BroadcastPacket(pt protocol.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
 	// Get buffer for full packet

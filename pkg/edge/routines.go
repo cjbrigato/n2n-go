@@ -1,8 +1,6 @@
 package edge
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"log"
 	"n2n-go/pkg/p2p"
@@ -327,6 +325,7 @@ func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
 	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
 }
 
+/*
 func (e *EdgeClient) handleVFrag(data []byte, addr *net.UDPAddr) {
 	if len(data) < protocol.ProtoVFragSize {
 		log.Println("Received datagram smaller than header size")
@@ -363,8 +362,9 @@ func (e *EdgeClient) handleVFrag(data []byte, addr *net.UDPAddr) {
 			return
 		}
 	}
-	
+
 }
+*/
 
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {
@@ -394,10 +394,12 @@ func (e *EdgeClient) handleUDP() {
 			continue
 		}
 
-		if packetBuf[0] == protocol.VersionVFrag {
-			e.handleVFrag(packetBuf[:n], addr)
-			continue
-		}
+		/*
+			if packetBuf[0] == protocol.VersionVFrag {
+				e.handleVFrag(packetBuf[:n], addr)
+				continue
+			}
+		*/
 
 		if e.enableVFuze {
 			if packetBuf[0] == protocol.VersionVFuze {

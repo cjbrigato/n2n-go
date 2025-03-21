@@ -17,7 +17,28 @@ type EdgeClientApi struct {
 	Client *EdgeClient
 }
 
-func (eapi *EdgeClientApi) GetPeers(c echo.Context) error {
+func (eapi *EdgeClientApi) GetPeersJSON(c echo.Context) error {
+	err := eapi.Client.sendP2PFullStateRequest()
+	if err != nil {
+		return err
+	}
+	for {
+		if eapi.Client.Peers.IsWaitingForFullState {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	state := eapi.Client.Peers.FullState
+	/*cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	if err != nil {
+		return err
+	}
+	res := cp2p.GenerateP2PGraphviz()*/
+	return c.JSON(http.StatusOK, state)
+}
+
+func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 	err := eapi.Client.sendP2PFullStateRequest()
 	if err != nil {
 		return err
@@ -72,7 +93,8 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.HidePort = true
 	eapi.Api.Use(middleware.Recover())
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
-	eapi.Api.GET("/peers", eapi.GetPeers)
+	eapi.Api.GET("/peers.json", eapi.GetPeersJSON)
+	eapi.Api.GET("/peers.dot", eapi.GetPeersDot)
 	eapi.Api.GET("/peers.svg", eapi.GetPeersSVG)
 	return eapi
 }
