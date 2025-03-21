@@ -33,6 +33,7 @@ type ProtoVHeader struct {
 	// Verification (8 bytes)
 	Timestamp uint32 // Unix timestamp (seconds)
 	Checksum  uint32 // CRC32 checksum
+
 }
 
 func bytesToMAC(arr [6]byte) net.HardwareAddr {
@@ -123,6 +124,8 @@ func (h *ProtoVHeader) MarshalBinaryTo(buf []byte) error {
 	// Calculate checksum
 	h.Checksum = crc32.ChecksumIEEE(buf[:30])
 	binary.BigEndian.PutUint32(buf[26:30], h.Checksum)
+
+
 
 	return nil
 }

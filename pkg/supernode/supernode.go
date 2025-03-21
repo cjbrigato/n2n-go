@@ -491,8 +491,9 @@ func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes",len(string(data)))
-	return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
+	log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes", len(string(data)))
+	return s.WriteFragments(protocol.TypeP2PFullState, s.MacADDR(), data, target)
+	//return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
 
 }
 
@@ -654,6 +655,17 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
+}
+
+func (s *Supernode) WriteFragments(pt protocol.PacketType, src net.HardwareAddr, payload []byte, addr *net.UDPAddr) error {
+	frags := protocol.MakeVFragPackets(pt, src, payload)
+	for _, f := range frags {
+		_, err := s.Conn.WriteToUDP(f, addr)
+		if err != nil {
+			return fmt.Errorf("Supernode: failed to send Fragments: %w", err)
+		}
 	}
 	return nil
 }
