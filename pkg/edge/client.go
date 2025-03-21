@@ -102,6 +102,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		packetBufPool:     buffers.PacketBufferPool,
 		headerBufPool:     buffers.HeaderBufferPool,
 		messageHandlers:   make(protocol.MessageHandlerMap),
+		config:            &cfg,
 	}
 	edge.messageHandlers[protocol.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
