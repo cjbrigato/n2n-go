@@ -44,6 +44,9 @@ type EdgeClient struct {
 	VirtualIP string
 	MACAddr   net.HardwareAddr
 
+	fragMu sync.RWMutex
+	frag map[string]map[uint8][]byte
+
 	unregisterOnce sync.Once
 	running        atomic.Bool
 

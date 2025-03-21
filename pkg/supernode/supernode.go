@@ -491,9 +491,9 @@ func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes", len(string(data)))
-	return s.WriteFragments(protocol.TypeP2PFullState, s.MacADDR(), data, target)
-	//return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
+	//log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes", len(string(data)))
+	//return s.WriteFragments(protocol.TypeP2PFullState, s.MacADDR(), data, target)
+	return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
 
 }
 
@@ -644,6 +644,7 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	if err != nil {
 		return err
 	}
+	log.Printf("packetBuf[protocol.ProtoVHeaderSize:]: %d Bytes, Payload: %d Bytes", len(packetBuf[protocol.ProtoVHeaderSize:]), len(payloadStr))
 
 	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
