@@ -7,7 +7,7 @@ import (
 const (
 	// DefaultBufferSize is the default size for packet buffers
 	// Large enough for protocol header + max Ethernet frame
-	DefaultBufferSize = 2048 * 2048
+	DefaultBufferSize = 65507
 
 	// MaxPacketSize is the maximum packet size we expect to handle
 	MaxPacketSize = 1500
