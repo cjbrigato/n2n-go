@@ -79,6 +79,11 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		return nil, err
 	}
 	log.Printf("Edge: got machine-id: %s", hex.EncodeToString(machineId))
+	mac, err := machine.GenerateMac(cfg.TapName)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Edge: %s TAP ifName machine-id based MAC Address: %s", cfg.TapName, mac.String())
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg)
 	if err != nil {

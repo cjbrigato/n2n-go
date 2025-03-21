@@ -8,7 +8,7 @@ import (
 
 var HASH_KEY = [16]byte{0xd3, 0x1e, 0x48, 0xfa, 0x90, 0xfe, 0x4b, 0x4c, 0x9d, 0xaf, 0xd5, 0xd7, 0xa1, 0xb1, 0x2e, 0x8a}
 
-func siphash24(key []byte, seed [16]byte) uint64 {
+func notSipHash24(key []byte, seed [16]byte) uint64 {
 	v0 := binary.LittleEndian.Uint64(seed[0:8])
 	v1 := binary.LittleEndian.Uint64(seed[8:16])
 	v2 := v0 ^ 0x736f6d6570736575
@@ -61,14 +61,11 @@ func netGenerateMac(machineName string, mac *net.HardwareAddr, hashKey [16]byte,
 		data = append(data, idxBytes...)
 	}
 
-	result := siphash24(data, hashKey)
+	result := notSipHash24(data, hashKey)
 
-	macBytes := make(net.HardwareAddr, 8) // Ethernet MAC length is 6
+	macBytes := make(net.HardwareAddr, 8)
 	binary.LittleEndian.PutUint64(macBytes, result)
-	*mac = macBytes[:6] // Take only the first 6 bytes
-
-	//markRandomMAC(mac) // Apply random MAC marking (locally administered bit)
-
+	*mac = macBytes[:6]
 	return nil
 }
 
