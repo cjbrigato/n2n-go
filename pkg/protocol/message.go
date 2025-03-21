@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"n2n-go/pkg/p2p"
 	"net"
@@ -12,6 +14,31 @@ type RawMessage struct {
 	Payload   []byte
 	Addr      *net.UDPAddr
 	rawPacket []byte
+}
+
+func packProtoVDatagram(header ProtoVHeader, payload []byte) []byte {
+	datagram := new(bytes.Buffer)
+	binary.Write(datagram, binary.BigEndian, header)
+	datagram.Write(payload)
+	return datagram.Bytes()
+}
+
+func unpackProtoVDatagram(data []byte, addr *net.UDPAddr) (*RawMessage, error) {
+	if len(data) < ProtoVHeaderSize {
+		return nil, fmt.Errorf("Received datagram smaller than header size")
+	}
+	var header ProtoVHeader
+	headerReader := bytes.NewReader(data[:ProtoVHeaderSize])
+	if err := binary.Read(headerReader, binary.BigEndian, &header); err != nil {
+		return nil, fmt.Errorf("Error parsing header: %v", err)
+	}
+	payload := data[ProtoVHeaderSize:]
+	return &RawMessage{
+		Header:    &header,
+		Payload:   payload,
+		Addr:      addr,
+		rawPacket: data,
+	}, nil
 }
 
 func (r *RawMessage) RawPacket() []byte {
@@ -28,23 +55,7 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 		return nil, fmt.Errorf("not a VersionV packet from %v", addr)
 	}
 
-	var vHeader ProtoVHeader
-	if err := vHeader.UnmarshalBinary(packet[:ProtoVHeaderSize]); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal protoV header from %v: %v", addr, err)
-	}
-
-	msg := &RawMessage{
-		Header:    &vHeader,
-		Addr:      addr,
-		rawPacket: packet,
-	}
-
-	if len(packet) > ProtoVHeaderSize {
-		msg.Payload = packet[ProtoVHeaderSize:]
-	}
-
-	return msg, nil
-
+	return unpackProtoVDatagram(packet, addr)
 }
 
 type P2PFullStateMessage struct {
@@ -255,7 +266,7 @@ type UnregisterMessage struct {
 }
 
 func (r *RawMessage) ToUnregisterMessage() (*UnregisterMessage, error) {
-	if r.Header.PacketType != TypeUnregister {
+	if r.Header.PacketType != TypeUnregisterRequest {
 		return nil, fmt.Errorf("not a TypeUnregister packet")
 	}
 	return &UnregisterMessage{
@@ -275,7 +286,7 @@ type RegisterMessage struct {
 
 // Payload Format: REGISTER <edgeDesc> <CommunityName>
 func (r *RawMessage) ToRegisterMessage() (*RegisterMessage, error) {
-	if r.Header.PacketType != TypeRegister {
+	if r.Header.PacketType != TypeRegisterRequest {
 		return nil, fmt.Errorf("not a TypeRegister packet")
 	}
 	parts := strings.Fields(string(r.Payload))

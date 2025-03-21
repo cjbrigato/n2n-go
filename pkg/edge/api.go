@@ -30,11 +30,6 @@ func (eapi *EdgeClientApi) GetPeersJSON(c echo.Context) error {
 		}
 	}
 	state := eapi.Client.Peers.FullState
-	/*cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
-	if err != nil {
-		return err
-	}
-	res := cp2p.GenerateP2PGraphviz()*/
 	return c.JSON(http.StatusOK, state)
 }
 

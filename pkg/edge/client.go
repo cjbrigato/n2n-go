@@ -2,9 +2,11 @@ package edge
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/tuntap"
@@ -71,6 +73,12 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	/*if err := cfg.Defaults(); err != nil {
 		return nil, err
 	}*/
+
+	machineId, err := machine.GetMachineID()
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Edge: got machine-id: %s", hex.EncodeToString(machineId))
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg)
 	if err != nil {

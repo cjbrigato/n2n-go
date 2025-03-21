@@ -105,8 +105,8 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 		SnMessageHandlers: make(protocol.MessageHandlerMap),
 	}
 
-	sn.SnMessageHandlers[protocol.TypeRegister] = sn.handleRegisterMessage
-	sn.SnMessageHandlers[protocol.TypeUnregister] = sn.handleUnregisterMessage
+	sn.SnMessageHandlers[protocol.TypeRegisterRequest] = sn.handleRegisterMessage
+	sn.SnMessageHandlers[protocol.TypeUnregisterRequest] = sn.handleUnregisterMessage
 	sn.SnMessageHandlers[protocol.TypeAck] = sn.handleAckMessage
 	sn.SnMessageHandlers[protocol.TypeHeartbeat] = sn.handleHeartbeatMessage
 	sn.SnMessageHandlers[protocol.TypeData] = sn.handleDataMessage

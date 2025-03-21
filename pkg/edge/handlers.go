@@ -20,7 +20,7 @@ func (e *EdgeClient) Register() error {
 
 	payloadStr := fmt.Sprintf("REGISTER %s %s ",
 		e.ID, e.Community)
-	err := e.WritePacket(protocol.TypeRegister, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
+	err := e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
-		err := e.WritePacket(protocol.TypeUnregister, nil, payloadStr, p2p.UDPEnforceSupernode)
+		err := e.WritePacket(protocol.TypeUnregisterRequest, nil, payloadStr, p2p.UDPEnforceSupernode)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
