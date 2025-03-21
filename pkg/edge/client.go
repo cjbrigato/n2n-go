@@ -45,7 +45,7 @@ type EdgeClient struct {
 	MACAddr   net.HardwareAddr
 
 	fragMu sync.RWMutex
-	frag map[string]map[uint8][]byte
+	frag   map[string]map[uint8][]byte
 
 	unregisterOnce sync.Once
 	running        atomic.Bool
@@ -60,7 +60,7 @@ type EdgeClient struct {
 
 	//state
 	registered bool
-
+	config     *Config
 	// Handlers
 	messageHandlers protocol.MessageHandlerMap
 }
@@ -68,9 +68,9 @@ type EdgeClient struct {
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
 func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
-	if err := cfg.Defaults(); err != nil {
+	/*if err := cfg.Defaults(); err != nil {
 		return nil, err
-	}
+	}*/
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg)
 	if err != nil {

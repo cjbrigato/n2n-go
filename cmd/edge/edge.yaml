@@ -1,0 +1,10 @@
+# edge.yaml
+edge_id: "kraliminogre"
+community: "acme"
+supernode_addr: "157.180.44.113:7777"
+local_port: 0  # Use 0 for automatic port assignment
+enable_vfuze: true
+tap_name: "n2n_tap0"
+heartbeat_interval: "30s"
+udp_buffer_size: 8388608
+api_listen_address: ":7778" #Optional api address

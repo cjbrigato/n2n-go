@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+/*
 // Config holds supernode configuration options
 type Config struct {
 	Debug               bool          // Enable debug logging
@@ -38,6 +39,7 @@ func DefaultConfig() *Config {
 		EnableVFuze:         true,
 	}
 }
+*/
 
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
 type Supernode struct {

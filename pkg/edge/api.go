@@ -100,8 +100,8 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 }
 
 func (eapi *EdgeClientApi) Run() {
-	log.Printf("Edge: started management api at :7778")
-	eapi.Api.Logger.Fatal(eapi.Api.Start(":7778"))
+	log.Printf("Edge: started management api at %s", eapi.Client.config.APIListenAddr)
+	eapi.Api.Logger.Fatal(eapi.Api.Start(eapi.Client.config.APIListenAddr))
 }
 
 func (e *EdgeClient) sendP2PFullStateRequest() error {
