@@ -1,6 +1,8 @@
 package edge
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"n2n-go/pkg/p2p"
@@ -325,6 +327,43 @@ func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
 	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
 }
 
+func (e *EdgeClient) handleVFrag(data []byte, addr *net.UDPAddr) {
+	if len(data) < protocol.ProtoVFragSize {
+		log.Println("Received datagram smaller than header size")
+		return
+	}
+	var header protocol.ProtoVFragHeader
+	headerReader := bytes.NewReader(data[:protocol.ProtoVFragSize])
+	if err := binary.Read(headerReader, binary.BigEndian, &header); err != nil {
+		log.Printf("Error parsing header: %v", err)
+		return
+	}
+	payload := data[protocol.ProtoVFragSize:]
+
+	// Check if this is a fragmented message
+	if header.FragmentTotal <= 1 {
+		if header.PacketType == protocol.TypeP2PFullState {
+			pil, err := p2p.ParseP2PFullState(payload)
+			if err != nil {
+				log.Printf("error handleVFrag: %v", err)
+				return
+			}
+			if pil.IsRequest {
+				return //fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
+			}
+			if pil.FullState == nil {
+				return //fmt.Errorf("received nil FullState in P2PFullStateMessage")
+			}
+			e.Peers.FullState = pil.FullState
+			if e.Peers.IsWaitingForFullState {
+				e.Peers.IsWaitingForFullState = false
+			}
+			log.Println("mamamia")
+			return
+		}
+	}
+}
+
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {
 	e.wg.Add(1)
@@ -350,6 +389,11 @@ func (e *EdgeClient) handleUDP() {
 				continue
 			}
 			log.Printf("Edge: UDP read error: %v", err)
+			continue
+		}
+
+		if packetBuf[0] == protocol.VersionVFrag {
+			e.handleVFrag(packetBuf[:n], addr)
 			continue
 		}
 
