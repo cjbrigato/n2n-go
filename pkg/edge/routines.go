@@ -338,8 +338,9 @@ func (e *EdgeClient) handleVFrag(data []byte, addr *net.UDPAddr) {
 		log.Printf("Error parsing header: %v", err)
 		return
 	}
+	log.Printf("%v", header)
 	payload := data[protocol.ProtoVFragSize:]
-
+	log.Printf("len p: %d", len(payload))
 	// Check if this is a fragmented message
 	if header.FragmentTotal <= 1 {
 		if header.PacketType == protocol.TypeP2PFullState {

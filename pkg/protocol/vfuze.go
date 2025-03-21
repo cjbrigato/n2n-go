@@ -28,7 +28,7 @@ func VFuzeHeaderBytes(dst net.HardwareAddr) []byte {
 }
 
 const (
-	ProtoVFragSize      = 14
+	ProtoVFragSize      = 12
 	VersionVFrag        = 0x61
 	VFragPayloadMaxSize = 1024
 )
