@@ -98,7 +98,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	communityHash := protocol.HashCommunity(cfg.Community)
 	igdClient := SetupUPnP(conn, cfg.EdgeID)
 
-	util.IfMac(tap.Name(), string(predictableMac))
+	util.IfMac(tap.Name(), predictableMac.String())
 
 	edge := &EdgeClient{
 		Peers:             p2p.NewPeerRegistry(),
