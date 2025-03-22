@@ -20,19 +20,6 @@ func (e *EdgeClient) Register() error {
 		EdgeDesc:      e.ID,
 		CommunityName: e.Community,
 	}
-	/*payloadStr := fmt.Sprintf("REGISTER %s %s ",
-	e.ID, e.Community)*/
-
-	/*
-		payload, err := regReq.Encode()
-		if err != nil {
-			return err
-		}
-		payloadStr := string(payload)
-		err = e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
-		if err != nil {
-			return err
-		}*/
 
 	err := e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 
@@ -59,13 +46,16 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("Edge: short packet while waiting for initial RegisterResponse")
 	}
 
-	rawMsg, err := protocol.NewRawMessage(respBuf, addr)
+	rresp, err := protocol.MessageFromPacket[*netstruct.RegisterResponse](respBuf, addr)
+
+	/*rawMsg, err := protocol.NewRawMessage(respBuf, addr)
 	if err != nil {
 		log.Printf("Edge: error while parsing UDP Packet: %v", err)
 		return fmt.Errorf("Edge: error while parsing initial RegisterResponse Packet")
 	}
 
-	rresp, err := protocol.ToMessage[*netstruct.RegisterResponse](rawMsg)
+	rresp, err := protocol.ToMessage[*netstruct.RegisterResponse](rawMsg)*/
+
 	if err != nil {
 		return err
 	}
@@ -78,29 +68,6 @@ func (e *EdgeClient) Register() error {
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 	e.registered = true
 	return nil
-
-	/*
-		// Process the response
-		resp := strings.TrimSpace(string(respBuf[:n]))
-		parts := strings.Fields(resp)
-		if len(parts) < 1 || parts[0] != "ACK" {
-			if strings.HasPrefix(resp, "ERR") {
-				return fmt.Errorf("edge: registration error: %s", resp)
-			}
-			return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
-		}
-
-		if len(parts) >= 3 {
-			e.VirtualIP = fmt.Sprintf("%s/%s", parts[1], parts[2])
-			log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
-		} else {
-			return fmt.Errorf("edge: registration response missing virtual IP")
-		}
-
-		log.Printf("Edge: Registration successful (ACK from %v)", addr)
-		e.registered = true
-		return nil
-	*/
 }
 
 // Unregister sends an unregister packet to the supernode.
