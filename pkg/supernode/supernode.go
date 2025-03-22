@@ -168,7 +168,7 @@ func (s *Supernode) GetCommunityForEdge(edgeMACAddr string, communityHash uint32
 }
 
 // RegisterEdge registers or updates an edge in the supernode
-func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterMessage) (*Edge, *Community, error) {
+func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterRequestMessage) (*Edge, *Community, error) {
 
 	cm, err := s.RegisterCommunity(regMsg.CommunityName, regMsg.CommunityHash)
 	if err != nil {

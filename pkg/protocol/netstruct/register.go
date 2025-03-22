@@ -1,5 +1,10 @@
 package netstruct
 
+import (
+	"n2n-go/pkg/protocol/codec"
+	"n2n-go/pkg/protocol/spec"
+)
+
 type RegisterRequest struct {
 	EdgeMACAddr   string
 	EdgeDesc      string
@@ -7,3 +12,38 @@ type RegisterRequest struct {
 }
 
 type RetryRegisterRequest struct{}
+
+func (rreq *RegisterRequest) Encode() ([]byte, error) {
+	return codec.NewCodec[RegisterRequest]().Encode(*rreq)
+}
+
+func ParseRegisterRequest(data []byte) (*RegisterRequest, error) {
+	return codec.NewCodec[RegisterRequest]().Decode(data)
+}
+
+type RegisterResponse struct {
+	IsRegisterOk bool
+	VirtualIP    string
+	Masklen      int
+}
+
+func (rresp *RegisterResponse) Encode() ([]byte, error) {
+	return codec.NewCodec[RegisterResponse]().Encode(*rresp)
+}
+
+func ParseRegisterResponse(data []byte) (*RegisterResponse, error) {
+	return codec.NewCodec[RegisterResponse]().Decode(data)
+}
+
+func (rresp *RegisterResponse) Parse(data []byte) error {
+	resp, err := codec.NewCodec[RegisterResponse]().Decode(data)
+	if err != nil {
+		return err
+	}
+	*rresp = *resp
+	return nil
+}
+
+func (rresp *RegisterResponse) PacketType() spec.PacketType {
+	return spec.TypeRegisterResponse
+}

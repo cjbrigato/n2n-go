@@ -186,7 +186,7 @@ func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) (bool, error) 
 }
 
 // EdgeUpdate registers a new edge or updates an existing one
-func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) { //srcID string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
+func (c *Community) EdgeUpdate(regMsg *protocol.RegisterRequestMessage) (*Edge, error) { //srcID string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
 	c.edgeMu.Lock()
 	defer c.edgeMu.Unlock()
 

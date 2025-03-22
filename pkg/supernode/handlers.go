@@ -95,14 +95,20 @@ func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {
 }
 
 func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
-	regMsg, err := r.ToRegisterMessage()
+	regMsg, err := r.ToRegisterRequestMessage()
 	if err != nil {
 		return err
 	}
 	edge, cm, err := s.RegisterEdge(regMsg)
+	rresp := &netstruct.RegisterResponse{}
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", regMsg.EdgeMACAddr, err)
-		s.SendAck(r.Addr, nil, "ERR Registration failed")
+		//s.SendAck(r.Addr, nil, "ERR Registration failed")
+		rresp.IsRegisterOk = false
+		data, inErr := rresp.Encode()
+		if inErr == nil {
+			s.WritePacket(protocol.TypeRegisterResponse, regMsg.CommunityName, s.MacADDR(), nil, string(data), r.Addr)
+		}
 		s.stats.PacketsDropped.Add(1)
 		return err
 	}
@@ -110,6 +116,15 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	s.edgesByMAC[edge.MACAddr] = edge
 	s.edgesBySocket[edge.UDPAddr().String()] = edge
 	s.edgeMu.Unlock()
+
+	rresp.IsRegisterOk = true
+	rresp.VirtualIP = edge.VirtualIP.String()
+	rresp.Masklen = edge.VNetMaskLen
+	data, inErr := rresp.Encode()
+	if inErr != nil {
+		return inErr
+	}
+	s.WritePacket(protocol.TypeRegisterResponse, regMsg.CommunityName, s.MacADDR(), nil, string(data), r.Addr)
 	pil := newPeerInfoEvent(p2p.TypeRegister, edge)
 	peerInfoPayload, err := pil.Encode()
 	if err != nil {
@@ -118,8 +133,8 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), regMsg.EdgeMACAddr)
 	}
 
-	ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
-	s.SendAck(r.Addr, edge, ackMsg)
+	/*ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
+	s.SendAck(r.Addr, edge, ackMsg)*/
 	return nil
 }
 

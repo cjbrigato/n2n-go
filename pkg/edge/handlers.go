@@ -5,22 +5,30 @@ import (
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
 	"net"
 	"strings"
 	"time"
 )
 
 // Register sends a registration packet to the supernode.
-// Registration payload format depends on the header type:
-// - Legacy: "REGISTER <edgeID> <tapMAC>" (MAC in hex colon-separated form)
-// - Compact: "REGISTER <edgeID> <tapMAC> <community> <communityHash>" when extended addressing is used
-// - ProtoV: "REGISTER <edgeDesc> <CommunityName>"
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
-	payloadStr := fmt.Sprintf("REGISTER %s %s ",
-		e.ID, e.Community)
-	err := e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
+	regReq := &netstruct.RegisterRequest{
+		EdgeMACAddr:   e.MACAddr.String(),
+		EdgeDesc:      e.ID,
+		CommunityName: e.Community,
+	}
+	/*payloadStr := fmt.Sprintf("REGISTER %s %s ",
+	e.ID, e.Community)*/
+
+	payload, err := regReq.Encode()
+	if err != nil {
+		return err
+	}
+	payloadStr := string(payload)
+	err = e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return err
 	}
@@ -44,26 +52,51 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
 	}
 
-	// Process the response
-	resp := strings.TrimSpace(string(respBuf[:n]))
-	parts := strings.Fields(resp)
-	if len(parts) < 1 || parts[0] != "ACK" {
-		if strings.HasPrefix(resp, "ERR") {
-			return fmt.Errorf("edge: registration error: %s", resp)
-		}
-		return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
+	if n < protocol.ProtoVHeaderSize {
+		return fmt.Errorf("Edge: short packet while waiting for initial RegisterResponse")
 	}
 
-	if len(parts) >= 3 {
-		e.VirtualIP = fmt.Sprintf("%s/%s", parts[1], parts[2])
-		log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
-	} else {
-		return fmt.Errorf("edge: registration response missing virtual IP")
+	rawMsg, err := protocol.NewRawMessage(respBuf, addr)
+	if err != nil {
+		log.Printf("Edge: error while parsing UDP Packet: %v", err)
+		return fmt.Errorf("Edge: error while parsing initial RegisterResponse Packet")
 	}
 
+	rresp, err := protocol.ToPMessage[*netstruct.RegisterResponse](rawMsg)
+	if err != nil {
+		return err
+	}
+	if !rresp.Msg.IsRegisterOk {
+		return fmt.Errorf("Edge: supernode refused register request. Aborting")
+	}
+	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
+	log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
 	log.Printf("Edge: Registration successful (ACK from %v)", addr)
 	e.registered = true
 	return nil
+
+	/*
+		// Process the response
+		resp := strings.TrimSpace(string(respBuf[:n]))
+		parts := strings.Fields(resp)
+		if len(parts) < 1 || parts[0] != "ACK" {
+			if strings.HasPrefix(resp, "ERR") {
+				return fmt.Errorf("edge: registration error: %s", resp)
+			}
+			return fmt.Errorf("edge: unexpected registration response from %v: %s", addr, resp)
+		}
+
+		if len(parts) >= 3 {
+			e.VirtualIP = fmt.Sprintf("%s/%s", parts[1], parts[2])
+			log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
+		} else {
+			return fmt.Errorf("edge: registration response missing virtual IP")
+		}
+
+		log.Printf("Edge: Registration successful (ACK from %v)", addr)
+		e.registered = true
+		return nil
+	*/
 }
 
 // Unregister sends an unregister packet to the supernode.

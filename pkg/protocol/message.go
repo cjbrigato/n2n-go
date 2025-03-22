@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"strings"
 )
@@ -304,30 +305,76 @@ func (r *RawMessage) ToUnregisterMessage() (*UnregisterMessage, error) {
 	}, nil
 }
 
-type RegisterMessage struct {
-	RawMsg        *RawMessage
-	CommunityHash uint32
-	CommunityName string
-	EdgeDesc      string
-	EdgeMACAddr   string
+type RegisterRequestMessage struct {
+	RawMsg          *RawMessage
+	CommunityHash   uint32
+	CommunityName   string
+	EdgeDesc        string
+	EdgeMACAddr     string
+	RegisterRequest *netstruct.RegisterRequest
 }
 
-// Payload Format: REGISTER <edgeDesc> <CommunityName>
-func (r *RawMessage) ToRegisterMessage() (*RegisterMessage, error) {
+func (r *RawMessage) ToRegisterRequestMessage() (*RegisterRequestMessage, error) {
 	if r.Header.PacketType != TypeRegisterRequest {
 		return nil, fmt.Errorf("not a TypeRegister packet")
 	}
-	parts := strings.Fields(string(r.Payload))
-	if len(parts) < 3 || parts[0] != "REGISTER" {
-		return nil, fmt.Errorf("invalid payload format despite TypeRegister")
+	rreq, err := netstruct.ParseRegisterRequest(r.Payload)
+	if err != nil {
+		return nil, err
 	}
-
-	return &RegisterMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		CommunityName: parts[2],
-		EdgeDesc:      parts[1],
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+	return &RegisterRequestMessage{
+		RawMsg:          r,
+		CommunityHash:   r.Header.CommunityID,
+		CommunityName:   rreq.CommunityName,
+		EdgeDesc:        rreq.EdgeDesc,
+		EdgeMACAddr:     r.Header.GetSrcMACAddr().String(),
+		RegisterRequest: rreq,
 	}, nil
 
+}
+
+/*
+type RegisterResponseMessage struct {
+	RawMsg *RawMessage
+	*netstruct.RegisterResponse
+}
+
+func (r *RawMessage) ToRegisterResponseMessage() (*Message[netstruct.RegisterResponse], error) {
+	if r.Header.PacketType != TypeRegisterResponse {
+		return nil, fmt.Errorf("not a TypeRegisterResponse packet")
+	}
+	rresp, err := netstruct.ParseRegisterResponse(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &Message[netstruct.RegisterResponse]{
+		RawMsg: r,
+		Msg:    rresp,
+	}, nil
+
+}*/
+
+type Message[T any] struct {
+	RawMsg *RawMessage
+	Msg    *T
+}
+
+type PMessage[T netstruct.Parsable] struct {
+	RawMsg *RawMessage
+	Msg    T
+}
+
+func ToPMessage[T netstruct.Parsable](r *RawMessage) (*PMessage[T], error) {
+	var x T
+	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
+		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
+	}
+	err := x.Parse(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &PMessage[T]{
+		RawMsg: r,
+		Msg:    x,
+	}, nil
 }

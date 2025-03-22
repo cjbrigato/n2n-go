@@ -51,6 +51,7 @@ const (
 	TypeP2PStateInfo         PacketType = 9
 	TypeP2PFullState         PacketType = 10
 	TypeLeasesInfos          PacketType = 11
+	TypeRegisterResponse     PacketType = 252
 	TypeRetryRegisterRequest PacketType = 253
 )
 
@@ -77,6 +78,8 @@ func (pt PacketType) String() string {
 		return "P2PStateInfo"
 	case TypeLeasesInfos:
 		return "LeasesInfos"
+	case TypeRegisterResponse:
+		return "RegisterResponse"
 	case TypeRetryRegisterRequest:
 		return "RetryRegisterRequest"
 	default:
