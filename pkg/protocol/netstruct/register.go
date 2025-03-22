@@ -5,3 +5,5 @@ type RegisterRequest struct {
 	EdgeDesc      string
 	CommunityName string
 }
+
+type RetryRegisterRequest struct{}

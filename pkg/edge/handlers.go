@@ -122,6 +122,16 @@ func (s *EdgeClient) handleLeasesInfosMessage(r *protocol.RawMessage) error {
 	return nil
 }
 
+func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
+	if r.Header.PacketType != protocol.TypeRetryRegisterRequest {
+		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
+	}
+	if err := e.Register(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	fstateMsg, err := r.ToP2PFullStateMessage()
 	if err != nil {
