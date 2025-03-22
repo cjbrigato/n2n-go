@@ -28,3 +28,13 @@ func IfUp(ifName, ipAddr string) error {
 	return nil
 }
 
+// ConfigureInterface brings up the TAP interface and assigns the given IP address.
+func IfMac(ifName, macAddr string) error {
+
+	cmdMac := exec.Command("ip", "link", "set", "dev", ifName, "address", macAddr)
+	if err := cmdMac.Run(); err != nil {
+		return fmt.Errorf("failed to bring up interface: %w", err)
+	}
+
+	return nil
+}

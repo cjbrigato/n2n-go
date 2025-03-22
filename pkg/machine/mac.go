@@ -47,13 +47,13 @@ func notSipHash24(key []byte, seed [16]byte) uint64 {
 	return v0 ^ v1 ^ v2 ^ v3
 }
 
-func netGenerateMac(machineName string, mac *net.HardwareAddr, hashKey [16]byte, idx uint64) error {
+func netGenerateMac(idString string, mac *net.HardwareAddr, hashKey [16]byte, idx uint64) error {
 	machineIDBytes, err := GetMachineID()
 	if err != nil {
 		return err
 	}
 
-	nameBytes := []byte(machineName)
+	nameBytes := []byte(idString)
 	data := append(machineIDBytes, nameBytes...)
 	if idx > 0 {
 		idxBytes := make([]byte, 8)
@@ -69,9 +69,9 @@ func netGenerateMac(machineName string, mac *net.HardwareAddr, hashKey [16]byte,
 	return nil
 }
 
-func GenerateMac(ifName string) (net.HardwareAddr, error) {
+func GenerateMac(communityName string) (net.HardwareAddr, error) {
 	var generatedMAC net.HardwareAddr
-	err := netGenerateMac(ifName, &generatedMAC, HASH_KEY, 12345)
+	err := netGenerateMac(communityName, &generatedMAC, HASH_KEY, 12345)
 	if err != nil {
 		return nil, fmt.Errorf("Error generating MAC: %v\n", err)
 	}

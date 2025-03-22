@@ -46,6 +46,9 @@ type EdgeClient struct {
 	VirtualIP string
 	MACAddr   net.HardwareAddr
 
+	machineId      []byte
+	predictableMac net.HardwareAddr
+
 	fragMu sync.RWMutex
 	frag   map[string]map[uint8][]byte
 
@@ -79,11 +82,11 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		return nil, err
 	}
 	log.Printf("Edge: got machine-id: %s", hex.EncodeToString(machineId))
-	mac, err := machine.GenerateMac(cfg.TapName)
+	predictableMac, err := machine.GenerateMac(cfg.Community)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("Edge: %s TAP ifName machine-id based MAC Address: %s", cfg.TapName, mac.String())
+	log.Printf("Edge: %s TAP ifName machine-id based Community %s MAC Address: %s", cfg.TapName, cfg.Community, predictableMac.String())
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg)
 	if err != nil {
@@ -95,6 +98,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	communityHash := protocol.HashCommunity(cfg.Community)
 	igdClient := SetupUPnP(conn, cfg.EdgeID)
 
+	util.IfMac(tap.Name(), string(predictableMac))
+
 	edge := &EdgeClient{
 		Peers:             p2p.NewPeerRegistry(),
 		ID:                cfg.EdgeID,
@@ -105,6 +110,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		seq:               0,
 		IgdClient:         igdClient,
 		MACAddr:           tap.HardwareAddr(),
+		predictableMac:    predictableMac,
+		machineId:         machineId,
 		protocolVersion:   cfg.ProtocolVersion,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		verifyHash:        cfg.VerifyHash,
