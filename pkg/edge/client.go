@@ -63,6 +63,8 @@ type EdgeClient struct {
 	PacketsSent atomic.Uint64
 	PacketsRecv atomic.Uint64
 
+	EAPI *EdgeClientApi
+
 	//state
 	registered bool
 	config     *Config
@@ -131,6 +133,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
 	edge.messageHandlers[protocol.TypePing] = edge.handlePingMessage
 	edge.messageHandlers[protocol.TypeP2PFullState] = edge.handleP2PFullStateMessage
+	edge.messageHandlers[protocol.TypeLeasesInfos] = edge.handleLeasesInfosMessage
 	return edge, nil
 }
 

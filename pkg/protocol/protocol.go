@@ -50,6 +50,7 @@ const (
 	TypePing              PacketType = 8
 	TypeP2PStateInfo      PacketType = 9
 	TypeP2PFullState      PacketType = 10
+	TypeLeasesInfos       PacketType = 11
 )
 
 // String returns a human-readable name for the packet type
@@ -73,6 +74,8 @@ func (pt PacketType) String() string {
 		return "Ping"
 	case TypeP2PStateInfo:
 		return "P2PStateInfo"
+	case TypeLeasesInfos:
+		return "LeasesInfos"
 	default:
 		return "Unknown"
 	}

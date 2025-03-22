@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"n2n-go/pkg/p2p"
+	"n2n-go/pkg/protocol/netstruct"
 	"net"
 	"strings"
 )
@@ -56,6 +57,33 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 	}
 
 	return unpackProtoVDatagram(packet, addr)
+}
+
+type LeasesInfosMessage struct {
+	RawMsg        *RawMessage
+	CommunityName string
+	CommunityHash uint32
+	EdgeMACAddr   string
+	IsRequest     bool
+	LeasesInfos   netstruct.LeasesInfos
+}
+
+func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
+	if r.Header.PacketType != TypeLeasesInfos {
+		return nil, fmt.Errorf("not a TypeLeasesInfos packet")
+	}
+	pil, err := netstruct.ParseLeasesInfos(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &LeasesInfosMessage{
+		RawMsg:        r,
+		CommunityName: pil.CommunityName,
+		CommunityHash: r.Header.CommunityID,
+		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+		IsRequest:     pil.IsRequest,
+		LeasesInfos:   *pil,
+	}, nil
 }
 
 type P2PFullStateMessage struct {

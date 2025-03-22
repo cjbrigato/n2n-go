@@ -6,6 +6,7 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
 	"net"
 	"strings"
 	"sync"
@@ -86,6 +87,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[protocol.TypePing] = sn.handlePingMessage
 	sn.SnMessageHandlers[protocol.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
 	sn.SnMessageHandlers[protocol.TypeP2PFullState] = sn.handleP2PFullStateMessage
+	sn.SnMessageHandlers[protocol.TypeLeasesInfos] = sn.handleLeasesInfosMEssage
 
 	sn.shutdownWg.Add(1)
 	go func() {
@@ -375,6 +377,35 @@ func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {
 	}
 	s.debugLog("Received ACK from edge %s", ackMessage.EdgeMACAddr)
 	return nil
+}
+
+func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
+	leaseMsg, err := r.ToLeasesInfosMessage()
+	if err != nil {
+		return err
+	}
+	if !leaseMsg.IsRequest {
+		return fmt.Errorf("Supernode do not handle non-request LeasesInfosMessage")
+	}
+	cm, err := s.GetCommunityForEdge(leaseMsg.EdgeMACAddr, leaseMsg.CommunityHash)
+	if err != nil {
+		return err
+	}
+	leases := cm.GetAllLease()
+	infos := netstruct.LeasesInfos{
+		IsRequest:     false,
+		CommunityName: cm.Name(),
+		Leases:        leases,
+	}
+	data, err := infos.Encode()
+	if err != nil {
+		return err
+	}
+	target, err := cm.GetEdgeUDPAddr(leaseMsg.EdgeMACAddr)
+	if err != nil {
+		return err
+	}
+	return s.WritePacket(protocol.TypeLeasesInfos, cm.Name(), s.MacADDR(), nil, string(data), target)
 }
 
 func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {

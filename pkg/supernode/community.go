@@ -273,6 +273,24 @@ func (c *Community) GetAllEdges() []*Edge {
 	return edges
 }
 
+func (c *Community) GetLease(macAddr string) *ippool.Lease {
+	return c.ips.GetLease(macAddr)
+}
+
+func (c *Community) GetAllLease() map[string]ippool.Lease {
+	c.edgeMu.RLock()
+	defer c.edgeMu.RUnlock()
+	leases := make(map[string]ippool.Lease)
+	for k := range c.edges {
+		l := c.GetLease(k)
+		if l == nil {
+			continue
+		}
+		leases[k] = *l
+	}
+	return leases
+}
+
 // GetAllEdges returns a copy of all edges in the community
 func (c *Community) GetStaleEdgeIDs(expiry time.Duration) []string {
 	now := time.Now()

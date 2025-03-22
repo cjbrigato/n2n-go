@@ -109,6 +109,19 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 	return nil
 }
 
+func (s *EdgeClient) handleLeasesInfosMessage(r *protocol.RawMessage) error {
+	leaseMsg, err := r.ToLeasesInfosMessage()
+	if err != nil {
+		return err
+	}
+	if leaseMsg.IsRequest {
+		return fmt.Errorf("Edge do not handle request LeasesInfosMessage")
+	}
+	s.EAPI.LastLeasesInfos = &leaseMsg.LeasesInfos
+	s.EAPI.IsWaitingForLeasesInfos = false
+	return nil
+}
+
 func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	fstateMsg, err := r.ToP2PFullStateMessage()
 	if err != nil {
@@ -124,7 +137,6 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if e.Peers.IsWaitingForFullState {
 		e.Peers.IsWaitingForFullState = false
 	}
-	//log.Printf("Edge: updated registry P2PFullState")
 	return nil
 }
 

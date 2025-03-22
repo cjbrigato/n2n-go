@@ -90,6 +90,7 @@ func (e *EdgeClient) Run() {
 
 	log.Printf("Edge: starting management api...")
 	eapi := NewEdgeApi(e)
+	e.EAPI = eapi
 	go eapi.Run()
 
 	<-e.ctx.Done() // Block until context is cancelled
