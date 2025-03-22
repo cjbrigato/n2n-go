@@ -40,7 +40,7 @@ func (rresp *RegisterResponse) Parse(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*rresp = *resp
+	rresp = resp
 	return nil
 }
 
