@@ -386,9 +386,13 @@ func (g *GenericStruct[T]) ToMessage(r *RawMessage) (*Message[T], error) {
 	}, nil
 }
 
-func ToMessage[T netstruct.PacketTyped](r *RawMessage) (*Message[T],error){
+func ToMessage[T netstruct.PacketTyped](r *RawMessage) (*Message[T], error) {
 	s := GenericStruct[T]{}
 	return s.ToMessage(r)
+}
+
+func Encode[T any](s T) ([]byte, error) {
+	return codec.NewCodec[T]().Encode(s)
 }
 
 /*

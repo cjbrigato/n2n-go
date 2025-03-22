@@ -121,7 +121,7 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	rresp.V.IsRegisterOk = true
 	rresp.V.VirtualIP = edge.VirtualIP.String()
 	rresp.V.Masklen = edge.VNetMaskLen
-	data, inErr := rresp.Encode()
+	data, inErr := protocol.Encode(rresp)
 	if inErr != nil {
 		return inErr
 	}
