@@ -23,15 +23,18 @@ func (e *EdgeClient) Register() error {
 	/*payloadStr := fmt.Sprintf("REGISTER %s %s ",
 	e.ID, e.Community)*/
 
-	payload, err := regReq.Encode()
-	if err != nil {
-		return err
-	}
-	payloadStr := string(payload)
-	err = e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return err
-	}
+	/*
+		payload, err := regReq.Encode()
+		if err != nil {
+			return err
+		}
+		payloadStr := string(payload)
+		err = e.WritePacket(protocol.TypeRegisterRequest, e.MACAddr, payloadStr, p2p.UDPEnforceSupernode)
+		if err != nil {
+			return err
+		}*/
+
+	err := e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {

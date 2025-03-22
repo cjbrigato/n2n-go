@@ -134,8 +134,6 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), regMsg.EdgeMACAddr)
 	}
 
-	/*ackMsg := fmt.Sprintf("ACK %s %d", edge.VirtualIP.String(), edge.VNetMaskLen)
-	s.SendAck(r.Addr, edge, ackMsg)*/
 	return nil
 }
 

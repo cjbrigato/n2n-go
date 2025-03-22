@@ -395,23 +395,10 @@ func Encode[T any](s T) ([]byte, error) {
 	return codec.NewCodec[T]().Encode(s)
 }
 
-/*
-type GMessage[P netstruct.PacketTyped] struct {
-	RawMsg *RawMessage
-	Msg P
-}
-
-func ToGMessage[P netstruct.PacketTyped](r *RawMessage)(*GMessage[P],error){
-	var x netstruct.GenericStruct[P]
-	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
-		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
-	}
-	v, err := x.Parse(r.Payload)
+func MessageFromPacket[T netstruct.PacketTyped](packet []byte, addr *net.UDPAddr) (*Message[T], error) {
+	rawMsg, err := NewRawMessage(packet, addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Edge: error while parsing MessageFromPacket: %w", err)
 	}
-	return &GMessage[P]{
-		RawMsg: r,
-		Msg: v,
-	}, nil
-}*/
+	return ToMessage[T](rawMsg)
+}

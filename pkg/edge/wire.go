@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
 	"net"
 	"sync/atomic"
 )
@@ -67,6 +68,51 @@ func (e *EdgeClient) WritePacket(pt protocol.PacketType, dst net.HardwareAddr, p
 		return fmt.Errorf("edge: failed to protov %s header: %w", pt.String(), err)
 	}
 	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+	e.PacketsSent.Add(1)
+
+	// Send the packet
+	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], udpSocket)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
+}
+
+func (e *EdgeClient) SendStruct(s netstruct.PacketTyped, dst net.HardwareAddr, strategy p2p.UDPWriteStrategy) error {
+	udpSocket, err := e.UDPAddrWithStrategy(dst, strategy)
+	if err != nil {
+		return err
+	}
+
+	seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
+	// Get buffer for full packet
+	packetBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		e.ProtocolVersion(),
+		64,
+		protocol.PacketType(s.PacketType()),
+		seq,
+		e.Community,
+		e.MACAddr,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	payload, err := protocol.Encode(s)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("edge: failed to protov %s header: %w", protocol.PacketType(s.PacketType()), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
 	totalLen = protocol.ProtoVHeaderSize + payloadLen
 	e.PacketsSent.Add(1)
 

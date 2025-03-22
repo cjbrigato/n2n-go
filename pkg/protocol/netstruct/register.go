@@ -21,11 +21,16 @@ func ParseRegisterRequest(data []byte) (*RegisterRequest, error) {
 	return codec.NewCodec[RegisterRequest]().Decode(data)
 }
 
+func (rreq *RegisterRequest) PacketType() spec.PacketType {
+	return spec.TypeRegisterRequest
+}
+
 type RegisterResponse struct {
 	IsRegisterOk bool
 	VirtualIP    string
 	Masklen      int
 }
+
 /*
 func (rresp *RegisterResponse) Encode() ([]byte, error) {
 	return codec.NewCodec[RegisterResponse]().Encode(*rresp)
@@ -35,7 +40,6 @@ func (rresp *RegisterResponse) Parse(data []byte) (*RegisterResponse, error) {
 	return codec.NewCodec[RegisterResponse]().Decode(data)
 }
 */
-
 
 func (rresp *RegisterResponse) PacketType() spec.PacketType {
 	return spec.TypeRegisterResponse
