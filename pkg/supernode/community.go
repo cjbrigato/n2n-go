@@ -9,14 +9,19 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/cjbrigato/ippool"
 )
 
 // Community represents a logical grouping of edges sharing the same virtual network
 type Community struct {
-	name     string       // Name of the community
-	subnet   netip.Prefix // Network prefix for this community
-	addrPool *AddrPool    // Pool of available IP addresses
-	config   *Config      // Reference to the global configuration
+	name   string       // Name of the community
+	subnet netip.Prefix // Network prefix for this community
+	//addrPool *AddrPool    // Pool of available IP addresses
+	config *Config // Reference to the global configuration
+
+	ips     *ippool.IPPool
+	maskLen int
 
 	p2pMu                 sync.RWMutex
 	communityPeerP2PInfos map[string]p2p.PeerP2PInfos // known PeerP2PInfos keyed by edgeID (MACAddrString)
@@ -28,22 +33,37 @@ type Community struct {
 }
 
 // NewCommunity creates a new community with the specified name and subnet
-func NewCommunity(name string, subnet netip.Prefix) *Community {
+func NewCommunity(name string, subnet netip.Prefix) (*Community, error) {
+	d := subnet.Masked().Bits()
+	cidr := fmt.Sprintf("%s/%d", subnet.Masked().Addr().String(), d)
+	var err error
+	ips, ok := ippool.GetRegisteredPool(cidr)
+	if !ok {
+		ips, err = ippool.NewIPPool(cidr, 24*time.Hour)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return &Community{
-		name:                  name,
-		subnet:                subnet,
-		addrPool:              NewAddrPool(subnet),
+		name:   name,
+		subnet: subnet,
+		//addrPool:              NewAddrPool(subnet),
+		ips:                   ips,
+		maskLen:               d,
 		edges:                 make(map[string]*Edge),
 		communityPeerP2PInfos: make(map[string]p2p.PeerP2PInfos),
 		config:                DefaultConfig(), // Use default config if none specified
-	}
+	}, nil
 }
 
 // NewCommunityWithConfig creates a new community with the specified configuration
-func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) *Community {
-	c := NewCommunity(name, subnet)
+func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) (*Community, error) {
+	c, err := NewCommunity(name, subnet)
+	if err != nil {
+		return nil, err
+	}
 	c.config = config
-	return c
+	return c, nil
 }
 
 func (c *Community) ResetP2PInfos() {
@@ -133,17 +153,17 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 	}
 
 	// Release the IP address
-	err := c.addrPool.Release(edgeMACAddr)
+	/*err := c.addrPool.Release(edgeMACAddr)
 	if err != nil {
 		c.debugLog("VIP Release failed: %v", err)
-	}
+	}*/
 
 	delete(c.edges, edgeMACAddr)
 	c.p2pMu.Lock()
 	defer c.p2pMu.Unlock()
 	delete(c.communityPeerP2PInfos, edgeMACAddr)
 
-	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s, freed VIP=%s",
+	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s",
 		c.name, edge.Desc, edge.MACAddr, edge.VirtualIP.String())
 	return true
 }
@@ -175,12 +195,18 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 
 	if !exists {
 		// New edge, allocate an IP address
-		vip, masklen, err := c.addrPool.Request(regMsg.EdgeMACAddr)
+		//vip, masklen, err := c.addrPool.Request(regMsg.EdgeMACAddr)
+		nvip, err := c.ips.RequestIP(regMsg.EdgeMACAddr, true)
 		if err != nil {
 			c.debugLog("VIP allocation failed for edge %s: %v", regMsg.EdgeMACAddr, err)
 			return nil, fmt.Errorf("IP allocation failed: %w", err)
 		}
 
+		vip, err := netip.ParseAddr(nvip.String())
+		if err != nil {
+			fmt.Printf("Error converting net.IP to netip.Addr: %v\n", err)
+			return nil, err
+		}
 		// Create new edge
 		edge = &Edge{
 			Desc:          regMsg.EdgeDesc,
@@ -188,7 +214,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterMessage) (*Edge, error) 
 			PublicPort:    regMsg.RawMsg.Addr.Port,
 			Community:     c.name,
 			VirtualIP:     vip,
-			VNetMaskLen:   masklen,
+			VNetMaskLen:   c.maskLen,
 			LastHeartbeat: time.Now(),
 			LastSequence:  regMsg.RawMsg.Header.Sequence,
 			MACAddr:       regMsg.EdgeMACAddr,

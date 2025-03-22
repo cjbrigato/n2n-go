@@ -1,5 +1,5 @@
 # edge.yaml
-edge_id: "kraliminogre"
+edge_id: "" # auto generate from hostname
 community: "acme"
 supernode_addr: "157.180.44.113:7777"
 local_port: 0  # Use 0 for automatic port assignment

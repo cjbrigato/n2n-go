@@ -5,12 +5,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"n2n-go/pkg/supernode"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"n2n-go/pkg/supernode"
+	"github.com/cjbrigato/ippool"
 )
 
 const banner = "ICAgICBfXyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBfICAgICAKICAgIC8gL19fXyAgXyBfIF9fICBfX18gXyBfIF8gXyAgX19fICBfX3wgfF9fXyAKIF8gLyAoXy08IHx8IHwgJ18gXC8gLV8pICdffCAnIFwvIF8gXC8gX2AgLyAtXykKKF8pXy8vX18vXF8sX3wgLl9fL1xfX198X3wgfF98fF9cX19fL1xfXyxfXF9fX3wKLS0tLS0tLS0tLS0tLXxffC0tLS0tLS0tLS1AbjJuLWdvLSVzIChidWlsdCAlcykK"
@@ -41,6 +42,18 @@ func main() {
 	}
 	log.Printf("Supernode: Listening on %s", cfg.ListenAddr)
 
+	err = ippool.InitializeDB("") // Initialize BoltDB (default path: ippool.db)
+	if err != nil {
+		log.Fatalf("Error initializing DB:", err)
+		os.Exit(1)
+	}
+	defer ippool.CloseDB() // Ensure DB is closed on exit
+
+	err = ippool.LoadPoolState() // Load existing pool state from DB on startup
+	if err != nil {
+		log.Fatalf("Error loading pool state:", err)
+	}
+	log.Printf("Supernode: Loaded pool state", err)
 	sn := supernode.NewSupernodeWithConfig(conn, cfg) // Pass the config struct
 
 	sigChan := make(chan os.Signal, 1)

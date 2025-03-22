@@ -13,34 +13,6 @@ import (
 	"time"
 )
 
-/*
-// Config holds supernode configuration options
-type Config struct {
-	Debug               bool          // Enable debug logging
-	CommunitySubnet     string        // Base subnet for community allocation
-	CommunitySubnetCIDR int           // CIDR prefix length for community subnets
-	ExpiryDuration      time.Duration // Time after which an edge is considered stale
-	CleanupInterval     time.Duration // Interval for the cleanup routine
-	UDPBufferSize       int           // Size of UDP socket buffers
-	StrictHashChecking  bool          // Whether to strictly enforce community hash validation
-	EnableVFuze         bool
-}
-
-// DefaultConfig returns a default configuration
-func DefaultConfig() *Config {
-	return &Config{
-		Debug:               false,
-		CommunitySubnet:     "10.128.0.0",
-		CommunitySubnetCIDR: 24,
-		ExpiryDuration:      10 * time.Minute,
-		CleanupInterval:     5 * time.Minute,
-		UDPBufferSize:       1024 * 1024, // 1MB buffer
-		StrictHashChecking:  true,        // Enforce hash validation by default
-		EnableVFuze:         true,
-	}
-}
-*/
-
 // Supernode holds registered edges, VIP pools, and a MAC-to-edge mapping.
 type Supernode struct {
 	netAllocator *NetworkAllocator
@@ -162,7 +134,10 @@ func (s *Supernode) RegisterCommunity(communityName string, communityHash uint32
 		return nil, fmt.Errorf("failed to allocate network for community %s: %w", communityName, err)
 	}
 
-	cm = NewCommunityWithConfig(communityName, prefix, s.config)
+	cm, err = NewCommunityWithConfig(communityName, prefix, s.config)
+	if err != nil {
+		return nil, err
+	}
 	s.communities[communityHash] = cm
 
 	return cm, nil
