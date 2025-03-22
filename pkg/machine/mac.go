@@ -66,9 +66,15 @@ func netGenerateMac(idString string, mac *net.HardwareAddr, hashKey [16]byte, id
 	macBytes := make(net.HardwareAddr, 8)
 	binary.LittleEndian.PutUint64(macBytes, result)
 	*mac = macBytes[:6]
+	markRandomMAC(mac)
+	(*mac)[0] &= 0xfe // clear multicast
 	return nil
 }
-
+func markRandomMAC(mac *net.HardwareAddr) {
+	if len(*mac) > 0 {
+		(*mac)[0] |= 0x02 // Set the locally administered bit
+	}
+}
 func GenerateMac(communityName string) (net.HardwareAddr, error) {
 	var generatedMAC net.HardwareAddr
 	err := netGenerateMac(communityName, &generatedMAC, HASH_KEY, 12345)
