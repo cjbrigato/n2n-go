@@ -62,10 +62,11 @@ func (e *EdgeClient) Register() error {
 		return fmt.Errorf("Edge: error while parsing initial RegisterResponse Packet")
 	}
 
-	rresp, err := protocol.ToPMessage[*netstruct.RegisterResponse](rawMsg)
+	rresp, err := protocol.ToMessage[*netstruct.RegisterResponse](rawMsg)
 	if err != nil {
 		return err
 	}
+
 	if !rresp.Msg.IsRegisterOk {
 		return fmt.Errorf("Edge: supernode refused register request. Aborting")
 	}

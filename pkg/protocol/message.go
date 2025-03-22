@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"n2n-go/pkg/p2p"
+	"n2n-go/pkg/protocol/codec"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
@@ -333,48 +334,80 @@ func (r *RawMessage) ToRegisterRequestMessage() (*RegisterRequestMessage, error)
 
 }
 
-/*
-type RegisterResponseMessage struct {
-	RawMsg *RawMessage
-	*netstruct.RegisterResponse
-}
-
-func (r *RawMessage) ToRegisterResponseMessage() (*Message[netstruct.RegisterResponse], error) {
-	if r.Header.PacketType != TypeRegisterResponse {
-		return nil, fmt.Errorf("not a TypeRegisterResponse packet")
-	}
-	rresp, err := netstruct.ParseRegisterResponse(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &Message[netstruct.RegisterResponse]{
-		RawMsg: r,
-		Msg:    rresp,
-	}, nil
-
-}*/
-
-type Message[T any] struct {
-	RawMsg *RawMessage
-	Msg    *T
-}
-
-type PMessage[T netstruct.Parsable] struct {
+type PMessage[T netstruct.Messageable[T]] struct {
 	RawMsg *RawMessage
 	Msg    T
 }
 
-func ToPMessage[T netstruct.Parsable](r *RawMessage) (*PMessage[T], error) {
+func ToPMessage[T netstruct.Messageable[T]](r *RawMessage) (*PMessage[T], error) {
 	var x T
 	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
 		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
 	}
-	err := x.Parse(r.Payload)
+	v, err := x.Parse(r.Payload)
 	if err != nil {
 		return nil, err
 	}
 	return &PMessage[T]{
 		RawMsg: r,
-		Msg:    x,
+		Msg:    v,
 	}, nil
 }
+
+type Message[T netstruct.PacketTyped] struct {
+	RawMsg *RawMessage
+	Msg    T
+}
+
+type GenericStruct[T netstruct.PacketTyped] struct {
+	V T
+}
+
+func (g *GenericStruct[T]) Encode() ([]byte, error) {
+	return codec.NewCodec[T]().Encode(g.V)
+}
+
+func (g *GenericStruct[T]) Parse(data []byte) (*T, error) {
+	return codec.NewCodec[T]().Decode(data)
+}
+
+func (g *GenericStruct[T]) ToMessage(r *RawMessage) (*Message[T], error) {
+	var x T
+	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
+		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
+	}
+	v, err := g.Parse(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &Message[T]{
+		RawMsg: r,
+		Msg:    *v,
+	}, nil
+}
+
+func ToMessage[T netstruct.PacketTyped](r *RawMessage) (*Message[T],error){
+	s := GenericStruct[T]{}
+	return s.ToMessage(r)
+}
+
+/*
+type GMessage[P netstruct.PacketTyped] struct {
+	RawMsg *RawMessage
+	Msg P
+}
+
+func ToGMessage[P netstruct.PacketTyped](r *RawMessage)(*GMessage[P],error){
+	var x netstruct.GenericStruct[P]
+	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
+		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
+	}
+	v, err := x.Parse(r.Payload)
+	if err != nil {
+		return nil, err
+	}
+	return &GMessage[P]{
+		RawMsg: r,
+		Msg: v,
+	}, nil
+}*/

@@ -26,23 +26,16 @@ type RegisterResponse struct {
 	VirtualIP    string
 	Masklen      int
 }
-
+/*
 func (rresp *RegisterResponse) Encode() ([]byte, error) {
 	return codec.NewCodec[RegisterResponse]().Encode(*rresp)
 }
 
-func ParseRegisterResponse(data []byte) (*RegisterResponse, error) {
+func (rresp *RegisterResponse) Parse(data []byte) (*RegisterResponse, error) {
 	return codec.NewCodec[RegisterResponse]().Decode(data)
 }
+*/
 
-func (rresp *RegisterResponse) Parse(data []byte) error {
-	resp, err := codec.NewCodec[RegisterResponse]().Decode(data)
-	if err != nil {
-		return err
-	}
-	rresp = resp
-	return nil
-}
 
 func (rresp *RegisterResponse) PacketType() spec.PacketType {
 	return spec.TypeRegisterResponse

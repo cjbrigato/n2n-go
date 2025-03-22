@@ -100,11 +100,12 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	edge, cm, err := s.RegisterEdge(regMsg)
-	rresp := &netstruct.RegisterResponse{}
+	rresp := &protocol.GenericStruct[*netstruct.RegisterResponse]{}
+	//rresp := &netstruct.RegisterResponse{}
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", regMsg.EdgeMACAddr, err)
 		//s.SendAck(r.Addr, nil, "ERR Registration failed")
-		rresp.IsRegisterOk = false
+		rresp.V.IsRegisterOk = false
 		data, inErr := rresp.Encode()
 		if inErr == nil {
 			s.WritePacket(protocol.TypeRegisterResponse, regMsg.CommunityName, s.MacADDR(), nil, string(data), r.Addr)
@@ -117,9 +118,9 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	s.edgesBySocket[edge.UDPAddr().String()] = edge
 	s.edgeMu.Unlock()
 
-	rresp.IsRegisterOk = true
-	rresp.VirtualIP = edge.VirtualIP.String()
-	rresp.Masklen = edge.VNetMaskLen
+	rresp.V.IsRegisterOk = true
+	rresp.V.VirtualIP = edge.VirtualIP.String()
+	rresp.V.Masklen = edge.VNetMaskLen
 	data, inErr := rresp.Encode()
 	if inErr != nil {
 		return inErr
