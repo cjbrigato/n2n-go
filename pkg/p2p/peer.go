@@ -30,7 +30,7 @@ type PeerInfoList struct {
 	EventType PeerInfoEventType
 }
 
-func (pil PeerInfoList) PacketType() spec.PacketType {
+func (pil *PeerInfoList) PacketType() spec.PacketType {
 	return spec.TypePeerInfo
 }
 
