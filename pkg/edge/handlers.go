@@ -70,8 +70,11 @@ func (e *EdgeClient) Unregister() error {
 	}
 	var unregErr error
 	e.unregisterOnce.Do(func() {
-		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
-		err := e.WritePacket(spec.TypeUnregisterRequest, nil, payloadStr, p2p.UDPEnforceSupernode)
+		unreg := &netstruct.UnregisterRequest{
+			EdgeMACAddr:   e.MACAddr.String(),
+			CommunityName: e.Community,
+		}
+		err := e.SendStruct(unreg, nil, p2p.UDPEnforceSupernode)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return

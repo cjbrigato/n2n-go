@@ -1,0 +1,177 @@
+package supernode
+
+import (
+	"fmt"
+	"log"
+	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
+	"net"
+)
+
+// forwardPacket sends a packet to a specific edge
+func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
+	addr := target.UDPAddr()
+	s.debugLog("Forwarding packet to edge %s at %v", target.MACAddr, addr)
+	_, err := s.Conn.WriteToUDP(packet, addr)
+	return err
+}
+
+// broadcast sends a packet to all edges in the same community except the sender
+func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
+	targets := cm.GetAllEdges()
+
+	// Now send to all targets without holding the lock
+	sentCount := 0
+	for _, target := range targets {
+		if target.MACAddr == senderID {
+			continue
+		} // Check if we need to convert the packet for this target
+
+		if err := s.forwardPacket(packet, target); err != nil {
+			log.Printf("Supernode: Failed to broadcast packet to edge %s: %v", target.MACAddr, err)
+			s.stats.PacketsDropped.Add(1)
+		} else {
+			s.debugLog("Broadcasted packet from %s to edge %s", senderID, target.MACAddr)
+			sentCount++
+		}
+	}
+
+	if sentCount > 0 {
+		s.stats.PacketsForwarded.Add(uint64(sentCount))
+	}
+}
+
+func (s *Supernode) WritePacket(pt spec.PacketType, community string, src, dst net.HardwareAddr, payloadStr string, addr *net.UDPAddr) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		pt,
+		0,
+		community,
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	// Send the packet
+	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
+}
+
+func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, dst net.HardwareAddr, addr *net.UDPAddr) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		p.PacketType(),
+		0,
+		community,
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
+	}
+
+	payload, err := protocol.Encode(p)
+	if err != nil {
+		return err
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	// Send the packet
+	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send packet: %w", err)
+	}
+	return nil
+}
+
+func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src, dst net.HardwareAddr, senderMac string) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		p.PacketType(),
+		0,
+		cm.Name(),
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
+	}
+
+	payload, err := protocol.Encode(p)
+	if err != nil {
+		return err
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	s.broadcast(packetBuf[:totalLen], cm, senderMac)
+	return nil
+}
+
+func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		pt,
+		0,
+		cm.Name(),
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	s.broadcast(packetBuf[:totalLen], cm, senderMac)
+	return nil
+}

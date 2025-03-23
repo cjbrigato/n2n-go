@@ -33,3 +33,12 @@ type HeartbeatPulse struct {
 func (p *HeartbeatPulse) PacketType() spec.PacketType {
 	return spec.TypeHeartbeat
 }
+
+type UnregisterRequest struct {
+	EdgeMACAddr   string
+	CommunityName string
+}
+
+func (u *UnregisterRequest) PacketType() spec.PacketType {
+	return spec.TypeUnregisterRequest
+}

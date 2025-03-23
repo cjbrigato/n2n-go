@@ -185,40 +185,7 @@ func (r *RawMessage) ToDataMessage() (*DataMessage, error) {
 
 }
 
-type AckMessage struct {
-	RawMsg      *RawMessage
-	EdgeMACAddr string
-}
-
-func (r *RawMessage) ToAckMessage() (*AckMessage, error) {
-	if r.Header.PacketType != spec.TypeAck {
-		return nil, fmt.Errorf("not a TypeAck packet")
-	}
-	return &AckMessage{
-		RawMsg:      r,
-		EdgeMACAddr: r.Header.GetSrcMACAddr().String(),
-	}, nil
-}
-
-type UnregisterMessage struct {
-	RawMsg        *RawMessage
-	EdgeMACAddr   string
-	CommunityHash uint32
-}
-
-func (r *RawMessage) ToUnregisterMessage() (*UnregisterMessage, error) {
-	if r.Header.PacketType != spec.TypeUnregisterRequest {
-		return nil, fmt.Errorf("not a TypeUnregister packet")
-	}
-	return &UnregisterMessage{
-		RawMsg:        r,
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-		CommunityHash: r.Header.CommunityID,
-	}, nil
-}
-
 type Message[T netstruct.PacketTyped] struct {
-	//RawMsg *RawMessage
 	*RawMessage
 	Msg T
 }

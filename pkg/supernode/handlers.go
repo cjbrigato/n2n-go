@@ -46,15 +46,6 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	return s.SendStruct(pil, peerReqMsg.CommunityName, s.MacADDR(), nil, target)
 }
 
-func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {
-	ackMessage, err := r.ToAckMessage()
-	if err != nil {
-		return err
-	}
-	s.debugLog("Received ACK from edge %s", ackMessage.EdgeMACAddr)
-	return nil
-}
-
 func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
 	leaseMsg, err := r.ToLeasesInfosMessage()
 	if err != nil {
@@ -85,11 +76,11 @@ func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
 }
 
 func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {
-	unRegMsg, err := r.ToUnregisterMessage()
+	unReg, err := protocol.ToMessage[*netstruct.UnregisterRequest](r)
 	if err != nil {
 		return err
 	}
-	return s.UnregisterEdge(unRegMsg.EdgeMACAddr, unRegMsg.CommunityHash)
+	return s.UnregisterEdge(unReg)
 }
 
 func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
