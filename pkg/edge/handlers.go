@@ -6,6 +6,7 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"strings"
 	"time"
@@ -48,14 +49,6 @@ func (e *EdgeClient) Register() error {
 
 	rresp, err := protocol.MessageFromPacket[*netstruct.RegisterResponse](respBuf, addr)
 
-	/*rawMsg, err := protocol.NewRawMessage(respBuf, addr)
-	if err != nil {
-		log.Printf("Edge: error while parsing UDP Packet: %v", err)
-		return fmt.Errorf("Edge: error while parsing initial RegisterResponse Packet")
-	}
-
-	rresp, err := protocol.ToMessage[*netstruct.RegisterResponse](rawMsg)*/
-
 	if err != nil {
 		return err
 	}
@@ -78,7 +71,7 @@ func (e *EdgeClient) Unregister() error {
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		payloadStr := fmt.Sprintf("UNREGISTER %s ", e.ID)
-		err := e.WritePacket(protocol.TypeUnregisterRequest, nil, payloadStr, p2p.UDPEnforceSupernode)
+		err := e.WritePacket(spec.TypeUnregisterRequest, nil, payloadStr, p2p.UDPEnforceSupernode)
 		if err != nil {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
@@ -100,11 +93,11 @@ func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
 }
 
 func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
-	peerMsg, err := r.ToPeerInfoMessage()
+	peerMsg, err := protocol.ToMessage[*p2p.PeerInfoList](r) //r.ToPeerInfoMessage()
 	if err != nil {
 		return err
 	}
-	peerInfos := peerMsg.PeerInfoList
+	peerInfos := peerMsg.Msg
 	err = e.Peers.HandlePeerInfoList(peerInfos, false, true)
 	if err != nil {
 		log.Printf("Edge: error in HandlePeerInfoList: %v", err)
@@ -127,7 +120,7 @@ func (s *EdgeClient) handleLeasesInfosMessage(r *protocol.RawMessage) error {
 }
 
 func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
-	if r.Header.PacketType != protocol.TypeRetryRegisterRequest {
+	if r.Header.PacketType != spec.TypeRetryRegisterRequest {
 		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
 	}
 	if err := e.Register(); err != nil {
@@ -137,17 +130,17 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 }
 
 func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
-	fstateMsg, err := r.ToP2PFullStateMessage()
+	fstateMsg, err := protocol.ToMessage[*p2p.P2PFullState](r) //r.ToP2PFullStateMessage()
 	if err != nil {
 		return err
 	}
-	if fstateMsg.IsRequest {
+	if fstateMsg.Msg.IsRequest {
 		return fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
 	}
-	if fstateMsg.P2PFullState.FullState == nil {
+	if fstateMsg.Msg.FullState == nil {
 		return fmt.Errorf("received nil FullState in P2PFullStateMessage")
 	}
-	e.Peers.FullState = fstateMsg.P2PFullState.FullState
+	e.Peers.FullState = fstateMsg.Msg.FullState
 	if e.Peers.IsWaitingForFullState {
 		e.Peers.IsWaitingForFullState = false
 	}
@@ -169,7 +162,7 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
 		payloadStr := fmt.Sprintf("PONG %s ", pingMsg.CheckID)
-		e.WritePacket(protocol.TypePing, dst, payloadStr, p2p.UDPBestEffort)
+		e.WritePacket(spec.TypePing, dst, payloadStr, p2p.UDPBestEffort)
 	} else {
 		p, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
 		if err != nil {

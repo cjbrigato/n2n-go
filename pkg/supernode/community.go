@@ -5,6 +5,7 @@ import (
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
 	"net"
 	"net/netip"
 	"sync"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/cjbrigato/ippool"
 )
+
+type EdgeAddressable interface {
+	EdgeMACAddr() string
+	CommunityHash() uint32
+}
 
 // Community represents a logical grouping of edges sharing the same virtual network
 type Community struct {
@@ -168,37 +174,37 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 	return true
 }
 
-func (c *Community) RefreshEdge(hbMsg *protocol.HeartbeatMessage) (bool, error) {
+func (c *Community) RefreshEdge(hbMsg *protocol.Message[*netstruct.HeartbeatPulse]) (bool, error) {
 	c.edgeMu.Lock()
 	defer c.edgeMu.Unlock()
-	edge, exists := c.edges[hbMsg.EdgeMACAddr]
+	edge, exists := c.edges[hbMsg.EdgeMACAddr()]
 	if !exists {
-		return false, fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr)
+		return false, fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr())
 	}
 	oldPort := edge.PublicPort
 	oldPublicIP := edge.PublicIP
-	edge.PublicIP = hbMsg.RawMsg.Addr.IP
-	edge.PublicPort = hbMsg.RawMsg.Addr.Port
+	edge.PublicIP = hbMsg.FromAddr.IP
+	edge.PublicPort = hbMsg.FromAddr.Port
 	edge.LastHeartbeat = time.Now()
-	edge.LastSequence = hbMsg.RawMsg.Header.Sequence
+	edge.LastSequence = hbMsg.Header.Sequence
 	c.debugLog("Refreshed edge:%s from HeartBeat", c.name, hbMsg.EdgeMACAddr)
-	return (oldPort != hbMsg.RawMsg.Addr.Port) || (!oldPublicIP.Equal(hbMsg.RawMsg.Addr.IP)), nil
+	return (oldPort != hbMsg.FromAddr.Port) || (!oldPublicIP.Equal(hbMsg.FromAddr.IP)), nil
 }
 
 // EdgeUpdate registers a new edge or updates an existing one
-func (c *Community) EdgeUpdate(regMsg *protocol.RegisterRequestMessage) (*Edge, error) { //srcID string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
+func (c *Community) EdgeUpdate(regMsg *protocol.Message[*netstruct.RegisterRequest]) (*Edge, error) { //srcID string, addr *net.UDPAddr, seq uint16, isReg bool, payload string) (*Edge, error) {
 	c.edgeMu.Lock()
 	defer c.edgeMu.Unlock()
 
 	// Check if edge already exists
-	edge, exists := c.edges[regMsg.EdgeMACAddr]
+	edge, exists := c.edges[regMsg.Msg.EdgeMACAddr]
 
 	if !exists {
 		// New edge, allocate an IP address
 		//vip, masklen, err := c.addrPool.Request(regMsg.EdgeMACAddr)
-		nvip, err := c.ips.RequestIP(regMsg.EdgeMACAddr, true)
+		nvip, err := c.ips.RequestIP(regMsg.Msg.EdgeMACAddr, true)
 		if err != nil {
-			c.debugLog("VIP allocation failed for edge %s: %v", regMsg.EdgeMACAddr, err)
+			c.debugLog("VIP allocation failed for edge %s: %v", regMsg.Msg.EdgeMACAddr, err)
 			return nil, fmt.Errorf("IP allocation failed: %w", err)
 		}
 
@@ -209,18 +215,18 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterRequestMessage) (*Edge, 
 		}
 		// Create new edge
 		edge = &Edge{
-			Desc:          regMsg.EdgeDesc,
-			PublicIP:      regMsg.RawMsg.Addr.IP,
-			PublicPort:    regMsg.RawMsg.Addr.Port,
+			Desc:          regMsg.Msg.EdgeDesc,
+			PublicIP:      regMsg.FromAddr.IP,
+			PublicPort:    regMsg.FromAddr.Port,
 			Community:     c.name,
 			VirtualIP:     vip,
 			VNetMaskLen:   c.maskLen,
 			LastHeartbeat: time.Now(),
-			LastSequence:  regMsg.RawMsg.Header.Sequence,
-			MACAddr:       regMsg.EdgeMACAddr,
+			LastSequence:  regMsg.Header.Sequence,
+			MACAddr:       regMsg.EdgeMACAddr(),
 		}
 
-		c.edges[regMsg.EdgeMACAddr] = edge
+		c.edges[regMsg.Msg.EdgeMACAddr] = edge
 
 		log.Printf("Community[%s]: Registered new edge \"%s\" id=%s, assigned VIP=%s",
 			c.name, edge.Desc, edge.MACAddr, vip)
@@ -233,10 +239,10 @@ func (c *Community) EdgeUpdate(regMsg *protocol.RegisterRequestMessage) (*Edge, 
 		}
 
 		// Update edge information
-		edge.PublicIP = regMsg.RawMsg.Addr.IP
-		edge.PublicPort = regMsg.RawMsg.Addr.Port
+		edge.PublicIP = regMsg.FromAddr.IP
+		edge.PublicPort = regMsg.FromAddr.Port
 		edge.LastHeartbeat = time.Now()
-		edge.LastSequence = regMsg.RawMsg.Header.Sequence
+		edge.LastSequence = regMsg.Header.Sequence
 
 		c.debugLog("Updated edge: id=%s", edge.MACAddr)
 	}

@@ -5,6 +5,7 @@ import (
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/tuntap"
 	"net"
 	"strings"
@@ -41,9 +42,9 @@ func (e *EdgeClient) PingPeer(p *p2p.Peer, n int, interval time.Duration, status
 	payloadStr := fmt.Sprintf("PING %s ", checkid)
 	p.UpdateP2PStatus(status, checkid)
 	for range n {
-		e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
+		e.WritePacket(spec.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
 	}
-	return e.WritePacket(protocol.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
+	return e.WritePacket(spec.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
 }
 
 // handleHeartbeat sends heartbeat messages periodically
@@ -137,7 +138,7 @@ func (e *EdgeClient) Close() {
 func (e *EdgeClient) sendPeerRequest() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), p2p.UDPEnforceSupernode)
+	err := e.WritePacket(spec.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
 	}
@@ -148,7 +149,7 @@ func (e *EdgeClient) sendPeerRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(protocol.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), p2p.UDPEnforceSupernode)
+	err := e.WritePacket(spec.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -161,7 +162,7 @@ func (e *EdgeClient) sendP2PInfos() error {
 	if err != nil {
 		return err
 	}
-	err = e.WritePacket(protocol.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)
+	err = e.WritePacket(spec.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
@@ -295,7 +296,7 @@ func (e *EdgeClient) handleTAP() {
 		header, err := protocol.NewProtoVHeader(
 			e.ProtocolVersion(),
 			64,
-			protocol.TypeData,
+			spec.TypeData,
 			seq,
 			e.Community,
 			e.MACAddr,
@@ -437,7 +438,7 @@ func (e *EdgeClient) handleUDP() {
 
 		handler, exists := e.messageHandlers[rawMsg.Header.PacketType]
 		if !exists {
-			log.Printf("Edge: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.Addr)
+			log.Printf("Edge: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.FromAddr)
 			continue
 		}
 		err = handler(rawMsg)

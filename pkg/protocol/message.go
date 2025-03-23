@@ -15,7 +15,7 @@ import (
 type RawMessage struct {
 	Header    *ProtoVHeader
 	Payload   []byte
-	Addr      *net.UDPAddr
+	FromAddr  *net.UDPAddr
 	rawPacket []byte
 }
 
@@ -39,13 +39,20 @@ func unpackProtoVDatagram(data []byte, addr *net.UDPAddr) (*RawMessage, error) {
 	return &RawMessage{
 		Header:    &header,
 		Payload:   payload,
-		Addr:      addr,
+		FromAddr:  addr,
 		rawPacket: data,
 	}, nil
 }
 
 func (r *RawMessage) RawPacket() []byte {
 	return r.rawPacket
+}
+
+func (r *RawMessage) EdgeMACAddr() string {
+	return r.Header.GetSrcMACAddr().String()
+}
+func (r *RawMessage) CommunityHash() uint32 {
+	return r.Header.CommunityID
 }
 
 func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
@@ -71,7 +78,7 @@ type LeasesInfosMessage struct {
 }
 
 func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
-	if r.Header.PacketType != TypeLeasesInfos {
+	if r.Header.PacketType != spec.TypeLeasesInfos {
 		return nil, fmt.Errorf("not a TypeLeasesInfos packet")
 	}
 	pil, err := netstruct.ParseLeasesInfos(r.Payload)
@@ -88,31 +95,6 @@ func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
 	}, nil
 }
 
-type P2PFullStateMessage struct {
-	RawMsg        *RawMessage
-	CommunityHash uint32
-	EdgeMACAddr   string
-	IsRequest     bool
-	P2PFullState  p2p.P2PFullState
-}
-
-func (r *RawMessage) ToP2PFullStateMessage() (*P2PFullStateMessage, error) {
-	if r.Header.PacketType != TypeP2PFullState {
-		return nil, fmt.Errorf("not a TypeP2PFullState packet")
-	}
-	pil, err := p2p.ParseP2PFullState(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &P2PFullStateMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-		IsRequest:     pil.IsRequest,
-		P2PFullState:  *pil,
-	}, nil
-}
-
 type P2PStateInfoMessage struct {
 	RawMsg        *RawMessage
 	CommunityHash uint32
@@ -121,7 +103,7 @@ type P2PStateInfoMessage struct {
 }
 
 func (r *RawMessage) ToP2PStateInfoMessage() (*P2PStateInfoMessage, error) {
-	if r.Header.PacketType != TypeP2PStateInfo {
+	if r.Header.PacketType != spec.TypeP2PStateInfo {
 		return nil, fmt.Errorf("not a TypeP2PStateInfo packet")
 	}
 	pil, err := p2p.ParsePeerP2PInfos(r.Payload)
@@ -149,7 +131,7 @@ type PingMessage struct {
 //
 //	response: PONG sharedid
 func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
-	if r.Header.PacketType != TypePing {
+	if r.Header.PacketType != spec.TypePing {
 		return nil, fmt.Errorf("not a TypePing packet")
 	}
 	parts := strings.Fields(string(r.Payload))
@@ -170,7 +152,7 @@ func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
 func (pmsg *PingMessage) ToPacket() []byte {
 	return pmsg.RawMsg.RawPacket()
 }
-
+/*
 type PeerInfoMessage struct {
 	RawMsg        *RawMessage
 	CommunityHash uint32
@@ -178,7 +160,7 @@ type PeerInfoMessage struct {
 }
 
 func (r *RawMessage) ToPeerInfoMessage() (*PeerInfoMessage, error) {
-	if r.Header.PacketType != TypePeerInfo {
+	if r.Header.PacketType != spec.TypePeerInfo {
 		return nil, fmt.Errorf("not a TypePeerInfo packet")
 	}
 	pil, err := p2p.ParsePeerInfoList(r.Payload)
@@ -191,6 +173,7 @@ func (r *RawMessage) ToPeerInfoMessage() (*PeerInfoMessage, error) {
 		PeerInfoList:  pil,
 	}, nil
 }
+*/
 
 type PeerRequestMessage struct {
 	RawMsg        *RawMessage
@@ -201,7 +184,7 @@ type PeerRequestMessage struct {
 
 // Payload Format: PEERREQUEST <CommunityName>
 func (r *RawMessage) ToPeerRequestMessage() (*PeerRequestMessage, error) {
-	if r.Header.PacketType != TypePeerRequest {
+	if r.Header.PacketType != spec.TypePeerRequest {
 		return nil, fmt.Errorf("not a TypePeerRequest packet")
 	}
 	parts := strings.Fields(string(r.Payload))
@@ -230,7 +213,7 @@ func (d *DataMessage) ToPacket() []byte {
 }
 
 func (r *RawMessage) ToDataMessage() (*DataMessage, error) {
-	if r.Header.PacketType != TypeData {
+	if r.Header.PacketType != spec.TypeData {
 		return nil, fmt.Errorf("not a TypeData packet")
 	}
 
@@ -248,6 +231,7 @@ func (r *RawMessage) ToDataMessage() (*DataMessage, error) {
 
 }
 
+/*
 type HeartbeatMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string
@@ -257,7 +241,7 @@ type HeartbeatMessage struct {
 
 // Payload Format: HEARTBEAT <CommunityName>
 func (r *RawMessage) ToHeartbeatMessage() (*HeartbeatMessage, error) {
-	if r.Header.PacketType != TypeHeartbeat {
+	if r.Header.PacketType != spec.TypeHeartbeat {
 		return nil, fmt.Errorf("not a TypeHeartbeat packet")
 	}
 	parts := strings.Fields(string(r.Payload))
@@ -273,6 +257,7 @@ func (r *RawMessage) ToHeartbeatMessage() (*HeartbeatMessage, error) {
 	}, nil
 
 }
+*/
 
 type AckMessage struct {
 	RawMsg      *RawMessage
@@ -280,7 +265,7 @@ type AckMessage struct {
 }
 
 func (r *RawMessage) ToAckMessage() (*AckMessage, error) {
-	if r.Header.PacketType != TypeAck {
+	if r.Header.PacketType != spec.TypeAck {
 		return nil, fmt.Errorf("not a TypeAck packet")
 	}
 	return &AckMessage{
@@ -296,7 +281,7 @@ type UnregisterMessage struct {
 }
 
 func (r *RawMessage) ToUnregisterMessage() (*UnregisterMessage, error) {
-	if r.Header.PacketType != TypeUnregisterRequest {
+	if r.Header.PacketType != spec.TypeUnregisterRequest {
 		return nil, fmt.Errorf("not a TypeUnregister packet")
 	}
 	return &UnregisterMessage{
@@ -306,59 +291,21 @@ func (r *RawMessage) ToUnregisterMessage() (*UnregisterMessage, error) {
 	}, nil
 }
 
-type RegisterRequestMessage struct {
-	RawMsg          *RawMessage
-	CommunityHash   uint32
-	CommunityName   string
-	EdgeDesc        string
-	EdgeMACAddr     string
-	RegisterRequest *netstruct.RegisterRequest
-}
-
-func (r *RawMessage) ToRegisterRequestMessage() (*RegisterRequestMessage, error) {
-	if r.Header.PacketType != TypeRegisterRequest {
-		return nil, fmt.Errorf("not a TypeRegister packet")
-	}
-	rreq, err := netstruct.ParseRegisterRequest(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &RegisterRequestMessage{
-		RawMsg:          r,
-		CommunityHash:   r.Header.CommunityID,
-		CommunityName:   rreq.CommunityName,
-		EdgeDesc:        rreq.EdgeDesc,
-		EdgeMACAddr:     r.Header.GetSrcMACAddr().String(),
-		RegisterRequest: rreq,
-	}, nil
-
-}
-
-type PMessage[T netstruct.Messageable[T]] struct {
-	RawMsg *RawMessage
-	Msg    T
-}
-
-func ToPMessage[T netstruct.Messageable[T]](r *RawMessage) (*PMessage[T], error) {
-	var x T
-	if spec.PacketType(r.Header.PacketType) != x.PacketType() {
-		return nil, fmt.Errorf("not a %s packet", x.PacketType().String())
-	}
-	v, err := x.Parse(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &PMessage[T]{
-		RawMsg: r,
-		Msg:    v,
-	}, nil
-}
-
 type Message[T netstruct.PacketTyped] struct {
-	RawMsg *RawMessage
-	Msg    T
+	//RawMsg *RawMessage
+	*RawMessage
+	Msg T
 }
 
+/*
+	func (m *Message[T]) EdgeMACAddr() string {
+		return m.RawMsg.EdgeMACAddr()
+	}
+
+	func (m *Message[T]) CommunityHash() uint32 {
+		return m.RawMsg.CommunityHash()
+	}
+*/
 type GenericStruct[T netstruct.PacketTyped] struct {
 	V T
 }
@@ -381,8 +328,9 @@ func (g *GenericStruct[T]) ToMessage(r *RawMessage) (*Message[T], error) {
 		return nil, err
 	}
 	return &Message[T]{
-		RawMsg: r,
-		Msg:    *v,
+		//RawMsg: r,
+		RawMessage: r,
+		Msg:        *v,
 	}, nil
 }
 

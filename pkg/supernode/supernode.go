@@ -7,6 +7,8 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"strings"
 	"sync"
@@ -83,16 +85,16 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 		SnMessageHandlers: make(protocol.MessageHandlerMap),
 	}
 
-	sn.SnMessageHandlers[protocol.TypeRegisterRequest] = sn.handleRegisterMessage
-	sn.SnMessageHandlers[protocol.TypeUnregisterRequest] = sn.handleUnregisterMessage
-	sn.SnMessageHandlers[protocol.TypeAck] = sn.handleAckMessage
-	sn.SnMessageHandlers[protocol.TypeHeartbeat] = sn.handleHeartbeatMessage
-	sn.SnMessageHandlers[protocol.TypeData] = sn.handleDataMessage
-	sn.SnMessageHandlers[protocol.TypePeerRequest] = sn.handlePeerRequestMessage
-	sn.SnMessageHandlers[protocol.TypePing] = sn.handlePingMessage
-	sn.SnMessageHandlers[protocol.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
-	sn.SnMessageHandlers[protocol.TypeP2PFullState] = sn.handleP2PFullStateMessage
-	sn.SnMessageHandlers[protocol.TypeLeasesInfos] = sn.handleLeasesInfosMEssage
+	sn.SnMessageHandlers[spec.TypeRegisterRequest] = sn.handleRegisterMessage
+	sn.SnMessageHandlers[spec.TypeUnregisterRequest] = sn.handleUnregisterMessage
+	sn.SnMessageHandlers[spec.TypeAck] = sn.handleAckMessage
+	sn.SnMessageHandlers[spec.TypeHeartbeat] = sn.handleHeartbeatMessage
+	sn.SnMessageHandlers[spec.TypeData] = sn.handleDataMessage
+	sn.SnMessageHandlers[spec.TypePeerRequest] = sn.handlePeerRequestMessage
+	sn.SnMessageHandlers[spec.TypePing] = sn.handlePingMessage
+	sn.SnMessageHandlers[spec.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
+	sn.SnMessageHandlers[spec.TypeP2PFullState] = sn.handleP2PFullStateMessage
+	sn.SnMessageHandlers[spec.TypeLeasesInfos] = sn.handleLeasesInfosMEssage
 
 	sn.shutdownWg.Add(1)
 	go func() {
@@ -167,10 +169,14 @@ func (s *Supernode) GetCommunityForEdge(edgeMACAddr string, communityHash uint32
 
 }
 
-// RegisterEdge registers or updates an edge in the supernode
-func (s *Supernode) RegisterEdge(regMsg *protocol.RegisterRequestMessage) (*Edge, *Community, error) {
+func (s *Supernode) GetCommunity(i EdgeAddressable) (*Community, error) {
+	return s.GetCommunityForEdge(i.EdgeMACAddr(), i.CommunityHash())
+}
 
-	cm, err := s.RegisterCommunity(regMsg.CommunityName, regMsg.CommunityHash)
+// RegisterEdge registers or updates an edge in the supernode
+func (s *Supernode) RegisterEdge(regMsg *protocol.Message[*netstruct.RegisterRequest]) (*Edge, *Community, error) {
+
+	cm, err := s.RegisterCommunity(regMsg.Msg.CommunityName, regMsg.CommunityHash())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -194,12 +200,13 @@ func (s *Supernode) onEdgeUnregistered(cm *Community, edgeMACAddr string) {
 	delete(s.edgesByMAC, edgeMACAddr)
 	s.edgeMu.Unlock()
 	s.stats.EdgesUnregistered.Add(1)
-	peerInfoPayload, err := pil.Encode()
+	/*peerInfoPayload, err := pil.Encode()
 	if err != nil {
 		log.Printf("Supernode: (warn) unable to send unregistration event to peers for community %s: %v", cm.Name(), err)
-	} else {
-		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
-	}
+	} else {*/
+	s.BroadcastStruct(pil, cm, s.MacADDR(), nil, edgeMACAddr)
+	//s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
+	//}
 }
 
 // UnregisterEdge removes an edge from the supernode
@@ -292,7 +299,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 	handler, exists := s.SnMessageHandlers[rawMsg.Header.PacketType]
 	if !exists {
-		log.Printf("Supernode: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.Addr)
+		log.Printf("Supernode: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.FromAddr)
 		s.stats.PacketsDropped.Add(1)
 		return
 	}
@@ -301,7 +308,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Error from SnMessageHandler[%s]: %v", rawMsg.Header.PacketType.String(), err)
 		if errors.Is(err, ErrCommunityUnknownEdge) || errors.Is(err, ErrCommunityNotFound) {
 			log.Printf("Supernode: sending RetryRegisterRequest to addr:%s", addr.IP)
-			s.WritePacket(protocol.TypeRetryRegisterRequest, "", s.MacADDR(), nil, "", addr)
+			s.WritePacket(spec.TypeRetryRegisterRequest, "", s.MacADDR(), nil, "", addr)
 		}
 	}
 }
@@ -348,7 +355,7 @@ func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
 	}
 }
 
-func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, dst net.HardwareAddr, payloadStr string, addr *net.UDPAddr) error {
+func (s *Supernode) WritePacket(pt spec.PacketType, community string, src, dst net.HardwareAddr, payloadStr string, addr *net.UDPAddr) error {
 	// Get buffer for full packet
 	packetBuf := s.packetBufPool.Get()
 	defer s.packetBufPool.Put(packetBuf)
@@ -381,20 +388,79 @@ func (s *Supernode) WritePacket(pt protocol.PacketType, community string, src, d
 	return nil
 }
 
-/*
-func (s *Supernode) WriteFragments(pt protocol.PacketType, src net.HardwareAddr, payload []byte, addr *net.UDPAddr) error {
-	frags := protocol.MakeVFragPackets(pt, src, payload)
-	for _, f := range frags {
-		_, err := s.Conn.WriteToUDP(f, addr)
-		if err != nil {
-			return fmt.Errorf("Supernode: failed to send Fragments: %w", err)
-		}
+func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, dst net.HardwareAddr, addr *net.UDPAddr) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		p.PacketType(),
+		0,
+		community,
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
+	}
+
+	payload, err := protocol.Encode(p)
+	if err != nil {
+		return err
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	// Send the packet
+	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+	if err != nil {
+		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
 	return nil
 }
-*/
 
-func (s *Supernode) BroadcastPacket(pt protocol.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
+func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src, dst net.HardwareAddr, senderMac string) error {
+	// Get buffer for full packet
+	packetBuf := s.packetBufPool.Get()
+	defer s.packetBufPool.Put(packetBuf)
+	var totalLen int
+
+	header, err := protocol.NewProtoVHeader(
+		protocol.VersionV,
+		64,
+		p.PacketType(),
+		0,
+		cm.Name(),
+		src,
+		dst,
+	)
+	if err != nil {
+		return err
+	}
+
+	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
+	}
+
+	payload, err := protocol.Encode(p)
+	if err != nil {
+		return err
+	}
+	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
+	totalLen = protocol.ProtoVHeaderSize + payloadLen
+
+	s.broadcast(packetBuf[:totalLen], cm, senderMac)
+	return nil
+}
+
+func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
 	// Get buffer for full packet
 	packetBuf := s.packetBufPool.Get()
 	defer s.packetBufPool.Put(packetBuf)

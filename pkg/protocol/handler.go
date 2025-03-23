@@ -1,10 +1,12 @@
 package protocol
 
-import "fmt"
+import (
+	"fmt"
+	"n2n-go/pkg/protocol/spec"
+)
 
 type MessageHandler func(r *RawMessage) error
-type MessageHandlerMap map[PacketType]MessageHandler
-
+type MessageHandlerMap map[spec.PacketType]MessageHandler
 
 func (mh MessageHandlerMap) Handle(r *RawMessage) error {
 	fn, ok := mh[r.Header.PacketType]

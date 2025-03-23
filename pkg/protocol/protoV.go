@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"time"
 )
@@ -17,10 +18,10 @@ const (
 // ProtoVHeader is an optimized network protocol header with reduced overhead
 type ProtoVHeader struct {
 	// Basic packet information (4 bytes)
-	Version    uint8      // Protocol version
-	TTL        uint8      // Time-to-live
-	PacketType PacketType // Packet type (register, data, heartbeat, etc.)
-	Flags      PacketFlag // Flags for various options
+	Version    uint8           // Protocol version
+	TTL        uint8           // Time-to-live
+	PacketType spec.PacketType // Packet type (register, data, heartbeat, etc.)
+	Flags      PacketFlag      // Flags for various options
 
 	// Identification (6 bytes)
 	Sequence    uint16 // Sequence number
@@ -56,13 +57,13 @@ func bytesToMAC(arr [6]byte) net.HardwareAddr {
 
 // Implement IHeader interface for ProtoVHeader
 func (h *ProtoVHeader) GetVersion() uint8               { return h.Version }
-func (h *ProtoVHeader) GetPacketType() PacketType       { return h.PacketType }
+func (h *ProtoVHeader) GetPacketType() spec.PacketType       { return h.PacketType }
 func (h *ProtoVHeader) GetSequence() uint16             { return h.Sequence }
 func (h *ProtoVHeader) GetSrcMACAddr() net.HardwareAddr { return bytesToMAC(h.SourceID) }
 func (h *ProtoVHeader) GetDstMACAddr() net.HardwareAddr { return bytesToMAC(h.DestID) }
 
 // NewProtoVHeader creates a new ProtoV header
-func NewProtoVHeader(version, ttl uint8, pType PacketType, seq uint16, community string, src, dst net.HardwareAddr) (*ProtoVHeader, error) {
+func NewProtoVHeader(version, ttl uint8, pType spec.PacketType, seq uint16, community string, src, dst net.HardwareAddr) (*ProtoVHeader, error) {
 	h := &ProtoVHeader{
 		Version:     version,
 		TTL:         ttl,
@@ -125,8 +126,6 @@ func (h *ProtoVHeader) MarshalBinaryTo(buf []byte) error {
 	h.Checksum = crc32.ChecksumIEEE(buf[:30])
 	binary.BigEndian.PutUint32(buf[26:30], h.Checksum)
 
-
-
 	return nil
 }
 
@@ -139,7 +138,7 @@ func (h *ProtoVHeader) UnmarshalBinary(data []byte) error {
 	// Basic info
 	h.Version = data[0]
 	h.TTL = data[1]
-	h.PacketType = PacketType(data[2])
+	h.PacketType = spec.PacketType(data[2])
 	h.Flags = PacketFlag(data[3])
 
 	// Identification

@@ -1,7 +1,6 @@
 package netstruct
 
 import (
-	"n2n-go/pkg/protocol/codec"
 	"n2n-go/pkg/protocol/spec"
 )
 
@@ -13,14 +12,6 @@ type RegisterRequest struct {
 
 type RetryRegisterRequest struct{}
 
-func (rreq *RegisterRequest) Encode() ([]byte, error) {
-	return codec.NewCodec[RegisterRequest]().Encode(*rreq)
-}
-
-func ParseRegisterRequest(data []byte) (*RegisterRequest, error) {
-	return codec.NewCodec[RegisterRequest]().Decode(data)
-}
-
 func (rreq *RegisterRequest) PacketType() spec.PacketType {
 	return spec.TypeRegisterRequest
 }
@@ -31,16 +22,14 @@ type RegisterResponse struct {
 	Masklen      int
 }
 
-/*
-func (rresp *RegisterResponse) Encode() ([]byte, error) {
-	return codec.NewCodec[RegisterResponse]().Encode(*rresp)
-}
-
-func (rresp *RegisterResponse) Parse(data []byte) (*RegisterResponse, error) {
-	return codec.NewCodec[RegisterResponse]().Decode(data)
-}
-*/
-
 func (rresp *RegisterResponse) PacketType() spec.PacketType {
 	return spec.TypeRegisterResponse
+}
+
+type HeartbeatPulse struct {
+	CommunityName string
+}
+
+func (p *HeartbeatPulse) PacketType() spec.PacketType {
+	return spec.TypeHeartbeat
 }

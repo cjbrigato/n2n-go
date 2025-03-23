@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/p2p"
-	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net/http"
 	"time"
 
@@ -124,11 +124,7 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 		IsRequest:     true,
 		FullState:     make(map[string]p2p.PeerP2PInfos),
 	}
-	data, err := req.Encode()
-	if err != nil {
-		return err
-	}
-	err = e.WritePacket(protocol.TypeP2PFullState, nil, string(data), p2p.UDPEnforceSupernode)
+	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
@@ -148,7 +144,7 @@ func (eapi *EdgeClientApi) sendLeasesInfosRequest() error {
 	if err != nil {
 		return err
 	}
-	err = eapi.Client.WritePacket(protocol.TypeLeasesInfos, nil, string(data), p2p.UDPEnforceSupernode)
+	err = eapi.Client.WritePacket(spec.TypeLeasesInfos, nil, string(data), p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}

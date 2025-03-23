@@ -6,6 +6,7 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"time"
 )
@@ -37,15 +38,16 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
-	peerResponsePayload, err := pil.Encode()
+	/*peerResponsePayload, err := pil.Encode()
 	if err != nil {
 		return err
-	}
+	}*/
 	target, err := cm.GetEdgeUDPAddr(peerReqMsg.EdgeMACAddr)
 	if err != nil {
 		return err
 	}
-	return s.WritePacket(protocol.TypePeerInfo, peerReqMsg.CommunityName, s.MacADDR(), nil, string(peerResponsePayload), target)
+	return s.SendStruct(pil, peerReqMsg.CommunityName, s.MacADDR(), nil, target)
+	//return s.WritePacket(spec.TypePeerInfo, peerReqMsg.CommunityName, s.MacADDR(), nil, string(peerResponsePayload), target)
 }
 
 func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {
@@ -83,7 +85,7 @@ func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	return s.WritePacket(protocol.TypeLeasesInfos, cm.Name(), s.MacADDR(), nil, string(data), target)
+	return s.WritePacket(spec.TypeLeasesInfos, cm.Name(), s.MacADDR(), nil, string(data), target)
 }
 
 func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {
@@ -95,21 +97,16 @@ func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {
 }
 
 func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
-	regMsg, err := r.ToRegisterRequestMessage()
+	reg, err := protocol.ToMessage[*netstruct.RegisterRequest](r)
 	if err != nil {
 		return err
 	}
-	edge, cm, err := s.RegisterEdge(regMsg)
+	edge, cm, err := s.RegisterEdge(reg)
 	rresp := &netstruct.RegisterResponse{}
-	//rresp := &netstruct.RegisterResponse{}
 	if edge == nil || err != nil {
-		log.Printf("Supernode: Registration failed for %s: %v", regMsg.EdgeMACAddr, err)
-		//s.SendAck(r.Addr, nil, "ERR Registration failed")
+		log.Printf("Supernode: Registration failed for %s: %v", reg.Msg.EdgeMACAddr, err)
 		rresp.IsRegisterOk = false
-		data, inErr := protocol.Encode(rresp)
-		if inErr == nil {
-			s.WritePacket(protocol.TypeRegisterResponse, regMsg.CommunityName, s.MacADDR(), nil, string(data), r.Addr)
-		}
+		s.SendStruct(rresp, reg.Msg.CommunityName, s.MacADDR(), nil, r.FromAddr)
 		s.stats.PacketsDropped.Add(1)
 		return err
 	}
@@ -121,80 +118,72 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	rresp.IsRegisterOk = true
 	rresp.VirtualIP = edge.VirtualIP.String()
 	rresp.Masklen = edge.VNetMaskLen
-	data, inErr := protocol.Encode(rresp)
-	if inErr != nil {
-		return inErr
-	}
-	s.WritePacket(protocol.TypeRegisterResponse, regMsg.CommunityName, s.MacADDR(), nil, string(data), r.Addr)
+	s.SendStruct(rresp, reg.Msg.CommunityName, s.MacADDR(), nil, r.FromAddr)
+
 	pil := newPeerInfoEvent(p2p.TypeRegister, edge)
-	peerInfoPayload, err := pil.Encode()
+	/*peerInfoPayload, err := pil.Encode()
 	if err != nil {
 		log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
-	} else {
-		s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), regMsg.EdgeMACAddr)
-	}
+	} else {*/
+	return s.BroadcastStruct(pil, cm, s.MacADDR(), nil, reg.EdgeMACAddr())
+	//s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), reg.Msg.EdgeMACAddr)
+	//	}
 
-	return nil
+	//return nil
 }
 
 func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
-	heartbeatMsg, err := r.ToHeartbeatMessage()
+	pulse, err := protocol.ToMessage[*netstruct.HeartbeatPulse](r) //r.ToHeartbeatMessage()
 	if err != nil {
 		return err
 	}
-	cm, err := s.GetCommunityForEdge(heartbeatMsg.EdgeMACAddr, heartbeatMsg.CommunityHash)
+	cm, err := s.GetCommunity(pulse)
 	if err != nil {
 		return err
 	}
 	s.stats.HeartbeatsReceived.Add(1)
-	changed, err := cm.RefreshEdge(heartbeatMsg)
+	changed, err := cm.RefreshEdge(pulse)
 	if err != nil {
 		return err
 	}
-	edge, exists := cm.GetEdge(heartbeatMsg.EdgeMACAddr)
+	edge, exists := cm.GetEdge(pulse.EdgeMACAddr())
 	if exists {
 		if changed {
 			pil := newPeerInfoEvent(p2p.TypeRegister, edge)
-			peerInfoPayload, err := pil.Encode()
+			/*peerInfoPayload, err := pil.Encode()
 			if err != nil {
 				log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
-			} else {
-				s.BroadcastPacket(protocol.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), heartbeatMsg.EdgeMACAddr)
-			}
+			} else {*/
+			s.BroadcastStruct(pil, cm, s.MacADDR(), nil, pulse.EdgeMACAddr())
+			//	s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), pulse.EdgeMACAddr())
+			//}
 		}
-		return s.SendAck(r.Addr, edge, "ACK")
+		//return s.SendAck(r.FromAddr, edge, "ACK")
 	}
 	return nil
 }
 
 func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
-	fsMsg, err := r.ToP2PFullStateMessage()
+	fsMsg, err := protocol.ToMessage[*p2p.P2PFullState](r)
 	if err != nil {
 		return err
 	}
-	if !fsMsg.IsRequest {
+	if !fsMsg.Msg.IsRequest {
 		return fmt.Errorf("supernode does not handle non-requests P2PFullStatesMessage")
 	}
-	cm, err := s.GetCommunityForEdge(fsMsg.EdgeMACAddr, fsMsg.CommunityHash)
+	cm, err := s.GetCommunityForEdge(fsMsg.EdgeMACAddr(), fsMsg.CommunityHash())
 	if err != nil {
 		return err
 	}
-	P2PFullState, err := cm.GetCommunityPeerP2PInfosDatas(fsMsg.EdgeMACAddr)
+	P2PFullState, err := cm.GetCommunityPeerP2PInfosDatas(fsMsg.EdgeMACAddr())
 	if err != nil {
 		return err
 	}
-	data, err := P2PFullState.Encode()
+	target, err := cm.GetEdgeUDPAddr(fsMsg.EdgeMACAddr())
 	if err != nil {
 		return err
 	}
-	target, err := cm.GetEdgeUDPAddr(fsMsg.EdgeMACAddr)
-	if err != nil {
-		return err
-	}
-	//log.Printf("DEBUG: P2PFullStateMessageSize: %d bytes", len(string(data)))
-	//return s.WriteFragments(protocol.TypeP2PFullState, s.MacADDR(), data, target)
-	return s.WritePacket(protocol.TypeP2PFullState, cm.Name(), s.MacADDR(), nil, string(data), target)
-
+	return s.SendStruct(P2PFullState, cm.Name(), s.MacADDR(), nil, target)
 }
 
 // handleDataMessage processes a data packet

@@ -1,7 +1,7 @@
 package p2p
 
 import (
-	"n2n-go/pkg/protocol/codec"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"net/netip"
 )
@@ -30,6 +30,11 @@ type PeerInfoList struct {
 	EventType PeerInfoEventType
 }
 
+func (pil PeerInfoList) PacketType() spec.PacketType {
+	return spec.TypePeerInfo
+}
+
+/*
 func (pfs *PeerInfoList) Encode() ([]byte, error) {
 	return codec.NewCodec[PeerInfoList]().Encode(*pfs)
 }
@@ -37,3 +42,4 @@ func (pfs *PeerInfoList) Encode() ([]byte, error) {
 func ParsePeerInfoList(data []byte) (*PeerInfoList, error) {
 	return codec.NewCodec[PeerInfoList]().Decode(data)
 }
+*/

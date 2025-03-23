@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/protocol/codec"
+	"n2n-go/pkg/protocol/spec"
 	"net"
 	"sync"
 	"time"
@@ -51,6 +52,11 @@ type P2PFullState struct {
 	FullState     map[string]PeerP2PInfos
 }
 
+func (pfs P2PFullState) PacketType() spec.PacketType {
+	return spec.TypeP2PFullState
+}
+
+/*
 func (pfs *P2PFullState) Encode() ([]byte, error) {
 	return codec.NewCodec[P2PFullState]().Encode(*pfs)
 }
@@ -58,6 +64,7 @@ func (pfs *P2PFullState) Encode() ([]byte, error) {
 func ParseP2PFullState(data []byte) (*P2PFullState, error) {
 	return codec.NewCodec[P2PFullState]().Decode(data)
 }
+*/
 
 func (pfs *PeerP2PInfos) Encode() ([]byte, error) {
 	return codec.NewCodec[PeerP2PInfos]().Encode(*pfs)

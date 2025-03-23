@@ -9,6 +9,7 @@ import (
 	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/upnp"
 	"n2n-go/pkg/util"
@@ -129,12 +130,12 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		messageHandlers:   make(protocol.MessageHandlerMap),
 		config:            &cfg,
 	}
-	edge.messageHandlers[protocol.TypeData] = edge.handleDataMessage
-	edge.messageHandlers[protocol.TypePeerInfo] = edge.handlePeerInfoMessage
-	edge.messageHandlers[protocol.TypePing] = edge.handlePingMessage
-	edge.messageHandlers[protocol.TypeP2PFullState] = edge.handleP2PFullStateMessage
-	edge.messageHandlers[protocol.TypeLeasesInfos] = edge.handleLeasesInfosMessage
-	edge.messageHandlers[protocol.TypeRetryRegisterRequest] = edge.handleRetryRegisterRequest
+	edge.messageHandlers[spec.TypeData] = edge.handleDataMessage
+	edge.messageHandlers[spec.TypePeerInfo] = edge.handlePeerInfoMessage
+	edge.messageHandlers[spec.TypePing] = edge.handlePingMessage
+	edge.messageHandlers[spec.TypeP2PFullState] = edge.handleP2PFullStateMessage
+	edge.messageHandlers[spec.TypeLeasesInfos] = edge.handleLeasesInfosMessage
+	edge.messageHandlers[spec.TypeRetryRegisterRequest] = edge.handleRetryRegisterRequest
 	return edge, nil
 }
 
