@@ -40,12 +40,15 @@ func (e *EdgeClient) UpdatePeersP2PStates() {
 
 func (e *EdgeClient) PingPeer(p *p2p.Peer, n int, interval time.Duration, status p2p.P2PCapacity) error {
 	checkid := fmt.Sprintf("%s.%s.%s.%s.%d", e.ID, e.MACAddr.String(), p.Infos.MACAddr.String(), p.Infos.PubSocket.IP.String(), p.Infos.PubSocket.Port)
-	payloadStr := fmt.Sprintf("PING %s ", checkid)
+	pingMsg := &netstruct.PeerToPing{
+		IsPong:  false,
+		CheckID: checkid,
+	}
 	p.UpdateP2PStatus(status, checkid)
 	for range n {
-		e.WritePacket(spec.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
+		e.SendStruct(pingMsg, p.Infos.MACAddr, p2p.UDPEnforceP2P)
 	}
-	return e.WritePacket(spec.TypePing, p.Infos.MACAddr, payloadStr, p2p.UDPEnforceP2P)
+	return e.SendStruct(pingMsg, p.Infos.MACAddr, p2p.UDPEnforceP2P)
 }
 
 // handleHeartbeat sends heartbeat messages periodically

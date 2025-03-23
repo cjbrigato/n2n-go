@@ -8,7 +8,6 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
-	"strings"
 )
 
 type RawMessage struct {
@@ -47,11 +46,33 @@ func (r *RawMessage) RawPacket() []byte {
 	return r.rawPacket
 }
 
+func (r *RawMessage) HasSrcMACAddr() bool {
+	return r.Header.HasSrcMACAddr()
+}
+
+func (r *RawMessage) HasDstMACAddr() bool {
+	return r.Header.HasDstMACAddr()
+}
+
+func (r *RawMessage) DestMACAddr() string {
+	if r.HasDstMACAddr() {
+		return r.Header.GetDstMACAddr().String()
+	}
+	return ""
+}
+
 func (r *RawMessage) EdgeMACAddr() string {
-	return r.Header.GetSrcMACAddr().String()
+	if r.HasSrcMACAddr() {
+		return r.Header.GetSrcMACAddr().String()
+	}
+	return ""
 }
 func (r *RawMessage) CommunityHash() uint32 {
 	return r.Header.CommunityID
+}
+
+func (r *RawMessage) ToPacket() []byte {
+	return r.rawPacket
 }
 
 func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
@@ -67,41 +88,43 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 	return unpackProtoVDatagram(packet, addr)
 }
 
-type PingMessage struct {
-	RawMsg        *RawMessage
-	EdgeMACAddr   string
-	CommunityHash uint32
-	CheckID       string
-	IsPong        bool
-	DestMACAddr   string
-}
+/*
+	type PingMessage struct {
+		RawMsg        *RawMessage
+		EdgeMACAddr   string
+		CommunityHash uint32
+		CheckID       string
+		IsPong        bool
+		DestMACAddr   string
+	}
 
 // Payload Format request: PING sharedid
 //
 //	response: PONG sharedid
-func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
-	if r.Header.PacketType != spec.TypePing {
-		return nil, fmt.Errorf("not a TypePing packet")
-	}
-	parts := strings.Fields(string(r.Payload))
-	if len(parts) < 2 || (parts[0] != "PING" && parts[0] != "PONG") {
-		return nil, fmt.Errorf("invalid payload format despite TypePing")
-	}
-	isPong := (parts[0] == "PONG")
-	return &PingMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-		DestMACAddr:   r.Header.GetDstMACAddr().String(),
-		CheckID:       parts[1],
-		IsPong:        isPong,
-	}, nil
-}
 
-func (pmsg *PingMessage) ToPacket() []byte {
-	return pmsg.RawMsg.RawPacket()
-}
+	func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
+		if r.Header.PacketType != spec.TypePing {
+			return nil, fmt.Errorf("not a TypePing packet")
+		}
+		parts := strings.Fields(string(r.Payload))
+		if len(parts) < 2 || (parts[0] != "PING" && parts[0] != "PONG") {
+			return nil, fmt.Errorf("invalid payload format despite TypePing")
+		}
+		isPong := (parts[0] == "PONG")
+		return &PingMessage{
+			RawMsg:        r,
+			CommunityHash: r.Header.CommunityID,
+			EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
+			DestMACAddr:   r.Header.GetDstMACAddr().String(),
+			CheckID:       parts[1],
+			IsPong:        isPong,
+		}, nil
+	}
 
+	func (pmsg *PingMessage) ToPacket() []byte {
+		return pmsg.RawMsg.RawPacket()
+	}
+*/
 type DataMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string

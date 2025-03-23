@@ -151,30 +151,35 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 }
 
 func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
-	pingMsg, err := r.ToPingMessage()
+	pingMsg, err := protocol.ToMessage[*netstruct.PeerToPing](r)
 	if err != nil {
 		return err
 	}
-	if !pingMsg.IsPong {
+	// If it is PING message, answer with pong and CheckID payload
+	if !pingMsg.Msg.IsPong {
 		// swap dst/src
-		dst, err := net.ParseMAC(pingMsg.EdgeMACAddr)
+		dst, err := net.ParseMAC(pingMsg.EdgeMACAddr())
 		if err != nil {
 			return fmt.Errorf("cannot parse dst EdgeMACAddr for swaping")
 		}
-		if pingMsg.DestMACAddr != e.MACAddr.String() {
+		if pingMsg.DestMACAddr() != e.MACAddr.String() {
 			return fmt.Errorf("ping recipient differs from this edge MACAddress")
 		}
-		payloadStr := fmt.Sprintf("PONG %s ", pingMsg.CheckID)
-		e.WritePacket(spec.TypePing, dst, payloadStr, p2p.UDPBestEffort)
-	} else {
-		p, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr)
-		if err != nil {
-			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr)
+		pongMsg := &netstruct.PeerToPing{
+			IsPong:  true,
+			CheckID: pingMsg.Msg.CheckID,
 		}
-		if p.P2PCheckID == pingMsg.CheckID {
-			p.UpdateP2PStatus(p2p.P2PAvailable, pingMsg.CheckID)
+		e.SendStruct(pongMsg, dst, p2p.UDPBestEffort)
+	} else {
+		// if it is a PONG message, check OUR last pings and update P2PStates accordingly
+		p, err := e.Peers.GetPeer(pingMsg.EdgeMACAddr())
+		if err != nil {
+			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr())
+		}
+		if p.P2PCheckID == pingMsg.Msg.CheckID {
+			p.UpdateP2PStatus(p2p.P2PAvailable, pingMsg.Msg.CheckID)
 		} else {
-			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr, p.P2PCheckID, pingMsg.CheckID)
+			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr(), p.P2PCheckID, pingMsg.Msg.CheckID)
 			p.UpdateP2PStatus(p2p.P2PUnknown, "")
 		}
 	}

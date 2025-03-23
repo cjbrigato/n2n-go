@@ -9,3 +9,12 @@ type PeerListRequest struct {
 func (*PeerListRequest) PacketType() spec.PacketType {
 	return spec.TypePeerListRequest
 }
+
+type PeerToPing struct {
+	CheckID string
+	IsPong  bool
+}
+
+func (*PeerToPing) PacketType() spec.PacketType {
+	return spec.TypePing
+}

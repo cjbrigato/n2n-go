@@ -57,10 +57,12 @@ func bytesToMAC(arr [6]byte) net.HardwareAddr {
 
 // Implement IHeader interface for ProtoVHeader
 func (h *ProtoVHeader) GetVersion() uint8               { return h.Version }
-func (h *ProtoVHeader) GetPacketType() spec.PacketType       { return h.PacketType }
+func (h *ProtoVHeader) GetPacketType() spec.PacketType  { return h.PacketType }
 func (h *ProtoVHeader) GetSequence() uint16             { return h.Sequence }
 func (h *ProtoVHeader) GetSrcMACAddr() net.HardwareAddr { return bytesToMAC(h.SourceID) }
 func (h *ProtoVHeader) GetDstMACAddr() net.HardwareAddr { return bytesToMAC(h.DestID) }
+func (h *ProtoVHeader) HasSrcMACAddr() bool             { return h.GetSrcMACAddr() != nil }
+func (h *ProtoVHeader) HasDstMACAddr() bool             { return h.GetDstMACAddr() != nil }
 
 // NewProtoVHeader creates a new ProtoV header
 func NewProtoVHeader(version, ttl uint8, pType spec.PacketType, seq uint16, community string, src, dst net.HardwareAddr) (*ProtoVHeader, error) {

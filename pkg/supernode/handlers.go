@@ -168,50 +168,48 @@ func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	return s.SendStruct(P2PFullState, cm.Name(), s.MacADDR(), nil, target)
 }
 
-// handleDataMessage processes a data packet
+// handlePingMessage should only be forwareded
 func (s *Supernode) handlePingMessage(r *protocol.RawMessage) error { //packet []byte, srcID, community, destMAC string, seq uint16) {
-
-	pingMsg, err := r.ToPingMessage()
+	pingMsg, err := protocol.ToMessage[*netstruct.PeerToPing](r)
 	if err != nil {
 		return err
 	}
-	cm, err := s.GetCommunityForEdge(pingMsg.EdgeMACAddr, pingMsg.CommunityHash)
+	cm, err := s.GetCommunity(pingMsg)
 	if err != nil {
 		return err
 	}
-	senderEdge, found := cm.GetEdge(pingMsg.EdgeMACAddr)
+	senderEdge, found := cm.GetEdge(pingMsg.EdgeMACAddr())
 	if !found {
-		return fmt.Errorf("cannot find senderEdge %v in community for pingMsg packet handling", pingMsg.EdgeMACAddr)
+		return fmt.Errorf("cannot find senderEdge %v in community for pingMsg packet handling", pingMsg.EdgeMACAddr())
 	}
 	var targetEdge *Edge
-	if pingMsg.DestMACAddr != "" {
-		te, found := cm.GetEdge(pingMsg.DestMACAddr)
+	if pingMsg.DestMACAddr() != "" {
+		te, found := cm.GetEdge(pingMsg.DestMACAddr())
 		if found {
 			targetEdge = te
-		} else {
-
 		}
+	}
+	if targetEdge == nil {
+		return fmt.Errorf("cannot find targetEdge %s in community for pingMsg packet handling", pingMsg.DestMACAddr())
 	}
 	// Update sender's heartbeat and sequence
 	cm.edgeMu.Lock()
-	if e, ok := cm.edges[pingMsg.EdgeMACAddr]; ok {
+	if e, ok := cm.edges[pingMsg.EdgeMACAddr()]; ok {
 		e.LastHeartbeat = time.Now()
-		e.LastSequence = pingMsg.RawMsg.Header.Sequence
+		e.LastSequence = pingMsg.Header.Sequence
 	}
 	cm.edgeMu.Unlock()
 
 	s.debugLog("Ping packet received from edge %s", senderEdge.MACAddr)
 
-	if targetEdge != nil {
-		if err := s.forwardPacket(pingMsg.ToPacket(), targetEdge); err != nil {
-			s.stats.PacketsDropped.Add(1)
-			log.Printf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
-		} else {
-			s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
-			s.stats.PacketsForwarded.Add(1)
-			return nil
-		}
+	if err := s.forwardPacket(pingMsg.ToPacket(), targetEdge); err != nil {
+		s.stats.PacketsDropped.Add(1)
+		log.Printf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
+		return fmt.Errorf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
 	}
+	s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
+	s.stats.PacketsForwarded.Add(1)
+
 	return nil
 }
 
