@@ -12,15 +12,16 @@ import (
 )
 
 func (s *Supernode) handleP2PStateInfoMessage(r *protocol.RawMessage) error {
-	p2pMsg, err := r.ToP2PStateInfoMessage()
+	//p2pMsg, err := r.ToP2PStateInfoMessage()
+	p2pMsg, err := protocol.ToMessage[*p2p.PeerP2PInfos](r)
 	if err != nil {
 		return err
 	}
-	cm, err := s.GetCommunityForEdge(p2pMsg.EdgeMACAddr, p2pMsg.CommunityHash)
+	cm, err := s.GetCommunity(p2pMsg)
 	if err != nil {
 		return err
 	}
-	err = cm.SetP2PInfosFor(p2pMsg.EdgeMACAddr, p2pMsg.PeerP2PInfos)
+	err = cm.SetP2PInfosFor(p2pMsg.EdgeMACAddr(), p2pMsg.Msg)
 	if err != nil {
 		return err
 	}
@@ -38,16 +39,11 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
-	/*peerResponsePayload, err := pil.Encode()
-	if err != nil {
-		return err
-	}*/
 	target, err := cm.GetEdgeUDPAddr(peerReqMsg.EdgeMACAddr)
 	if err != nil {
 		return err
 	}
 	return s.SendStruct(pil, peerReqMsg.CommunityName, s.MacADDR(), nil, target)
-	//return s.WritePacket(spec.TypePeerInfo, peerReqMsg.CommunityName, s.MacADDR(), nil, string(peerResponsePayload), target)
 }
 
 func (s *Supernode) handleAckMessage(r *protocol.RawMessage) error {

@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/protocol/codec"
 	"n2n-go/pkg/protocol/spec"
 	"net"
 	"sync"
@@ -46,13 +45,18 @@ type PeerP2PInfos struct {
 	From *Peer
 	To   []*Peer
 }
+
+func (psi *PeerP2PInfos) PacketType() spec.PacketType {
+	return spec.TypeP2PStateInfo
+}
+
 type P2PFullState struct {
 	CommunityName string
 	IsRequest     bool
 	FullState     map[string]PeerP2PInfos
 }
 
-func (pfs P2PFullState) PacketType() spec.PacketType {
+func (pfs *P2PFullState) PacketType() spec.PacketType {
 	return spec.TypeP2PFullState
 }
 
@@ -65,7 +69,7 @@ func ParseP2PFullState(data []byte) (*P2PFullState, error) {
 	return codec.NewCodec[P2PFullState]().Decode(data)
 }
 */
-
+/*
 func (pfs *PeerP2PInfos) Encode() ([]byte, error) {
 	return codec.NewCodec[PeerP2PInfos]().Encode(*pfs)
 }
@@ -73,7 +77,7 @@ func (pfs *PeerP2PInfos) Encode() ([]byte, error) {
 func ParsePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
 	return codec.NewCodec[PeerP2PInfos]().Decode(data)
 }
-
+*/
 type Peer struct {
 	Infos      PeerInfo
 	P2PStatus  P2PCapacity
@@ -100,12 +104,12 @@ func NewPeerRegistry() *PeerRegistry {
 	}
 }
 
-func (reg *PeerRegistry) GetPeerP2PInfos() PeerP2PInfos {
+func (reg *PeerRegistry) GetPeerP2PInfos() *PeerP2PInfos {
 	var to []*Peer
 	for _, v := range reg.Peers {
 		to = append(to, v)
 	}
-	return PeerP2PInfos{
+	return &PeerP2PInfos{
 		From: reg.Me,
 		To:   to,
 	}

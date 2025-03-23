@@ -5,6 +5,7 @@ import (
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/tuntap"
 	"net"
@@ -149,7 +150,8 @@ func (e *EdgeClient) sendPeerRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	err := e.WritePacket(spec.TypeHeartbeat, nil, fmt.Sprintf("HEARTBEAT %s ", e.Community), p2p.UDPEnforceSupernode)
+	pulse := &netstruct.HeartbeatPulse{CommunityName: e.Community}
+	err := e.SendStruct(pulse, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}
@@ -158,11 +160,13 @@ func (e *EdgeClient) sendHeartbeat() error {
 
 func (e *EdgeClient) sendP2PInfos() error {
 	infos := e.Peers.GetPeerP2PInfos()
-	data, err := infos.Encode()
+
+	/*data, err := infos.Encode()
 	if err != nil {
 		return err
 	}
-	err = e.WritePacket(spec.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)
+	err = e.WritePacket(spec.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)*/
+	err := e.SendStruct(infos, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
@@ -326,47 +330,6 @@ func (e *EdgeClient) handleTAP() {
 func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
 	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
 }
-
-/*
-func (e *EdgeClient) handleVFrag(data []byte, addr *net.UDPAddr) {
-	if len(data) < protocol.ProtoVFragSize {
-		log.Println("Received datagram smaller than header size")
-		return
-	}
-	var header protocol.ProtoVFragHeader
-	headerReader := bytes.NewReader(data[:protocol.ProtoVFragSize])
-	if err := binary.Read(headerReader, binary.BigEndian, &header); err != nil {
-		log.Printf("Error parsing header: %v", err)
-		return
-	}
-	log.Printf("%v", header)
-	payload := data[protocol.ProtoVFragSize:]
-	log.Printf("len p: %d", len(payload))
-	// Check if this is a fragmented message
-	if header.FragmentTotal <= 1 {
-		if header.PacketType == protocol.TypeP2PFullState {
-			pil, err := p2p.ParseP2PFullState(payload)
-			if err != nil {
-				log.Printf("error handleVFrag: %v", err)
-				return
-			}
-			if pil.IsRequest {
-				return //fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
-			}
-			if pil.FullState == nil {
-				return //fmt.Errorf("received nil FullState in P2PFullStateMessage")
-			}
-			e.Peers.FullState = pil.FullState
-			if e.Peers.IsWaitingForFullState {
-				e.Peers.IsWaitingForFullState = false
-			}
-			log.Println("mamamia")
-			return
-		}
-	}
-
-}
-*/
 
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {

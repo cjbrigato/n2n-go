@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol/codec"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
@@ -95,6 +94,7 @@ func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
 	}, nil
 }
 
+/*
 type P2PStateInfoMessage struct {
 	RawMsg        *RawMessage
 	CommunityHash uint32
@@ -116,7 +116,7 @@ func (r *RawMessage) ToP2PStateInfoMessage() (*P2PStateInfoMessage, error) {
 		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
 		PeerP2PInfos:  *pil,
 	}, nil
-}
+}*/
 
 type PingMessage struct {
 	RawMsg        *RawMessage
@@ -152,6 +152,7 @@ func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
 func (pmsg *PingMessage) ToPacket() []byte {
 	return pmsg.RawMsg.RawPacket()
 }
+
 /*
 type PeerInfoMessage struct {
 	RawMsg        *RawMessage

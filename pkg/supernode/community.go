@@ -79,7 +79,7 @@ func (c *Community) ResetP2PInfos() {
 	log.Printf("Community[%s]: reseted communityPeerP2PInfos", c.Name())
 }
 
-func (c *Community) SetP2PInfosFor(edgeMacADDR string, infos p2p.PeerP2PInfos) error {
+func (c *Community) SetP2PInfosFor(edgeMacADDR string, infos *p2p.PeerP2PInfos) error {
 	c.edgeMu.RLock()
 	_, exists := c.edges[edgeMacADDR]
 	c.edgeMu.RUnlock()
@@ -87,7 +87,7 @@ func (c *Community) SetP2PInfosFor(edgeMacADDR string, infos p2p.PeerP2PInfos) e
 		return fmt.Errorf("Community:%s unknown edge:%s cannot set P2PInfosFor", c.name, edgeMacADDR)
 	}
 	c.p2pMu.Lock()
-	c.communityPeerP2PInfos[edgeMacADDR] = infos
+	c.communityPeerP2PInfos[edgeMacADDR] = *infos
 	c.p2pMu.Unlock()
 	return nil
 }
@@ -112,7 +112,7 @@ func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PF
 	}, nil
 }
 
-func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) p2p.PeerInfoList {
+func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) *p2p.PeerInfoList {
 	edges := c.GetAllEdges()
 	var origin p2p.PeerInfo
 	var pis []p2p.PeerInfo
@@ -127,7 +127,7 @@ func (c *Community) GetPeerInfoList(reqMACAddr string, full bool) p2p.PeerInfoLi
 		}
 		pis = append(pis, e.PeerInfo())
 	}
-	return p2p.PeerInfoList{Origin: origin, HasOrigin: hasOrigin, PeerInfos: pis, EventType: p2p.TypeList}
+	return &p2p.PeerInfoList{Origin: origin, HasOrigin: hasOrigin, PeerInfos: pis, EventType: p2p.TypeList}
 }
 
 func (c *Community) GetEdgeUDPAddr(MACAddr string) (*net.UDPAddr, error) {
