@@ -66,34 +66,7 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 
 	return unpackProtoVDatagram(packet, addr)
 }
-/*
-type LeasesInfosMessage struct {
-	RawMsg        *RawMessage
-	CommunityName string
-	CommunityHash uint32
-	EdgeMACAddr   string
-	IsRequest     bool
-	LeasesInfos   netstruct.LeasesInfos
-}
 
-func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
-	if r.Header.PacketType != spec.TypeLeasesInfos {
-		return nil, fmt.Errorf("not a TypeLeasesInfos packet")
-	}
-	pil, err := netstruct.ParseLeasesInfos(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &LeasesInfosMessage{
-		RawMsg:        r,
-		CommunityName: pil.CommunityName,
-		CommunityHash: r.Header.CommunityID,
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-		IsRequest:     pil.IsRequest,
-		LeasesInfos:   *pil,
-	}, nil
-}
-*/
 type PingMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string
@@ -127,32 +100,6 @@ func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
 
 func (pmsg *PingMessage) ToPacket() []byte {
 	return pmsg.RawMsg.RawPacket()
-}
-
-type PeerRequestMessage struct {
-	RawMsg        *RawMessage
-	EdgeMACAddr   string
-	CommunityHash uint32
-	CommunityName string
-}
-
-// Payload Format: PEERREQUEST <CommunityName>
-func (r *RawMessage) ToPeerRequestMessage() (*PeerRequestMessage, error) {
-	if r.Header.PacketType != spec.TypePeerRequest {
-		return nil, fmt.Errorf("not a TypePeerRequest packet")
-	}
-	parts := strings.Fields(string(r.Payload))
-	if len(parts) < 2 || parts[0] != "PEERREQUEST" {
-		return nil, fmt.Errorf("invalid payload format despite TypePeerRequest")
-	}
-
-	return &PeerRequestMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		CommunityName: parts[1],
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-	}, nil
-
 }
 
 type DataMessage struct {
@@ -212,7 +159,6 @@ func (g *GenericStruct[T]) ToMessage(r *RawMessage) (*Message[T], error) {
 		return nil, err
 	}
 	return &Message[T]{
-		//RawMsg: r,
 		RawMessage: r,
 		Msg:        *v,
 	}, nil

@@ -80,10 +80,10 @@ func (e *EdgeClient) Run() {
 	go e.handleTAP()
 	go e.handleUDP()
 
-	log.Printf("Edge: sending preliminary Peer Request")
-	err := e.sendPeerRequest()
+	log.Printf("Edge: sending preliminary Peer List Request")
+	err := e.sendPeerListRequest()
 	if err != nil {
-		log.Printf("Edge: (warn) failed sending preliminary Peer Request: %v", err)
+		log.Printf("Edge: (warn) failed sending preliminary Peer List Request: %v", err)
 	}
 
 	log.Printf("Edge: starting P2PUpdate routines...")
@@ -134,14 +134,15 @@ func (e *EdgeClient) Close() {
 	log.Printf("Edge: Shutdown complete")
 }
 
-// sendPeerRequest sends a PeerRequest for all but sender's peerinfos
+// sendPeerListRequest sends a PeerRequest for all but sender's peerinfos
 // scoped by community
-func (e *EdgeClient) sendPeerRequest() error {
-	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-
-	err := e.WritePacket(spec.TypePeerRequest, nil, fmt.Sprintf("PEERREQUEST %s ", e.Community), p2p.UDPEnforceSupernode)
+func (e *EdgeClient) sendPeerListRequest() error {
+	req := &netstruct.PeerListRequest{
+		CommunityName: e.Community,
+	}
+	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send peerRequest: %w", err)
+		return fmt.Errorf("edge: failed to send peerList Request: %w", err)
 	}
 	return nil
 }

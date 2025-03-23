@@ -34,12 +34,3 @@ func (pil *PeerInfoList) PacketType() spec.PacketType {
 	return spec.TypePeerInfo
 }
 
-/*
-func (pfs *PeerInfoList) Encode() ([]byte, error) {
-	return codec.NewCodec[PeerInfoList]().Encode(*pfs)
-}
-
-func ParsePeerInfoList(data []byte) (*PeerInfoList, error) {
-	return codec.NewCodec[PeerInfoList]().Decode(data)
-}
-*/

@@ -60,24 +60,7 @@ func (pfs *P2PFullState) PacketType() spec.PacketType {
 	return spec.TypeP2PFullState
 }
 
-/*
-func (pfs *P2PFullState) Encode() ([]byte, error) {
-	return codec.NewCodec[P2PFullState]().Encode(*pfs)
-}
 
-func ParseP2PFullState(data []byte) (*P2PFullState, error) {
-	return codec.NewCodec[P2PFullState]().Decode(data)
-}
-*/
-/*
-func (pfs *PeerP2PInfos) Encode() ([]byte, error) {
-	return codec.NewCodec[PeerP2PInfos]().Encode(*pfs)
-}
-
-func ParsePeerP2PInfos(data []byte) (*PeerP2PInfos, error) {
-	return codec.NewCodec[PeerP2PInfos]().Decode(data)
-}
-*/
 type Peer struct {
 	Infos      PeerInfo
 	P2PStatus  P2PCapacity

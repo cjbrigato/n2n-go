@@ -9,7 +9,7 @@ const (
 	TypeHeartbeat            PacketType = 3
 	TypeData                 PacketType = 4
 	TypeAck                  PacketType = 5
-	TypePeerRequest          PacketType = 6
+	TypePeerListRequest      PacketType = 6
 	TypePeerInfo             PacketType = 7
 	TypePing                 PacketType = 8
 	TypeP2PStateInfo         PacketType = 9
@@ -32,8 +32,8 @@ func (pt PacketType) String() string {
 		return "Data"
 	case TypeAck:
 		return "Ack"
-	case TypePeerRequest:
-		return "PeerRequest"
+	case TypePeerListRequest:
+		return "PeerListRequest"
 	case TypePeerInfo:
 		return "PeerInfo"
 	case TypePing:

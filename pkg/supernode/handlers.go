@@ -29,20 +29,20 @@ func (s *Supernode) handleP2PStateInfoMessage(r *protocol.RawMessage) error {
 }
 
 func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
-	peerReqMsg, err := r.ToPeerRequestMessage()
+	peerReqMsg, err := protocol.ToMessage[*netstruct.PeerListRequest](r)
 	if err != nil {
 		return err
 	}
-	cm, err := s.GetCommunityForEdge(peerReqMsg.EdgeMACAddr, peerReqMsg.CommunityHash)
+	cm, err := s.GetCommunity(peerReqMsg)
 	if err != nil {
 		return err
 	}
-	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr, true)
-	target, err := cm.GetEdgeUDPAddr(peerReqMsg.EdgeMACAddr)
+	pil := cm.GetPeerInfoList(peerReqMsg.EdgeMACAddr(), true)
+	target, err := cm.GetEdgeUDPAddr(peerReqMsg.EdgeMACAddr())
 	if err != nil {
 		return err
 	}
-	return s.SendStruct(pil, peerReqMsg.CommunityName, s.MacADDR(), nil, target)
+	return s.SendStruct(pil, peerReqMsg.Msg.CommunityName, s.MacADDR(), nil, target)
 }
 
 func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {

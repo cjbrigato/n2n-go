@@ -89,7 +89,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[spec.TypeUnregisterRequest] = sn.handleUnregisterMessage
 	sn.SnMessageHandlers[spec.TypeHeartbeat] = sn.handleHeartbeatMessage
 	sn.SnMessageHandlers[spec.TypeData] = sn.handleDataMessage
-	sn.SnMessageHandlers[spec.TypePeerRequest] = sn.handlePeerRequestMessage
+	sn.SnMessageHandlers[spec.TypePeerListRequest] = sn.handlePeerRequestMessage
 	sn.SnMessageHandlers[spec.TypePing] = sn.handlePingMessage
 	sn.SnMessageHandlers[spec.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
 	sn.SnMessageHandlers[spec.TypeP2PFullState] = sn.handleP2PFullStateMessage
