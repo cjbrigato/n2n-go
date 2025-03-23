@@ -6,7 +6,6 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
-	"n2n-go/pkg/protocol/spec"
 	"net"
 	"time"
 )
@@ -47,32 +46,28 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 }
 
 func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
-	leaseMsg, err := r.ToLeasesInfosMessage()
+	leaseMsg, err := protocol.ToMessage[*netstruct.LeasesInfos](r)
 	if err != nil {
 		return err
 	}
-	if !leaseMsg.IsRequest {
+	if !leaseMsg.Msg.IsRequest {
 		return fmt.Errorf("Supernode do not handle non-request LeasesInfosMessage")
 	}
-	cm, err := s.GetCommunityForEdge(leaseMsg.EdgeMACAddr, leaseMsg.CommunityHash)
+	cm, err := s.GetCommunity(leaseMsg)
 	if err != nil {
 		return err
 	}
 	leases := cm.GetAllLease()
-	infos := netstruct.LeasesInfos{
+	infos := &netstruct.LeasesInfos{
 		IsRequest:     false,
 		CommunityName: cm.Name(),
 		Leases:        leases,
 	}
-	data, err := infos.Encode()
+	target, err := cm.GetEdgeUDPAddr(leaseMsg.EdgeMACAddr())
 	if err != nil {
 		return err
 	}
-	target, err := cm.GetEdgeUDPAddr(leaseMsg.EdgeMACAddr)
-	if err != nil {
-		return err
-	}
-	return s.WritePacket(spec.TypeLeasesInfos, cm.Name(), s.MacADDR(), nil, string(data), target)
+	return s.SendStruct(infos, cm.Name(), s.MacADDR(), nil, target)
 }
 
 func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {

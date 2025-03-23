@@ -1,7 +1,7 @@
 package netstruct
 
 import (
-	"n2n-go/pkg/protocol/codec"
+	"n2n-go/pkg/protocol/spec"
 
 	"github.com/cjbrigato/ippool"
 )
@@ -12,10 +12,6 @@ type LeasesInfos struct {
 	Leases        map[string]ippool.Lease //lease keyed by edge MACaddr
 }
 
-func (pfs *LeasesInfos) Encode() ([]byte, error) {
-	return codec.NewCodec[LeasesInfos]().Encode(*pfs)
-}
-
-func ParseLeasesInfos(data []byte) (*LeasesInfos, error) {
-	return codec.NewCodec[LeasesInfos]().Decode(data)
+func (l *LeasesInfos) PacketType() spec.PacketType {
+	return spec.TypeLeasesInfos
 }

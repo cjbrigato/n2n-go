@@ -110,14 +110,14 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 }
 
 func (s *EdgeClient) handleLeasesInfosMessage(r *protocol.RawMessage) error {
-	leaseMsg, err := r.ToLeasesInfosMessage()
+	leaseMsg, err := protocol.ToMessage[*netstruct.LeasesInfos](r)
 	if err != nil {
 		return err
 	}
-	if leaseMsg.IsRequest {
+	if leaseMsg.Msg.IsRequest {
 		return fmt.Errorf("Edge do not handle request LeasesInfosMessage")
 	}
-	s.EAPI.LastLeasesInfos = &leaseMsg.LeasesInfos
+	s.EAPI.LastLeasesInfos = leaseMsg.Msg
 	s.EAPI.IsWaitingForLeasesInfos = false
 	return nil
 }

@@ -66,7 +66,7 @@ func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
 
 	return unpackProtoVDatagram(packet, addr)
 }
-
+/*
 type LeasesInfosMessage struct {
 	RawMsg        *RawMessage
 	CommunityName string
@@ -93,7 +93,7 @@ func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
 		LeasesInfos:   *pil,
 	}, nil
 }
-
+*/
 type PingMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string

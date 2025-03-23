@@ -5,7 +5,6 @@ import (
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol/netstruct"
-	"n2n-go/pkg/protocol/spec"
 	"net/http"
 	"time"
 
@@ -140,11 +139,7 @@ func (eapi *EdgeClientApi) sendLeasesInfosRequest() error {
 		CommunityName: eapi.Client.Community,
 		IsRequest:     true,
 	}
-	data, err := req.Encode()
-	if err != nil {
-		return err
-	}
-	err = eapi.Client.WritePacket(spec.TypeLeasesInfos, nil, string(data), p2p.UDPEnforceSupernode)
+	err := eapi.Client.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
