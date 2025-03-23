@@ -94,30 +94,6 @@ func (r *RawMessage) ToLeasesInfosMessage() (*LeasesInfosMessage, error) {
 	}, nil
 }
 
-/*
-type P2PStateInfoMessage struct {
-	RawMsg        *RawMessage
-	CommunityHash uint32
-	EdgeMACAddr   string
-	PeerP2PInfos  p2p.PeerP2PInfos
-}
-
-func (r *RawMessage) ToP2PStateInfoMessage() (*P2PStateInfoMessage, error) {
-	if r.Header.PacketType != spec.TypeP2PStateInfo {
-		return nil, fmt.Errorf("not a TypeP2PStateInfo packet")
-	}
-	pil, err := p2p.ParsePeerP2PInfos(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &P2PStateInfoMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-		PeerP2PInfos:  *pil,
-	}, nil
-}*/
-
 type PingMessage struct {
 	RawMsg        *RawMessage
 	EdgeMACAddr   string
@@ -152,29 +128,6 @@ func (r *RawMessage) ToPingMessage() (*PingMessage, error) {
 func (pmsg *PingMessage) ToPacket() []byte {
 	return pmsg.RawMsg.RawPacket()
 }
-
-/*
-type PeerInfoMessage struct {
-	RawMsg        *RawMessage
-	CommunityHash uint32
-	PeerInfoList  *p2p.PeerInfoList
-}
-
-func (r *RawMessage) ToPeerInfoMessage() (*PeerInfoMessage, error) {
-	if r.Header.PacketType != spec.TypePeerInfo {
-		return nil, fmt.Errorf("not a TypePeerInfo packet")
-	}
-	pil, err := p2p.ParsePeerInfoList(r.Payload)
-	if err != nil {
-		return nil, err
-	}
-	return &PeerInfoMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		PeerInfoList:  pil,
-	}, nil
-}
-*/
 
 type PeerRequestMessage struct {
 	RawMsg        *RawMessage
@@ -232,34 +185,6 @@ func (r *RawMessage) ToDataMessage() (*DataMessage, error) {
 
 }
 
-/*
-type HeartbeatMessage struct {
-	RawMsg        *RawMessage
-	EdgeMACAddr   string
-	CommunityHash uint32
-	CommunityName string
-}
-
-// Payload Format: HEARTBEAT <CommunityName>
-func (r *RawMessage) ToHeartbeatMessage() (*HeartbeatMessage, error) {
-	if r.Header.PacketType != spec.TypeHeartbeat {
-		return nil, fmt.Errorf("not a TypeHeartbeat packet")
-	}
-	parts := strings.Fields(string(r.Payload))
-	if len(parts) < 2 || parts[0] != "HEARTBEAT" {
-		return nil, fmt.Errorf("invalid payload format despite TypeHeartbeat")
-	}
-
-	return &HeartbeatMessage{
-		RawMsg:        r,
-		CommunityHash: r.Header.CommunityID,
-		CommunityName: parts[1],
-		EdgeMACAddr:   r.Header.GetSrcMACAddr().String(),
-	}, nil
-
-}
-*/
-
 type AckMessage struct {
 	RawMsg      *RawMessage
 	EdgeMACAddr string
@@ -298,15 +223,6 @@ type Message[T netstruct.PacketTyped] struct {
 	Msg T
 }
 
-/*
-	func (m *Message[T]) EdgeMACAddr() string {
-		return m.RawMsg.EdgeMACAddr()
-	}
-
-	func (m *Message[T]) CommunityHash() uint32 {
-		return m.RawMsg.CommunityHash()
-	}
-*/
 type GenericStruct[T netstruct.PacketTyped] struct {
 	V T
 }
