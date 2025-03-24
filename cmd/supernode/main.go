@@ -53,7 +53,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error loading pool state:", err)
 	}
-	log.Printf("Supernode: Loaded pool state", err)
+	log.Printf("Supernode: Loaded pool state")
 	sn := supernode.NewSupernodeWithConfig(conn, cfg) // Pass the config struct
 
 	sigChan := make(chan os.Signal, 1)
