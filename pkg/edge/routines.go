@@ -220,11 +220,20 @@ func (e *EdgeClient) handleHeartbeat() {
 func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf []byte, udpSocket *net.UDPAddr) error {
 	payload := payloadBuf[:n]
 	if e.encryptionEnabled {
-		encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
+		/*encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
 		if err != nil {
 			return err
 		}
+		payload = encryptedPayload*/
+		encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
+		if err != nil {
+			log.Printf("Edge: Failed to encrypt payload %v", err)
+			return err
+		}
+		fmt.Println("DEBUG: payloadsize after encryption", len(payload))
 		payload = encryptedPayload
+		fmt.Println("DEBUG: payloadsize after assignation", len(payload))
+		fmt.Println("DEBUG: encryptedpayloadsize:", len(encryptedPayload))
 	}
 
 	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
@@ -330,13 +339,17 @@ func (e *EdgeClient) handleTAP() {
 		e.PacketsSent.Add(1)
 
 		payload := payloadBuf[:n]
+		fmt.Println("DEBUG: payloadsize:", len(payload))
 		if e.encryptionEnabled {
 			encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
 			if err != nil {
 				log.Printf("Edge: Failed to encrypt payload %v", err)
 				continue
 			}
+			fmt.Println("DEBUG: payloadsize after encryption", len(payload))
 			payload = encryptedPayload
+			fmt.Println("DEBUG: payloadsize after assignation", len(payload))
+			fmt.Println("DEBUG: encryptedpayloadsize:", len(encryptedPayload))
 		}
 		totalLen := headerSize + len(payload)
 		packet := make([]byte, totalLen)
