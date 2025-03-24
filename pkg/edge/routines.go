@@ -452,7 +452,7 @@ func (e *EdgeClient) handleUDP() {
 
 		e.PacketsRecv.Add(1)
 
-		rawMsg, err := protocol.NewRawMessage(packetBuf, addr)
+		rawMsg, err := protocol.NewRawMessage(packetBuf[:n], addr)
 		if err != nil {
 			log.Printf("Edge: error while parsing UDP Packet: %v", err)
 			continue
