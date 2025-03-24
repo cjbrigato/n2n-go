@@ -6,6 +6,7 @@ import (
 	"log"
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/crypto"
+	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -162,6 +163,25 @@ func (s *Supernode) RegisterCommunity(communityName string, communityHash uint32
 	return cm, nil
 }
 
+func (s *Supernode) ValidateEdgeClaimedMACAddr(reg *protocol.Message[*netstruct.RegisterRequest]) ([]byte, error) {
+
+	claimedMAC := reg.Msg.EdgeMACAddr
+	encMachineID := reg.Msg.EncryptedMachineID
+	machineID, err := crypto.DecryptSequence(encMachineID, s.SNSecrets.Priv)
+	if err != nil {
+		return nil, err
+	}
+	computedMAC, err := machine.ExtGenerateMac(reg.Msg.CommunityName, machineID)
+	if err != nil {
+		return nil, err
+	}
+	computedClaimableMAC := computedMAC.String()
+	if computedClaimableMAC != claimedMAC {
+		return nil, fmt.Errorf("computedMac from shared secret (%s) doesn't match claimed mac (%s)", computedClaimableMAC, claimedMAC)
+	}
+	return machineID, nil
+}
+
 func (s *Supernode) GetCommunityForEdge(edgeMACAddr string, communityHash uint32) (*Community, error) {
 
 	s.comMu.RLock()
@@ -185,6 +205,12 @@ func (s *Supernode) GetCommunity(i EdgeAddressable) (*Community, error) {
 
 // RegisterEdge registers or updates an edge in the supernode
 func (s *Supernode) RegisterEdge(regMsg *protocol.Message[*netstruct.RegisterRequest]) (*Edge, *Community, error) {
+
+	machineID, err := s.ValidateEdgeClaimedMACAddr(regMsg)
+	if err != nil {
+		return nil, nil, err
+	}
+	regMsg.Msg.ClearMachineID = machineID
 
 	cm, err := s.RegisterCommunity(regMsg.Msg.CommunityName, regMsg.CommunityHash())
 	if err != nil {
