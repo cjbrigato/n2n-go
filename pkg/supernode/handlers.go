@@ -44,7 +44,7 @@ func (s *Supernode) handlePeerRequestMessage(r *protocol.RawMessage) error {
 	return s.SendStruct(pil, peerReqMsg.Msg.CommunityName, s.MacADDR(), nil, target)
 }
 
-func (s *Supernode) handleLeasesInfosMEssage(r *protocol.RawMessage) error {
+func (s *Supernode) handleLeasesInfosMessage(r *protocol.RawMessage) error {
 	leaseMsg, err := protocol.ToMessage[*netstruct.LeasesInfos](r)
 	if err != nil {
 		return err

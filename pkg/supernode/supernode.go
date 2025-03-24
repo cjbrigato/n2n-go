@@ -103,7 +103,8 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 	sn.SnMessageHandlers[spec.TypePing] = sn.handlePingMessage
 	sn.SnMessageHandlers[spec.TypeP2PStateInfo] = sn.handleP2PStateInfoMessage
 	sn.SnMessageHandlers[spec.TypeP2PFullState] = sn.handleP2PFullStateMessage
-	sn.SnMessageHandlers[spec.TypeLeasesInfos] = sn.handleLeasesInfosMEssage
+	sn.SnMessageHandlers[spec.TypeLeasesInfos] = sn.handleLeasesInfosMessage
+	sn.SnMessageHandlers[spec.TypeSNPublicSecret] = sn.handleSNPublicSecretMessage
 
 	sn.shutdownWg.Add(1)
 	go func() {
