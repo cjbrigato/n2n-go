@@ -234,6 +234,13 @@ func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf 
 		payload = encryptedPayload
 		fmt.Println("DEBUG: payloadsize after assignation", len(payload))
 		fmt.Println("DEBUG: encryptedpayloadsize:", len(encryptedPayload))
+		decrypted, err := crypto.DecryptPayload(e.EncryptionKey, payload)
+		if err != nil {
+			fmt.Printf("DEBUG: Failed to DECRYPT self payload payload %v", err)
+		} else {
+			fmt.Println("DEBUG: SUCCESS to DECRYPT self payload", err)
+		}
+		fmt.Println("DEBIG: decrypted payload len:", len(decrypted))
 	}
 
 	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
