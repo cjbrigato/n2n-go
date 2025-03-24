@@ -1,6 +1,7 @@
 package edge
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"n2n-go/pkg/crypto"
@@ -9,9 +10,12 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
+
+var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
 
 // Register sends a registration packet to the supernode.
 func (e *EdgeClient) GetSNPublicKey() error {
@@ -109,7 +113,7 @@ func (e *EdgeClient) Register() error {
 	}
 
 	if !rresp.Msg.IsRegisterOk {
-		return fmt.Errorf("Edge: supernode refused register request. Aborting")
+		return ErrNACKRegister
 	}
 	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
 	log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
@@ -190,6 +194,11 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
 	}
 	if err := e.Register(); err != nil {
+		if errors.Is(err, ErrNACKRegister) {
+			log.Printf("Edge setup failed: %v", err)
+			e.Close()
+			os.Exit(127)
+		}
 		return err
 	}
 	return nil

@@ -45,7 +45,9 @@ func main() {
 	}()
 
 	if err := client.Setup(); err != nil {
-		log.Fatalf("Edge setup failed: %v", err)
+		log.Printf("Edge setup failed: %v", err)
+		client.Close()
+		os.Exit(127)
 	}
 	log.Printf("Edge setup successful")
 	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
