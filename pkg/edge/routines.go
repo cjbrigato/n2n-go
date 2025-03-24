@@ -155,8 +155,12 @@ func (e *EdgeClient) sendPeerListRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
-	pulse := &netstruct.HeartbeatPulse{CommunityName: e.Community}
-	err := e.SendStruct(pulse, nil, p2p.UDPEnforceSupernode)
+	encmacid, err := e.EncryptedMachineID()
+	if err != nil {
+		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
+	}
+	pulse := &netstruct.HeartbeatPulse{EdgeMACAddr: e.MACAddr.String(), CommunityName: e.Community, EncryptedMachineID: encmacid}
+	err = e.SendStruct(pulse, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
 	}

@@ -23,6 +23,8 @@ type Edge struct {
 	MachineID     []byte
 }
 
+
+
 func (e *Edge) UDPAddr() *net.UDPAddr {
 	return &net.UDPAddr{IP: e.PublicIP, Port: e.PublicPort}
 }

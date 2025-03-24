@@ -38,7 +38,10 @@ func (rresp *RegisterResponse) PacketType() spec.PacketType {
 }
 
 type HeartbeatPulse struct {
-	CommunityName string
+	EdgeMACAddr        string
+	CommunityName      string
+	EncryptedMachineID []byte
+	ClearMachineID     []byte
 }
 
 func (p *HeartbeatPulse) PacketType() spec.PacketType {
@@ -46,8 +49,9 @@ func (p *HeartbeatPulse) PacketType() spec.PacketType {
 }
 
 type UnregisterRequest struct {
-	EdgeMACAddr   string
-	CommunityName string
+	EdgeMACAddr        string
+	CommunityName      string
+	EncryptedMachineID []byte
 }
 
 func (u *UnregisterRequest) PacketType() spec.PacketType {

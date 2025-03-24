@@ -1,6 +1,7 @@
 package supernode
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"n2n-go/pkg/p2p"
@@ -158,18 +159,12 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 		return false
 	}
 
-	// Release the IP address
-	/*err := c.addrPool.Release(edgeMACAddr)
-	if err != nil {
-		c.debugLog("VIP Release failed: %v", err)
-	}*/
-
 	delete(c.edges, edgeMACAddr)
 	c.p2pMu.Lock()
 	defer c.p2pMu.Unlock()
 	delete(c.communityPeerP2PInfos, edgeMACAddr)
 
-	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s",
+	log.Printf("Community[%s]: Unregistered edge \"%s\": id=%s,vip=%s",
 		c.name, edge.Desc, edge.MACAddr, edge.VirtualIP.String())
 	return true
 }
@@ -180,6 +175,9 @@ func (c *Community) RefreshEdge(hbMsg *protocol.Message[*netstruct.HeartbeatPuls
 	edge, exists := c.edges[hbMsg.EdgeMACAddr()]
 	if !exists {
 		return false, fmt.Errorf("Community:%s unknown edge:%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr())
+	}
+	if !bytes.Equal(hbMsg.Msg.ClearMachineID, edge.MachineID) {
+		return false, fmt.Errorf("Community:%s wrong decrypted machineID for edge :%s cannot be refreshed", c.name, hbMsg.EdgeMACAddr())
 	}
 	oldPort := edge.PublicPort
 	oldPublicIP := edge.PublicIP

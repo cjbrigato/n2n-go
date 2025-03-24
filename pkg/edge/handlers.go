@@ -65,11 +65,19 @@ func (e *EdgeClient) GetSNPublicKey() error {
 	return nil
 }
 
+func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
+	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
+	if err != nil {
+		return nil, err
+	}
+	return encMachineID, nil
+}
+
 // Register sends a registration packet to the supernode.
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
-	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
+	encMachineID, err := e.EncryptedMachineID()
 	if err != nil {
 		return err
 	}
@@ -127,11 +135,16 @@ func (e *EdgeClient) Unregister() error {
 	if !e.registered {
 		return fmt.Errorf("cannot unregister an unregistered edge")
 	}
+	encMacid, err := e.EncryptedMachineID()
+	if err != nil {
+		return err
+	}
 	var unregErr error
 	e.unregisterOnce.Do(func() {
 		unreg := &netstruct.UnregisterRequest{
-			EdgeMACAddr:   e.MACAddr.String(),
-			CommunityName: e.Community,
+			EdgeMACAddr:        e.MACAddr.String(),
+			CommunityName:      e.Community,
+			EncryptedMachineID: encMacid,
 		}
 		err := e.SendStruct(unreg, nil, p2p.UDPEnforceSupernode)
 		if err != nil {

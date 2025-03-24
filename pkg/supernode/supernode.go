@@ -163,15 +163,21 @@ func (s *Supernode) RegisterCommunity(communityName string, communityHash uint32
 	return cm, nil
 }
 
-func (s *Supernode) ValidateEdgeClaimedMACAddr(reg *protocol.Message[*netstruct.RegisterRequest]) ([]byte, error) {
-
-	claimedMAC := reg.Msg.EdgeMACAddr
-	encMachineID := reg.Msg.EncryptedMachineID
+func (s *Supernode) DecryptMachineID(encMachineID []byte) ([]byte, error) {
 	machineID, err := crypto.DecryptSequence(encMachineID, s.SNSecrets.Priv)
 	if err != nil {
 		return nil, err
 	}
-	computedMAC, err := machine.ExtGenerateMac(reg.Msg.CommunityName, machineID)
+	return machineID, nil
+}
+
+func (s *Supernode) ValidateEdgeClaimedMACAddr(claimedMAC string, encryptedID []byte, communityName string) ([]byte, error) {
+
+	machineID, err := s.DecryptMachineID(encryptedID)
+	if err != nil {
+		return nil, err
+	}
+	computedMAC, err := machine.ExtGenerateMac(communityName, machineID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +212,7 @@ func (s *Supernode) GetCommunity(i EdgeAddressable) (*Community, error) {
 // RegisterEdge registers or updates an edge in the supernode
 func (s *Supernode) RegisterEdge(regMsg *protocol.Message[*netstruct.RegisterRequest]) (*Edge, *Community, error) {
 
-	machineID, err := s.ValidateEdgeClaimedMACAddr(regMsg)
+	machineID, err := s.ValidateEdgeClaimedMACAddr(regMsg.EdgeMACAddr(), regMsg.Msg.EncryptedMachineID, regMsg.Msg.CommunityName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -236,13 +242,8 @@ func (s *Supernode) onEdgeUnregistered(cm *Community, edgeMACAddr string) {
 	delete(s.edgesByMAC, edgeMACAddr)
 	s.edgeMu.Unlock()
 	s.stats.EdgesUnregistered.Add(1)
-	/*peerInfoPayload, err := pil.Encode()
-	if err != nil {
-		log.Printf("Supernode: (warn) unable to send unregistration event to peers for community %s: %v", cm.Name(), err)
-	} else {*/
 	s.BroadcastStruct(pil, cm, s.MacADDR(), nil, edgeMACAddr)
-	//s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), edgeMACAddr)
-	//}
+
 }
 
 // UnregisterEdge removes an edge from the supernode
@@ -250,7 +251,7 @@ func (s *Supernode) UnregisterEdge(ea EdgeAddressable) error {
 
 	cm, err := s.GetCommunity(ea)
 	if err != nil {
-		log.Printf("Supernode: error while unregistering edge %v for community %v: %w", ea.EdgeMACAddr(), ea.CommunityHash(), err)
+		log.Printf("Supernode: error while unregistering edge %v for community %v: %v", ea.EdgeMACAddr(), ea.CommunityHash(), err)
 		return err
 	}
 

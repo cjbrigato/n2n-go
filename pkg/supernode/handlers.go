@@ -74,6 +74,10 @@ func (s *Supernode) handleUnregisterMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
+	_, err = s.ValidateEdgeClaimedMACAddr(unReg.EdgeMACAddr(), unReg.Msg.EncryptedMachineID, unReg.Msg.CommunityName)
+	if err != nil {
+		return err
+	}
 	return s.UnregisterEdge(unReg)
 }
 
@@ -116,10 +120,16 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	s.stats.HeartbeatsReceived.Add(1)
+	decmacid, err := s.DecryptMachineID(pulse.Msg.EncryptedMachineID)
+	if err != nil {
+		return err
+	}
+	pulse.Msg.ClearMachineID = decmacid
 	changed, err := cm.RefreshEdge(pulse)
 	if err != nil {
 		return err
 	}
+
 	edge, exists := cm.GetEdge(pulse.EdgeMACAddr())
 	if exists {
 		if changed {
