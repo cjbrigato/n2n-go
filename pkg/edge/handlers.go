@@ -10,23 +10,46 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
-	"os"
 	"strings"
 	"time"
 )
 
 var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
 
-// Register sends a registration packet to the supernode.
-func (e *EdgeClient) GetSNPublicKey() error {
+func (e *EdgeClient) RequestSNPublicKey() error {
 	log.Printf("Trying to get Supernode publickey with supernode at %s...", e.SupernodeAddr)
 
 	reqPub := &netstruct.SNPublicSecret{
 		IsRequest: true,
 	}
 
-	err := e.SendStruct(reqPub, nil, p2p.UDPEnforceSupernode)
+	return e.SendStruct(reqPub, nil, p2p.UDPEnforceSupernode)
+}
 
+func (e *EdgeClient) RequestRegister() error {
+	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
+
+	encMachineID, err := e.EncryptedMachineID()
+	if err != nil {
+		return err
+	}
+
+	regReq := &netstruct.RegisterRequest{
+		EdgeMACAddr:        e.MACAddr.String(),
+		EdgeDesc:           e.ID,
+		CommunityName:      e.Community,
+		EncryptedMachineID: encMachineID,
+	}
+
+	return e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
+}
+
+// Register sends a registration packet to the supernode.
+func (e *EdgeClient) GetSNPublicKey() error {
+	err := e.RequestSNPublicKey()
+	if err != nil {
+		return err
+	}
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("edge: failed to set read deadline: %w", err)
@@ -75,21 +98,10 @@ func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
 
 // Register sends a registration packet to the supernode.
 func (e *EdgeClient) Register() error {
-	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
-
-	encMachineID, err := e.EncryptedMachineID()
+	err := e.RequestRegister()
 	if err != nil {
 		return err
 	}
-
-	regReq := &netstruct.RegisterRequest{
-		EdgeMACAddr:        e.MACAddr.String(),
-		EdgeDesc:           e.ID,
-		CommunityName:      e.Community,
-		EncryptedMachineID: encMachineID,
-	}
-
-	err = e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
@@ -156,6 +168,36 @@ func (e *EdgeClient) Unregister() error {
 	return unregErr
 }
 
+func (e *EdgeClient) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
+	rresp, err := protocol.ToMessage[*netstruct.SNPublicSecret](r)
+	if err != nil {
+		return err
+	}
+
+	pubkey, err := crypto.PublicKeyFromPEMData(rresp.Msg.PemData)
+	if err != nil {
+		return err
+	}
+	e.SNPubKey = pubkey
+	log.Printf("Edge: Updated Supernode public key !")
+	e.isWaitingForSNPubKeyUpdate = false
+	return nil
+}
+
+func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error {
+	rresp, err := protocol.ToMessage[*netstruct.RegisterResponse](r)
+	if err != nil {
+		return err
+	}
+	if !rresp.Msg.IsRegisterOk {
+		return ErrNACKRegister
+	}
+
+	log.Printf("Edge: Successfull Supernode Reregister")
+	e.isWaitingForSNRetryRegisterResponse = false
+	return nil
+}
+
 func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
 	payload := r.Payload
 	if e.encryptionEnabled {
@@ -206,14 +248,34 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 	if r.Header.PacketType != spec.TypeRetryRegisterRequest {
 		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
 	}
-	if err := e.Register(); err != nil {
-		if errors.Is(err, ErrNACKRegister) {
-			log.Printf("Edge setup failed: %v", err)
-			e.Close()
-			os.Exit(127)
-		}
+
+	err := e.RequestSNPublicKey()
+	if err != nil {
 		return err
 	}
+	e.isWaitingForSNPubKeyUpdate = true
+
+	for {
+		if e.isWaitingForSNPubKeyUpdate {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+
+	err = e.RequestRegister()
+	if err != nil {
+		return err
+	}
+
+	for {
+		if e.isWaitingForSNRetryRegisterResponse {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+
 	return nil
 }
 

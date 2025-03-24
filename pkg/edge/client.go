@@ -78,6 +78,9 @@ type EdgeClient struct {
 	config     *Config
 	// Handlers
 	messageHandlers protocol.MessageHandlerMap
+
+	isWaitingForSNPubKeyUpdate          bool
+	isWaitingForSNRetryRegisterResponse bool
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
@@ -149,6 +152,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	edge.messageHandlers[spec.TypeP2PFullState] = edge.handleP2PFullStateMessage
 	edge.messageHandlers[spec.TypeLeasesInfos] = edge.handleLeasesInfosMessage
 	edge.messageHandlers[spec.TypeRetryRegisterRequest] = edge.handleRetryRegisterRequest
+	edge.messageHandlers[spec.TypeRegisterResponse] = edge.handleRegisterResponseMessage
+	edge.messageHandlers[spec.TypeSNPublicSecret] = edge.handleSNPublicSecretMessage
 	return edge, nil
 }
 
