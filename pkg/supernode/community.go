@@ -224,6 +224,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.Message[*netstruct.RegisterReque
 			LastHeartbeat: time.Now(),
 			LastSequence:  regMsg.Header.Sequence,
 			MACAddr:       regMsg.EdgeMACAddr(),
+			MachineID:     regMsg.Msg.ClearMachineID,
 		}
 
 		c.edges[regMsg.Msg.EdgeMACAddr] = edge

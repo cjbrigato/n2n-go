@@ -14,9 +14,11 @@ func (s *SNPublicSecret) PacketType() spec.PacketType {
 }
 
 type RegisterRequest struct {
-	EdgeMACAddr   string
-	EdgeDesc      string
-	CommunityName string
+	EdgeMACAddr        string
+	EdgeDesc           string
+	CommunityName      string
+	EncryptedMachineID []byte
+	ClearMachineID     []byte //placeholder during registration
 }
 
 type RetryRegisterRequest struct{}

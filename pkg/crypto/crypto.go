@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -33,7 +34,35 @@ func PublicKeyFromPEMData(pemdata []byte) (*rsa.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return publicKey,nil
+	return publicKey, nil
+}
+
+func DecryptSequence(sequence []byte, privKey *rsa.PrivateKey) ([]byte, error) {
+	decrypted, err := rsa.DecryptOAEP(
+		sha256.New(),
+		rand.Reader,
+		privKey,
+		sequence,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to decrypt: %v", err)
+	}
+	return decrypted, nil
+}
+
+func EncryptSequence(sequence []byte, pubKey *rsa.PublicKey) ([]byte, error) {
+	encrypted, err := rsa.EncryptOAEP(
+		sha256.New(),
+		rand.Reader,
+		pubKey,
+		sequence,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to encrypt: %v", err)
+	}
+	return encrypted, nil
 }
 
 // Helper function to marshal public key to PEM format

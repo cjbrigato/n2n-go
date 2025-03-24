@@ -65,13 +65,19 @@ func (e *EdgeClient) GetSNPublicKey() error {
 func (e *EdgeClient) Register() error {
 	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
 
-	regReq := &netstruct.RegisterRequest{
-		EdgeMACAddr:   e.MACAddr.String(),
-		EdgeDesc:      e.ID,
-		CommunityName: e.Community,
+	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
+	if err != nil {
+		return err
 	}
 
-	err := e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
+	regReq := &netstruct.RegisterRequest{
+		EdgeMACAddr:        e.MACAddr.String(),
+		EdgeDesc:           e.ID,
+		CommunityName:      e.Community,
+		EncryptedMachineID: encMachineID,
+	}
+
+	err = e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {

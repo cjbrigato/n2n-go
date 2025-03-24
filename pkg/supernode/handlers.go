@@ -3,6 +3,8 @@ package supernode
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/crypto"
+	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -82,8 +84,30 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	edge, cm, err := s.RegisterEdge(reg)
+
 	rresp := &netstruct.RegisterResponse{}
+
+	claimedMAC := reg.Msg.EdgeMACAddr
+	encMachineID := reg.Msg.EncryptedMachineID
+	machineID, err := crypto.DecryptSequence(encMachineID, s.SNSecrets.Priv)
+	if err != nil {
+		return err
+	}
+	computedMAC, err := machine.ExtGenerateMac(reg.Msg.CommunityName, machineID)
+	if err != nil {
+		return err
+	}
+	computedClaimableMAC := computedMAC.String()
+	if computedClaimableMAC != claimedMAC {
+		err = fmt.Errorf("computedMac from shared secret (%s) doesn't match claimed mac (%s)", computedClaimableMAC, claimedMAC)
+		log.Printf("Supernode: Registration failed for %s: %v", reg.Msg.EdgeMACAddr, err)
+		rresp.IsRegisterOk = false
+		s.SendStruct(rresp, reg.Msg.CommunityName, s.MacADDR(), nil, r.FromAddr)
+		return err
+	}
+	reg.Msg.ClearMachineID = machineID
+
+	edge, cm, err := s.RegisterEdge(reg)
 	if edge == nil || err != nil {
 		log.Printf("Supernode: Registration failed for %s: %v", reg.Msg.EdgeMACAddr, err)
 		rresp.IsRegisterOk = false
