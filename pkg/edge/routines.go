@@ -3,6 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/edge/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -217,11 +218,20 @@ func (e *EdgeClient) handleHeartbeat() {
 }
 
 func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf []byte, udpSocket *net.UDPAddr) error {
+	payload := payloadBuf[:n]
+	if e.encryptionEnabled {
+		encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
+		if err != nil {
+			return err
+		}
+		payload = encryptedPayload
+	}
+
 	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
-	totalLen := protocol.ProtoVFuzeSize + n
+	totalLen := protocol.ProtoVFuzeSize + len(payload)
 	packet := make([]byte, totalLen)
 	copy(packet[0:7], vfuzh[0:7])
-	copy(packet[7:], payloadBuf[:n])
+	copy(packet[7:], payload)
 	e.PacketsSent.Add(1)
 	_, err := e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
 	if err != nil {
@@ -319,9 +329,22 @@ func (e *EdgeClient) handleTAP() {
 		// Update stats
 		e.PacketsSent.Add(1)
 
+		payload := payloadBuf[:n]
+		if e.encryptionEnabled {
+			encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
+			if err != nil {
+				log.Printf("Edge: Failed to encrypt payload %v", err)
+				continue
+			}
+			payload = encryptedPayload
+		}
+		totalLen := headerSize + len(payload)
+		packet := make([]byte, totalLen)
+		copy(packet[0:headerSize], headerBuf)
+		copy(packet[headerSize:], payload)
 		// Send packet (header is already at the beginning of packetBuf)
-		totalLen := headerSize + n
-		_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], udpSocket)
+
+		_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
@@ -363,16 +386,17 @@ func (e *EdgeClient) handleUDP() {
 			continue
 		}
 
-		/*
-			if packetBuf[0] == protocol.VersionVFrag {
-				e.handleVFrag(packetBuf[:n], addr)
-				continue
-			}
-		*/
-
 		if e.enableVFuze {
 			if packetBuf[0] == protocol.VersionVFuze {
 				payload := packetBuf[protocol.ProtoVFuzeSize:n]
+				if e.encryptionEnabled {
+					plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
+					if err != nil {
+						log.Printf("Edge: warning: error while decrypting data packets, droping (err: %v)", err)
+						continue
+					}
+					payload = plainPayload
+				}
 				_, err = e.TAP.Write(payload)
 				if err != nil {
 					if strings.Contains(err.Error(), "file already closed") {

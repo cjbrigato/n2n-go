@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/edge/crypto"
 	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
@@ -30,6 +31,9 @@ type EdgeClient struct {
 	Conn          *net.UDPConn
 	TAP           *tuntap.Interface
 	seq           uint32
+
+	EncryptionKey     []byte
+	encryptionEnabled bool
 
 	protocolVersion   uint8
 	heartbeatInterval time.Duration
@@ -76,10 +80,6 @@ type EdgeClient struct {
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
 func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
-	/*if err := cfg.Defaults(); err != nil {
-		return nil, err
-	}*/
-
 	machineId, err := machine.GetMachineID()
 	if err != nil {
 		return nil, err
@@ -106,6 +106,14 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		log.Fatalf("err: %v", err)
 	}
 
+	encryptionEnabled := false
+	var encryptionKey []byte
+	if cfg.EncryptionPassphrase != "" {
+		log.Printf("Edge: Attention! Encryption of data packets payload is enabled. Ensure all edge for the community uses same passphrase !")
+		encryptionEnabled = true
+		encryptionKey = crypto.KeyFromPassphrase(cfg.EncryptionPassphrase)
+	}
+
 	edge := &EdgeClient{
 		Peers:             p2p.NewPeerRegistry(),
 		ID:                cfg.EdgeID,
@@ -129,6 +137,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		headerBufPool:     buffers.HeaderBufferPool,
 		messageHandlers:   make(protocol.MessageHandlerMap),
 		config:            &cfg,
+		encryptionEnabled: encryptionEnabled,
+		EncryptionKey:     encryptionKey,
 	}
 	edge.messageHandlers[spec.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[spec.TypePeerInfo] = edge.handlePeerInfoMessage

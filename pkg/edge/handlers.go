@@ -3,6 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
+	"n2n-go/pkg/edge/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -85,7 +86,16 @@ func (e *EdgeClient) Unregister() error {
 }
 
 func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
-	_, err := e.TAP.Write(r.Payload)
+	payload := r.Payload
+	if e.encryptionEnabled {
+		plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
+		if err != nil {
+			log.Printf("Edge: warning: error while decrypting data packets, droping (err: %v)", err)
+			return fmt.Errorf("error while decrypting data packets, droping (err: %w)", err)
+		}
+		payload = plainPayload
+	}
+	_, err := e.TAP.Write(payload)
 	if err != nil {
 		if !strings.Contains(err.Error(), "file already closed") {
 			log.Printf("Edge: TAP write error: %v", err)

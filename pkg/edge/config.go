@@ -11,18 +11,19 @@ import (
 )
 
 type Config struct {
-	UDPBufferSize     int           `mapstructure:"udp_buffer_size"` // Use mapstructure for Viper
-	EdgeID            string        `mapstructure:"edge_id"`
-	Community         string        `mapstructure:"community"`
-	TapName           string        `mapstructure:"tap_name"`
-	LocalPort         int           `mapstructure:"local_port"`
-	SupernodeAddr     string        `mapstructure:"supernode_addr"`
-	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
-	ProtocolVersion   uint8         `mapstructure:"protocol_version"`
-	VerifyHash        bool          `mapstructure:"verify_hash"`
-	EnableVFuze       bool          `mapstructure:"enable_vfuze"`
-	ConfigFile        string        `mapstructure:"config_file"` // Path to the config file
-	APIListenAddr     string        `mapstructure:"api_listen_address"`
+	UDPBufferSize        int           `mapstructure:"udp_buffer_size"` // Use mapstructure for Viper
+	EdgeID               string        `mapstructure:"edge_id"`
+	Community            string        `mapstructure:"community"`
+	TapName              string        `mapstructure:"tap_name"`
+	LocalPort            int           `mapstructure:"local_port"`
+	SupernodeAddr        string        `mapstructure:"supernode_addr"`
+	HeartbeatInterval    time.Duration `mapstructure:"heartbeat_interval"`
+	ProtocolVersion      uint8         `mapstructure:"protocol_version"`
+	VerifyHash           bool          `mapstructure:"verify_hash"`
+	EnableVFuze          bool          `mapstructure:"enable_vfuze"`
+	ConfigFile           string        `mapstructure:"config_file"` // Path to the config file
+	APIListenAddr        string        `mapstructure:"api_listen_address"`
+	EncryptionPassphrase string        `mapstructure:"encryption_passphrase"`
 }
 
 func DefaultConfig() *Config {
@@ -72,6 +73,7 @@ func LoadConfig() (*Config, error) {
 	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "Heartbeat interval")
 	flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", cfg.UDPBufferSize, "UDP BUffer Sizes")
 	flag.StringVar(&cfg.APIListenAddr, "api-listen", cfg.APIListenAddr, "API listen address")
+	flag.StringVar(&cfg.EncryptionPassphrase, "encryption-passphrase", cfg.EncryptionPassphrase, "Passphrase to encryption key derivation")
 
 	flag.Parse() // MUST call this to parse the flags
 

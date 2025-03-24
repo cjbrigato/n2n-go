@@ -11,7 +11,6 @@ import (
 )
 
 func (s *Supernode) handleP2PStateInfoMessage(r *protocol.RawMessage) error {
-	//p2pMsg, err := r.ToP2PStateInfoMessage()
 	p2pMsg, err := protocol.ToMessage[*p2p.PeerP2PInfos](r)
 	if err != nil {
 		return err
@@ -103,15 +102,7 @@ func (s *Supernode) handleRegisterMessage(r *protocol.RawMessage) error {
 	s.SendStruct(rresp, reg.Msg.CommunityName, s.MacADDR(), nil, r.FromAddr)
 
 	pil := newPeerInfoEvent(p2p.TypeRegister, edge)
-	/*peerInfoPayload, err := pil.Encode()
-	if err != nil {
-		log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
-	} else {*/
 	return s.BroadcastStruct(pil, cm, s.MacADDR(), nil, reg.EdgeMACAddr())
-	//s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), reg.Msg.EdgeMACAddr)
-	//	}
-
-	//return nil
 }
 
 func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
@@ -132,15 +123,8 @@ func (s *Supernode) handleHeartbeatMessage(r *protocol.RawMessage) error {
 	if exists {
 		if changed {
 			pil := newPeerInfoEvent(p2p.TypeRegister, edge)
-			/*peerInfoPayload, err := pil.Encode()
-			if err != nil {
-				log.Printf("Supernode: (warn) unable to send registration event to peers for community %s: %v", cm.Name(), err)
-			} else {*/
 			s.BroadcastStruct(pil, cm, s.MacADDR(), nil, pulse.EdgeMACAddr())
-			//	s.BroadcastPacket(spec.TypePeerInfo, cm, s.MacADDR(), nil, string(peerInfoPayload), pulse.EdgeMACAddr())
-			//}
 		}
-		//return s.SendAck(r.FromAddr, edge, "ACK")
 	}
 	return nil
 }

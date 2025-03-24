@@ -269,18 +269,6 @@ func (s *Supernode) cleanupRoutine() {
 	}
 }
 
-// SendAck sends an acknowledgment message to an edge
-func (s *Supernode) SendAck(addr *net.UDPAddr, edge *Edge, msg string) error {
-	formattedMsg := msg
-	if edge != nil {
-		formattedMsg = msg
-	}
-
-	s.debugLog("Sending ACK to %v: %s", addr, formattedMsg)
-	_, err := s.Conn.WriteToUDP([]byte(formattedMsg), addr)
-	return err
-}
-
 // ProcessPacket processes an incoming packet
 func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
