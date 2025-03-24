@@ -370,7 +370,7 @@ func (e *EdgeClient) handleTAP() {
 		packet := make([]byte, totalLen)
 		copy(packet[0:headerSize], headerBuf)
 		copy(packet[headerSize:], payload)
-		fmt.Printf("DEBUG: totalLen: %d , packetlen: %d, payloadlen: %d, headersize: %d", totalLen, len(packet), len(payload), headerSize)
+		fmt.Printf("DEBUG: totalLen: %d , packetlen: %d, payloadlen: %d, headersize: %d\n", totalLen, len(packet), len(payload), headerSize)
 		// Send packet (header is already at the beginning of packetBuf)
 		util.DumpByteSlice(packet)
 
@@ -422,7 +422,8 @@ func (e *EdgeClient) handleUDP() {
 				if e.encryptionEnabled {
 					plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
 					if err != nil {
-						log.Printf("Edge: warning: error while decrypting data packets, droping (err: %v)", err)
+						log.Printf("Edge: warning: error while decrypting data IN VFUZE packets, droping (err: %v)\n", err)
+						util.DumpByteSlice(payload)
 						continue
 					}
 					payload = plainPayload
