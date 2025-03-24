@@ -8,7 +8,6 @@ import (
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
-	"n2n-go/pkg/util"
 	"net"
 	"strings"
 	"time"
@@ -91,8 +90,6 @@ func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
 	if e.encryptionEnabled {
 		plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
 		if err != nil {
-			log.Printf("Edge: warning: error while decrypting data IN HANDLE packets, droping (err: %v)\n", err)
-			util.DumpByteSlice(payload)
 			return fmt.Errorf("error while decrypting data packets, droping (err: %w)", err)
 		}
 		payload = plainPayload
