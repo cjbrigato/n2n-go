@@ -9,6 +9,7 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/tuntap"
+	"n2n-go/pkg/util"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -369,7 +370,9 @@ func (e *EdgeClient) handleTAP() {
 		packet := make([]byte, totalLen)
 		copy(packet[0:headerSize], headerBuf)
 		copy(packet[headerSize:], payload)
+		fmt.Printf("DEBUG: totalLen: %d , packetlen: %d, payloadlen: %d, headersize: %d", totalLen, len(packet), len(payload), headerSize)
 		// Send packet (header is already at the beginning of packetBuf)
+		util.DumpByteSlice(packet)
 
 		_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
 		if err != nil {
