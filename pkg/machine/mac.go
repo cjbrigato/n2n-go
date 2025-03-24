@@ -83,3 +83,31 @@ func GenerateMac(communityName string) (net.HardwareAddr, error) {
 	}
 	return generatedMAC, nil
 }
+
+func ExtGenerateMac(communityName string, machineIDBytes []byte) (net.HardwareAddr, error) {
+	var generatedMAC net.HardwareAddr
+	err := extGenerateMac(machineIDBytes, communityName, &generatedMAC, HASH_KEY, 12345)
+	if err != nil {
+		return nil, fmt.Errorf("Error generating MAC: %v\n", err)
+	}
+	return generatedMAC, nil
+}
+
+func extGenerateMac(machineIDBytes []byte, idString string, mac *net.HardwareAddr, hashKey [16]byte, idx uint64) error {
+	nameBytes := []byte(idString)
+	data := append(machineIDBytes, nameBytes...)
+	if idx > 0 {
+		idxBytes := make([]byte, 8)
+		binary.LittleEndian.PutUint64(idxBytes, idx)
+		data = append(data, idxBytes...)
+	}
+
+	result := notSipHash24(data, hashKey)
+
+	macBytes := make(net.HardwareAddr, 8)
+	binary.LittleEndian.PutUint64(macBytes, result)
+	*mac = macBytes[:6]
+	markRandomMAC(mac)
+	(*mac)[0] &= 0xfe // clear multicast
+	return nil
+}

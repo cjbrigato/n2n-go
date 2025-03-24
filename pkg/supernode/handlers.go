@@ -197,6 +197,21 @@ func (s *Supernode) handlePingMessage(r *protocol.RawMessage) error { //packet [
 	return nil
 }
 
+func (s *Supernode) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
+	secretMsg, err := protocol.ToMessage[*netstruct.SNPublicSecret](r)
+	if err != nil {
+		return err
+	}
+	if !secretMsg.Msg.IsRequest {
+		return fmt.Errorf("supernode handle only snpublicsecret requests")
+	}
+	resp := &netstruct.SNPublicSecret{
+		IsRequest: false,
+		PemData:   s.SNSecrets.Pem,
+	}
+	return s.SendStruct(resp, "", s.MacADDR(), nil, secretMsg.FromAddr)
+}
+
 // handleDataMessage processes a data packet
 func (s *Supernode) handleDataMessage(r *protocol.RawMessage) error { //packet []byte, srcID, community, destMAC string, seq uint16) {
 

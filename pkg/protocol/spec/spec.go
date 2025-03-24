@@ -15,6 +15,7 @@ const (
 	TypeP2PStateInfo         PacketType = 9
 	TypeP2PFullState         PacketType = 10
 	TypeLeasesInfos          PacketType = 11
+	TypeSNPublicSecret       PacketType = 251
 	TypeRegisterResponse     PacketType = 252
 	TypeRetryRegisterRequest PacketType = 253
 )
@@ -46,6 +47,8 @@ func (pt PacketType) String() string {
 		return "RegisterResponse"
 	case TypeRetryRegisterRequest:
 		return "RetryRegisterRequest"
+	case TypeSNPublicSecret:
+		return "SNPublicSecret"
 	default:
 		return "Unknown"
 	}

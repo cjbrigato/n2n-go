@@ -31,10 +31,13 @@ d3.select("#legend").graphviz()
 const legend = `
 digraph G {
     rankdir=LR
+	
     node [fontname = "courier new"];
-    edge [fontname = "courier new"];
+    edge [fontsize=11 fontname="courier new"];
  
   subgraph cluster_1 {
+    fontsize=11
+    fontname = "courier new"
     node [shape=plain];
     A -> B [label="Supernode I/O (no P2P)" style="dashed"  arrowhead=none, color=grey len=3.0]
     C -> D [label="Half Direct Connection" color=orange,style=bold len=3.0]
@@ -52,17 +55,22 @@ digraph G {
 
 const header = `
 digraph G {
-    graph [fontname = "monospace" inputscale=0];
-    node [fontname = "courier new" shape=underline];
+    graph [fontname = "courier new" inputscale=0];
+    label=<<font point-size="22">Network<br align="center"/>::<b>%s</b>::<br align="center"/></font>>
+    labelloc="t"
+    fontsize=28
+    center=true
+    node [fontname = "courier new" fontsize=11 shape=underline];
     edge [fontname = "courier new" len=4.5]
+
    bgcolor=transparent;
    splines=true
    layout=neato
   normalize=-90
  `
 
-func Header() string {
-	return header
+func Header(community string) string {
+	return fmt.Sprintf(header, community)
 }
 
 func SNPeerEdges(peersNodeIDs map[string]string) string {
@@ -255,7 +263,7 @@ func GetConnectionType(peerA, peerB string, connectionData map[PeerDirectedPairK
 }
 
 func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
-	result := Header()
+	result := Header(cs.CommunityName)
 	result = fmt.Sprintf("%s\n%s", result, SNPeerEdges(cs.PeersDescToVIP))
 	result = fmt.Sprintf("%s\n%s", result, PeerEdges(cs.P2PStates))
 	result = fmt.Sprintf("%s\n%s", result, PeerNodes(cs.PeersDescToVIP))

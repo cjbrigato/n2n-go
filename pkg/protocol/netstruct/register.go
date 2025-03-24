@@ -4,6 +4,15 @@ import (
 	"n2n-go/pkg/protocol/spec"
 )
 
+type SNPublicSecret struct {
+	IsRequest bool
+	PemData   []byte
+}
+
+func (s *SNPublicSecret) PacketType() spec.PacketType {
+	return spec.TypeSNPublicSecret
+}
+
 type RegisterRequest struct {
 	EdgeMACAddr   string
 	EdgeDesc      string

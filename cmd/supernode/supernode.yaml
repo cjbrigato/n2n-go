@@ -3,8 +3,8 @@ listen_address: ":7777"
 debug: false
 community_subnet: "10.128.0.0"
 community_subnet_cidr: 24
-expiry_duration: "10m"
-cleanup_interval: "5m"
+expiry_duration: "90s"
+cleanup_interval: "30s"
 udp_buffer_size: 2097152
 strict_hash_checking: true
 enable_vfuze: true

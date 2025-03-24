@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
+	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -45,6 +46,8 @@ type Supernode struct {
 
 	// Handlers
 	SnMessageHandlers protocol.MessageHandlerMap
+
+	SNSecrets *crypto.SNSecrets
 }
 
 func (s *Supernode) MacADDR() net.HardwareAddr {
@@ -73,6 +76,12 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 
 	netAllocator := NewNetworkAllocator(net.ParseIP(config.CommunitySubnet), net.CIDRMask(config.CommunitySubnetCIDR, 32))
 
+	log.Printf("Generating secrets...")
+	secrets, err := crypto.GenSNSecrets()
+	if err != nil {
+		log.Fatalf("could not generate secrets: %v", err)
+	}
+
 	sn := &Supernode{
 		netAllocator:      netAllocator,
 		communities:       make(map[uint32]*Community),
@@ -83,6 +92,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 		shutdownCh:        make(chan struct{}),
 		packetBufPool:     buffers.PacketBufferPool,
 		SnMessageHandlers: make(protocol.MessageHandlerMap),
+		SNSecrets:         secrets,
 	}
 
 	sn.SnMessageHandlers[spec.TypeRegisterRequest] = sn.handleRegisterMessage

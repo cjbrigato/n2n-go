@@ -3,7 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/edge/crypto"
+	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"

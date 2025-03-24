@@ -2,11 +2,12 @@ package edge
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"n2n-go/pkg/buffers"
-	"n2n-go/pkg/edge/crypto"
+	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/machine"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
@@ -69,6 +70,8 @@ type EdgeClient struct {
 	PacketsRecv atomic.Uint64
 
 	EAPI *EdgeClientApi
+
+	SNPubKey *rsa.PublicKey
 
 	//state
 	registered bool
@@ -228,6 +231,10 @@ func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
 }
 
 func (e *EdgeClient) Setup() error {
+	if err := e.GetSNPublicKey(); err != nil {
+		return err
+	}
+
 	if err := e.Register(); err != nil {
 		return err
 	}

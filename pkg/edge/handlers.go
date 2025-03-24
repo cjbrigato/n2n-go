@@ -3,7 +3,7 @@ package edge
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/edge/crypto"
+	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -12,6 +12,54 @@ import (
 	"strings"
 	"time"
 )
+
+// Register sends a registration packet to the supernode.
+func (e *EdgeClient) GetSNPublicKey() error {
+	log.Printf("Trying to get Supernode publickey with supernode at %s...", e.SupernodeAddr)
+
+	reqPub := &netstruct.SNPublicSecret{
+		IsRequest: true,
+	}
+
+	err := e.SendStruct(reqPub, nil, p2p.UDPEnforceSupernode)
+
+	// Set a timeout for the response
+	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("edge: failed to set read deadline: %w", err)
+	}
+
+	// Read the response
+	respBuf := e.packetBufPool.Get()
+	defer e.packetBufPool.Put(respBuf)
+
+	n, addr, err := e.Conn.ReadFromUDP(respBuf)
+	if err != nil {
+		return fmt.Errorf("edge: pubkey ACK timeout: %w", err)
+	}
+
+	// Reset deadline
+	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
+	}
+
+	if n < protocol.ProtoVHeaderSize {
+		return fmt.Errorf("Edge: short packet while waiting for initial SnSecretsPub")
+	}
+
+	rresp, err := protocol.MessageFromPacket[*netstruct.SNPublicSecret](respBuf, addr)
+	if err != nil {
+		return err
+	}
+
+	pubkey, err := crypto.PublicKeyFromPEMData(rresp.Msg.PemData)
+	if err != nil {
+		return err
+	}
+	e.SNPubKey = pubkey
+	log.Printf("Got Supernode public key !")
+
+	return nil
+}
 
 // Register sends a registration packet to the supernode.
 func (e *EdgeClient) Register() error {
