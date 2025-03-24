@@ -9,6 +9,47 @@ import (
 	"github.com/goccy/go-graphviz"
 )
 
+const peersHTML = `
+<!DOCTYPE html>
+<meta charset="utf-8">
+<body>
+<script src="//d3js.org/d3.v7.min.js"></script>
+<script src="https://unpkg.com/@hpcc-js/wasm@2.20.0/dist/graphviz.umd.js"></script>
+<script src="https://unpkg.com/d3-graphviz@5.6.0/build/d3-graphviz.js"></script>
+<div id="peers" style="text-align: center;"></div>
+<div id="legend" style="text-align: center;"></div>
+<script>
+
+d3.select("#peers").graphviz()
+    .renderDot(%s);
+d3.select("#legend").graphviz()
+    .renderDot(%s);
+
+</script>
+`
+
+const legend = `
+digraph G {
+    rankdir=LR
+    node [fontname = "courier new"];
+    edge [fontname = "courier new"];
+ 
+  subgraph cluster_1 {
+    node [shape=plain];
+    A -> B [label="Supernode I/O (no P2P)" style="dashed"  arrowhead=none, color=grey len=3.0]
+    C -> D [label="Half Direct Connection" color=orange,style=bold len=3.0]
+    E -> F [label="Full Duplex P2P" dir=both,style=bold, color=green]
+    label = "Legend";
+  }
+  A [label=" "]
+  B [label=" "]
+  C [label=" "]
+  D [label=" "]
+  E [label=" "]
+  F [label=" "]
+}
+`
+
 const header = `
 digraph G {
     graph [fontname = "monospace" inputscale=0];
@@ -219,6 +260,17 @@ func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
 	result = fmt.Sprintf("%s\n%s", result, PeerEdges(cs.P2PStates))
 	result = fmt.Sprintf("%s\n%s", result, PeerNodes(cs.PeersDescToVIP))
 	result = fmt.Sprintf("%s\n", result)
+	return result
+}
+
+func (cs *CommunityP2PState) GenerateP2PGraphvizLegend() string {
+	return legend
+}
+
+func (cs *CommunityP2PState) GenerateP2PHTML() string {
+	graph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphviz())
+	legraph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphvizLegend())
+	result := fmt.Sprintf(peersHTML, graph, legraph)
 	return result
 }
 

@@ -95,6 +95,27 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 	return c.Blob(http.StatusOK, "image/svg+xml", res)
 }
 
+func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
+	err := eapi.Client.sendP2PFullStateRequest()
+	if err != nil {
+		return err
+	}
+	for {
+		if eapi.Client.Peers.IsWaitingForFullState {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	state := eapi.Client.Peers.FullState
+	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	if err != nil {
+		return err
+	}
+	res := cp2p.GenerateP2PHTML()
+	return c.HTML(http.StatusOK, res)
+}
+
 func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	api := echo.New()
 	eapi := &EdgeClientApi{
@@ -105,6 +126,7 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.HidePort = true
 	eapi.Api.Use(middleware.Recover())
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
+	eapi.Api.GET("/peers", eapi.GetPeersHTML)
 	eapi.Api.GET("/peers.json", eapi.GetPeersJSON)
 	eapi.Api.GET("/peers.dot", eapi.GetPeersDot)
 	eapi.Api.GET("/peers.svg", eapi.GetPeersSVG)
