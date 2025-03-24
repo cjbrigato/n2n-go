@@ -9,7 +9,6 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/util"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -221,27 +220,12 @@ func (e *EdgeClient) handleHeartbeat() {
 func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf []byte, udpSocket *net.UDPAddr) error {
 	payload := payloadBuf[:n]
 	if e.encryptionEnabled {
-		/*encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
-		if err != nil {
-			return err
-		}
-		payload = encryptedPayload*/
 		encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
 		if err != nil {
 			log.Printf("Edge: Failed to encrypt payload %v", err)
 			return err
 		}
-		fmt.Println("DEBUG: payloadsize after encryption", len(payload))
 		payload = encryptedPayload
-		fmt.Println("DEBUG: payloadsize after assignation", len(payload))
-		fmt.Println("DEBUG: encryptedpayloadsize:", len(encryptedPayload))
-		decrypted, err := crypto.DecryptPayload(e.EncryptionKey, payload)
-		if err != nil {
-			fmt.Printf("DEBUG: Failed to DECRYPT self payload payload %v", err)
-		} else {
-			fmt.Println("DEBUG: SUCCESS to DECRYPT self payload", err)
-		}
-		fmt.Println("DEBUG: decrypted payload len:", len(decrypted))
 	}
 
 	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
@@ -347,33 +331,19 @@ func (e *EdgeClient) handleTAP() {
 		e.PacketsSent.Add(1)
 
 		payload := payloadBuf[:n]
-		fmt.Println("DEBUG: payloadsize:", len(payload))
 		if e.encryptionEnabled {
 			encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
 			if err != nil {
 				log.Printf("Edge: Failed to encrypt payload %v", err)
 				continue
 			}
-			fmt.Println("DEBUG: payloadsize after encryption", len(payload))
 			payload = encryptedPayload
-			fmt.Println("DEBUG: payloadsize after assignation", len(payload))
-			fmt.Println("DEBUG: encryptedpayloadsize:", len(encryptedPayload))
-			decrypted, err := crypto.DecryptPayload(e.EncryptionKey, payload)
-			if err != nil {
-				fmt.Printf("DEBUG: Failed to DECRYPT self payload payload %v", err)
-			} else {
-				fmt.Println("DEBUG: SUCCESS to DECRYPT self payload", err)
-			}
-			fmt.Println("DEBUG: decrypted payload len:", len(decrypted))
 		}
 		totalLen := headerSize + len(payload)
 		packet := make([]byte, totalLen)
 		copy(packet[0:headerSize], headerBuf)
 		copy(packet[headerSize:], payload)
-		fmt.Printf("DEBUG: totalLen: %d , packetlen: %d, payloadlen: %d, headersize: %d\n", totalLen, len(packet), len(payload), headerSize)
 		// Send packet (header is already at the beginning of packetBuf)
-		util.DumpByteSlice(packet)
-
 		_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
@@ -423,7 +393,6 @@ func (e *EdgeClient) handleUDP() {
 					plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
 					if err != nil {
 						log.Printf("Edge: warning: error while decrypting data IN VFUZE packets, droping (err: %v)\n", err)
-						util.DumpByteSlice(payload)
 						continue
 					}
 					payload = plainPayload
