@@ -17,29 +17,29 @@ type RawMessage struct {
 	rawPacket []byte
 }
 
-func packProtoVDatagram(header ProtoVHeader, payload []byte) []byte {
+func PackProtoVDatagram(header *ProtoVHeader, payload []byte) []byte {
 	datagram := new(bytes.Buffer)
 	binary.Write(datagram, binary.BigEndian, header)
 	datagram.Write(payload)
 	return datagram.Bytes()
 }
 
-func unpackProtoVDatagram(data []byte, addr *net.UDPAddr) (*RawMessage, error) {
-	if len(data) < ProtoVHeaderSize {
-		return nil, fmt.Errorf("Received datagram smaller than header size")
+func UnpackProtoVDatagram(packet []byte) (*ProtoVHeader, []byte, error) {
+	if len(packet) < ProtoVHeaderSize {
+		return nil, nil, fmt.Errorf("packet too short")
 	}
+
+	version := packet[0]
+	if version != VersionV {
+		return nil, nil, fmt.Errorf("not a VersionV packet")
+	}
+
 	var header ProtoVHeader
-	headerReader := bytes.NewReader(data[:ProtoVHeaderSize])
+	headerReader := bytes.NewReader(packet[:ProtoVHeaderSize])
 	if err := binary.Read(headerReader, binary.BigEndian, &header); err != nil {
-		return nil, fmt.Errorf("Error parsing header: %v", err)
+		return nil, nil, fmt.Errorf("Error parsing header: %v", err)
 	}
-	payload := data[ProtoVHeaderSize:]
-	return &RawMessage{
-		Header:    &header,
-		Payload:   payload,
-		FromAddr:  addr,
-		rawPacket: data,
-	}, nil
+	return &header, packet[ProtoVHeaderSize:], nil
 }
 
 func (r *RawMessage) RawPacket() []byte {
@@ -75,17 +75,27 @@ func (r *RawMessage) ToPacket() []byte {
 	return r.rawPacket
 }
 
+func FlagPacketFromSupernode(packet []byte) ([]byte, error) {
+	header, payload, err := UnpackProtoVDatagram(packet)
+	if err != nil {
+		return nil, err
+	}
+	header.SetFromSupernode(true)
+	return PackProtoVDatagram(header, payload), nil
+}
+
 func NewRawMessage(packet []byte, addr *net.UDPAddr) (*RawMessage, error) {
-	if len(packet) < ProtoVHeaderSize {
-		return nil, fmt.Errorf("packet too short from %v", addr)
-	}
 
-	version := packet[0]
-	if version != VersionV {
-		return nil, fmt.Errorf("not a VersionV packet from %v", addr)
+	header, payload, err := UnpackProtoVDatagram(packet)
+	if err != nil {
+		return nil, fmt.Errorf("%w from %v", err, addr)
 	}
-
-	return unpackProtoVDatagram(packet, addr)
+	return &RawMessage{
+		Header:    header,
+		Payload:   payload,
+		FromAddr:  addr,
+		rawPacket: packet,
+	}, nil
 }
 
 type DataMessage struct {

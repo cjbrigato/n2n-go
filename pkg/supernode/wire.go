@@ -7,13 +7,18 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
+	"time"
 )
 
 // forwardPacket sends a packet to a specific edge
 func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
+	packet, err := protocol.FlagPacketFromSupernode(packet)
+	if err != nil {
+		return err
+	}
 	addr := target.UDPAddr()
 	s.debugLog("Forwarding packet to edge %s at %v", target.MACAddr, addr)
-	_, err := s.Conn.WriteToUDP(packet, addr)
+	_, err = s.Conn.WriteToUDP(packet, addr)
 	return err
 }
 
@@ -27,7 +32,6 @@ func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
 		if target.MACAddr == senderID {
 			continue
 		} // Check if we need to convert the packet for this target
-
 		if err := s.forwardPacket(packet, target); err != nil {
 			log.Printf("Supernode: Failed to broadcast packet to edge %s: %v", target.MACAddr, err)
 			s.stats.PacketsDropped.Add(1)
@@ -60,6 +64,7 @@ func (s *Supernode) WritePacket(pt spec.PacketType, community string, src, dst n
 	if err != nil {
 		return err
 	}
+	header.SetFromSupernode(true)
 
 	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
@@ -75,38 +80,44 @@ func (s *Supernode) WritePacket(pt spec.PacketType, community string, src, dst n
 	return nil
 }
 
+func (s *Supernode) SNHeader(p netstruct.PacketTyped, community string, dst net.HardwareAddr) *protocol.ProtoVHeader {
+	h := &protocol.ProtoVHeader{
+		Version:     protocol.VersionV,
+		TTL:         64,
+		PacketType:  p.PacketType(),
+		Flags:       protocol.FlagFromSuperNode,
+		Sequence:    0,
+		CommunityID: protocol.HashCommunity(community),
+		Timestamp:   uint32(time.Now().Unix()),
+	}
+	copy(h.SourceID[:], s.MacADDR()[:6])
+	if dst != nil {
+		copy(h.DestID[:], dst[:6])
+	}
+	return h
+}
+
 func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, dst net.HardwareAddr, addr *net.UDPAddr) error {
-	// Get buffer for full packet
-	packetBuf := s.packetBufPool.Get()
-	defer s.packetBufPool.Put(packetBuf)
-	var totalLen int
 
-	header, err := protocol.NewProtoVHeader(
-		protocol.VersionV,
-		64,
-		p.PacketType(),
-		0,
-		community,
-		src,
-		dst,
-	)
-	if err != nil {
-		return err
-	}
-
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
-	}
-
+	header := s.SNHeader(p, community, dst)
 	payload, err := protocol.Encode(p)
 	if err != nil {
 		return err
 	}
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
+	/*
+		// Get buffer for full packet
+		packetBuf := s.packetBufPool.Get()
+		defer s.packetBufPool.Put(packetBuf)
+		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
+			return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
+		}
 
-	// Send the packet
-	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
+		totalLen := protocol.ProtoVHeaderSize + payloadLen
+
+		// Send the packet
+		_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)*/
+	_, err = s.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), addr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
@@ -131,6 +142,7 @@ func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src,
 	if err != nil {
 		return err
 	}
+	header.SetFromSupernode(true)
 
 	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
@@ -165,6 +177,7 @@ func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst 
 	if err != nil {
 		return err
 	}
+	header.SetFromSupernode(true)
 
 	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
 		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)

@@ -65,9 +65,9 @@ func (h *ProtoVHeader) HasSrcMACAddr() bool             { return h.GetSrcMACAddr
 func (h *ProtoVHeader) HasDstMACAddr() bool             { return h.GetDstMACAddr() != nil }
 
 // NewProtoVHeader creates a new ProtoV header
-func NewProtoVHeader(version, ttl uint8, pType spec.PacketType, seq uint16, community string, src, dst net.HardwareAddr) (*ProtoVHeader, error) {
+func NewProtoVHeader(_, ttl uint8, pType spec.PacketType, seq uint16, community string, src, dst net.HardwareAddr) (*ProtoVHeader, error) {
 	h := &ProtoVHeader{
-		Version:     version,
+		Version:     VersionV,
 		TTL:         ttl,
 		PacketType:  pType,
 		Flags:       0,
@@ -191,4 +191,11 @@ func (h *ProtoVHeader) SetFlag(flag PacketFlag, value bool) {
 
 func (h *ProtoVHeader) HasFlag(flag PacketFlag) bool {
 	return (h.Flags & flag) != 0
+}
+
+func (h *ProtoVHeader) SetFromSupernode(value bool) {
+	h.SetFlag(FlagFromSuperNode, value)
+}
+func (h *ProtoVHeader) IsFromSupernode() bool {
+	return h.HasFlag(FlagFromSuperNode)
 }

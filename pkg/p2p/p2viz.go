@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/goccy/go-graphviz"
@@ -19,6 +20,43 @@ const peersHTML = `
 <div id="peers" style="text-align: center;"></div>
 <div id="legend" style="text-align: center;"></div>
 <script>
+var dot = ""
+var graphviz = d3.select("#peers").graphviz()
+    .transition(function () {
+        return d3.transition("main")
+            .ease(d3.easeLinear)
+            .delay(500)
+            .duration(1500);
+    })
+    .logEvents(true)
+    .on("initEnd", render);
+
+
+	function render() {
+		console.log(dot)
+		graphviz
+			.renderDot(dot)
+			.on("end", function () {
+				render();
+			});
+	}
+	
+
+let intervalId 
+const req = new XMLHttpRequest();
+req.onreadystatechange = function(){
+    "use strict";
+    if(req.readyState === 4 && req.status === 200){
+        dot=req.responseText;
+		render()
+    }
+};
+setInterval(update, 2000);
+
+function update(){
+req.open("GET", "/peers.dot");
+req.send();
+}
 
 d3.select("#peers").graphviz()
     .renderDot(%s);
@@ -77,7 +115,13 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 	result := fmt.Sprintf("%s", "# to supernodes")
 	//result = fmt.Sprintf("%s\n%s", result, "subgraph cluster1 {")
 	reverse := false
+
+	keys := make([]string, 0, len(peersNodeIDs))
 	for k := range peersNodeIDs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
 		if !reverse {
 			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\" [style=\"dashed\"  arrowhead=none, color=grey]", result, k, "sn")
 		} else {
@@ -92,8 +136,15 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 
 func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
 	var result string
-	for k, v := range connections {
-		peerA, peerB, _ := k.GetPeers()
+	keys := make([]string, 0, len(connections))
+	for k := range connections {
+		keys = append(keys, string(k))
+	}
+	sort.Strings(keys)
+	//for k, v := range connections {
+	for _, k := range keys {
+		v := connections[PeerPairKey(k)]
+		peerA, peerB, _ := PeerPairKey(k).GetPeers()
 		switch v {
 		case FullP2P:
 			result = fmt.Sprintf("%s\n\"%s\" -> \"%s\"[dir=both,style=bold, color=green]", result, peerA, peerB)
