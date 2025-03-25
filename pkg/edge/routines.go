@@ -155,6 +155,10 @@ func (e *EdgeClient) sendPeerListRequest() error {
 func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
+	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
+		return fmt.Errorf("edge: not sending heartbing while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
+	}
+
 	encmacid, err := e.EncryptedMachineID()
 	if err != nil {
 		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
@@ -168,13 +172,12 @@ func (e *EdgeClient) sendHeartbeat() error {
 }
 
 func (e *EdgeClient) sendP2PInfos() error {
-	infos := e.Peers.GetPeerP2PInfos()
 
-	/*data, err := infos.Encode()
-	if err != nil {
-		return err
+	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
+		return fmt.Errorf("edge: not sending P2PInfos while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
 	}
-	err = e.WritePacket(spec.TypeP2PStateInfo, nil, string(data), p2p.UDPEnforceSupernode)*/
+
+	infos := e.Peers.GetPeerP2PInfos()
 	err := e.SendStruct(infos, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)

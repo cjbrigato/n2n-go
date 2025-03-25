@@ -220,7 +220,6 @@ func (s *Supernode) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 		IsRequest: false,
 		PemData:   s.SNSecrets.Pem,
 	}
-	fmt.Println("SENT")
 	return s.SendStruct(resp, "", s.MacADDR(), nil, secretMsg.FromAddr)
 }
 
