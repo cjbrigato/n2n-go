@@ -143,7 +143,7 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 	req := &p2p.P2PFullState{
 		CommunityName: e.Community,
 		IsRequest:     true,
-		FullState:     make(map[string]p2p.PeerP2PInfos),
+		Reachables:    make(map[string]p2p.PeerP2PInfos),
 	}
 	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {

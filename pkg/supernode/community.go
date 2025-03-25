@@ -76,8 +76,8 @@ func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config, sn
 	return c, nil
 }
 
-func (c *Community) SetEdgeCachedInfo(macAddr string, desc string, isRegistered bool) {
-	c.sn.SetEdgeCachedInfo(macAddr, desc, c.Name(), isRegistered)
+func (c *Community) SetEdgeCachedInfo(macAddr string, desc string, isRegistered bool, vip netip.Addr) {
+	c.sn.SetEdgeCachedInfo(macAddr, desc, c.Name(), isRegistered, vip)
 }
 
 func (c *Community) GetEdgeCachedInfo(macAddr string) (*EdgeCachedInfos, bool) {
@@ -117,10 +117,15 @@ func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PF
 	}
 	c.edgeMu.Lock()
 	defer c.edgeMu.Unlock()
+	unreachables, err := c.sn.GetOfflineCachedEdges(c)
+	if err != nil {
+		return nil, err
+	}
 	return &p2p.P2PFullState{
 		CommunityName: c.Name(),
 		IsRequest:     false,
-		FullState:     c.communityPeerP2PInfos,
+		Reachables:    c.communityPeerP2PInfos,
+		UnReachables:  unreachables,
 	}, nil
 }
 
@@ -170,7 +175,7 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 		return false
 	}
 
-	c.SetEdgeCachedInfo(edgeMACAddr, edge.Desc, false)
+	c.SetEdgeCachedInfo(edgeMACAddr, edge.Desc, false, edge.VirtualIP)
 	delete(c.edges, edgeMACAddr)
 	c.p2pMu.Lock()
 	defer c.p2pMu.Unlock()
@@ -238,7 +243,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.Message[*netstruct.RegisterReque
 		}
 
 		c.edges[regMsg.Msg.EdgeMACAddr] = edge
-		c.SetEdgeCachedInfo(regMsg.Msg.EdgeMACAddr, edge.Desc, true)
+		c.SetEdgeCachedInfo(regMsg.Msg.EdgeMACAddr, edge.Desc, true, edge.VirtualIP)
 		log.Printf("Community[%s]: Registered new edge \"%s\" id=%s, assigned VIP=%s",
 			c.name, edge.Desc, edge.MACAddr, vip)
 	} else {
@@ -316,6 +321,7 @@ func (c *Community) GetLeasesWithEdgesInfos() map[string]netstruct.LeaseWithEdge
 			extLease.EdgeID = cachedInfos.Desc
 			extLease.IsRegistered = cachedInfos.IsRegistered
 			extLease.TimeSinceLastUpdate = time.Since(cachedInfos.UpdatedAt)
+			extLease.VirtualIP = cachedInfos.VirtualIP
 		}
 		infos := netstruct.LeaseWithEdgeInfos{
 			Lease:          v,

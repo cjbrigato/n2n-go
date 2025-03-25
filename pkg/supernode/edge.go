@@ -13,6 +13,7 @@ type EdgeCachedInfos struct {
 	Community    string
 	IsRegistered bool
 	UpdatedAt    time.Time
+	VirtualIP    netip.Addr
 }
 
 // Edge represents a registered edge.

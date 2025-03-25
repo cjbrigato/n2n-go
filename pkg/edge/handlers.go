@@ -286,10 +286,10 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if fstateMsg.Msg.IsRequest {
 		return fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
 	}
-	if fstateMsg.Msg.FullState == nil {
+	if fstateMsg.Msg.Reachables == nil {
 		return fmt.Errorf("received nil FullState in P2PFullStateMessage")
 	}
-	e.Peers.FullState = fstateMsg.Msg.FullState
+	e.Peers.FullState = fstateMsg.Msg.Reachables
 	if e.Peers.IsWaitingForFullState {
 		e.Peers.IsWaitingForFullState = false
 	}

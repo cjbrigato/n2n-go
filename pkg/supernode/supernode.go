@@ -12,6 +12,7 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,7 +55,30 @@ type Supernode struct {
 	SNSecrets *crypto.SNSecrets
 }
 
-func (s *Supernode) SetEdgeCachedInfo(macAddr string, desc string, community string, isRegistered bool) {
+func (s *Supernode) GetOfflineCachedEdges(cm *Community) (map[string]p2p.PeerCachedInfo, error) {
+	if cm == nil {
+		return nil, fmt.Errorf("nil community error")
+	}
+	communityName := cm.Name()
+	offlineEdges := make(map[string]p2p.PeerCachedInfo)
+	s.edgeCacheMu.RLock()
+	defer s.edgeMu.RUnlock()
+	for _, v := range s.edgeCachedInfos {
+		if v.Community != communityName || v.IsRegistered {
+			continue
+		}
+		offlineEdges[v.MACAddr] = p2p.PeerCachedInfo{
+			Desc:       v.Desc,
+			MACAddr:    v.MACAddr,
+			Community:  communityName,
+			LastUpdate: v.UpdatedAt,
+			VirtualIP:  v.VirtualIP,
+		}
+	}
+	return offlineEdges, nil
+}
+
+func (s *Supernode) SetEdgeCachedInfo(macAddr string, desc string, community string, isRegistered bool, vip netip.Addr) {
 	s.edgeCacheMu.Lock()
 	defer s.edgeCacheMu.Unlock()
 	s.edgeCachedInfos[macAddr] = &EdgeCachedInfos{
@@ -63,6 +87,7 @@ func (s *Supernode) SetEdgeCachedInfo(macAddr string, desc string, community str
 		Community:    community,
 		IsRegistered: isRegistered,
 		UpdatedAt:    time.Now(),
+		VirtualIP:    vip,
 	}
 }
 

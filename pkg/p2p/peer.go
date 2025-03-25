@@ -4,6 +4,7 @@ import (
 	"n2n-go/pkg/protocol/spec"
 	"net"
 	"net/netip"
+	"time"
 )
 
 type PeerInfoEventType uint8
@@ -13,6 +14,14 @@ const (
 	TypeRegister   PeerInfoEventType = 2
 	TypeUnregister PeerInfoEventType = 3
 )
+
+type PeerCachedInfo struct {
+	Desc       string
+	MACAddr    string
+	VirtualIP  netip.Addr
+	Community  string
+	LastUpdate time.Time
+}
 
 type PeerInfo struct {
 	VirtualIP netip.Addr       `json:"virtualIP"`
@@ -33,4 +42,3 @@ type PeerInfoList struct {
 func (pil *PeerInfoList) PacketType() spec.PacketType {
 	return spec.TypePeerInfo
 }
-

@@ -56,7 +56,8 @@ func (psi *PeerP2PInfos) PacketType() spec.PacketType {
 type P2PFullState struct {
 	CommunityName string
 	IsRequest     bool
-	FullState     map[string]PeerP2PInfos
+	Reachables    map[string]PeerP2PInfos
+	UnReachables  map[string]PeerCachedInfo
 }
 
 func (pfs *P2PFullState) PacketType() spec.PacketType {

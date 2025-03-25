@@ -3,6 +3,7 @@ package netstruct
 import (
 	"fmt"
 	"n2n-go/pkg/protocol/spec"
+	"net/netip"
 	"time"
 
 	"github.com/cjbrigato/ippool"
@@ -12,6 +13,7 @@ type LeaseEdgeInfos struct {
 	EdgeID              string
 	IsRegistered        bool
 	TimeSinceLastUpdate time.Duration
+	VirtualIP           netip.Addr
 	//IsAlive bool
 }
 
