@@ -203,6 +203,11 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 
 	log.Printf("Edge: Successfull Supernode Reregister")
 	e.isWaitingForSNRetryRegisterResponse = false
+	log.Printf("Edge: sending Recovery Peer List Request")
+	err = e.sendPeerListRequest()
+	if err != nil {
+		log.Printf("Edge: (warn) failed sending Recovery Peer List Request: %v", err)
+	}
 	return nil
 }
 
@@ -260,6 +265,8 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 	if e.isWaitingForSNRetryRegisterResponse {
 		return nil
 	}
+
+	log.Printf("Received RetryRegisteRequest from recovering supernode. Trying gracefull Re-regisration...")
 
 	err := e.RequestSNPublicKey()
 	if err != nil {
