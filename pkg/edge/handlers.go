@@ -181,6 +181,14 @@ func (e *EdgeClient) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 	e.SNPubKey = pubkey
 	log.Printf("Edge: Updated Supernode public key !")
 	e.isWaitingForSNPubKeyUpdate = false
+	if e.isWaitingForSNRetryRegisterResponse {
+
+		err = e.RequestRegister()
+		if err != nil {
+			return err
+		}
+
+	}
 	return nil
 }
 
@@ -254,27 +262,6 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 		return err
 	}
 	e.isWaitingForSNPubKeyUpdate = true
-
-	for {
-		if e.isWaitingForSNPubKeyUpdate {
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-
-	err = e.RequestRegister()
-	if err != nil {
-		return err
-	}
-
-	for {
-		if e.isWaitingForSNRetryRegisterResponse {
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			break
-		}
-	}
 
 	return nil
 }
