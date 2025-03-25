@@ -10,6 +10,47 @@ import (
 	"time"
 )
 
+func (s *Supernode) ForwardUnicast(r *protocol.RawMessage) error {
+	cm, err := s.GetCommunity(r)
+	if err != nil {
+		return err
+	}
+	targetEdge, found := cm.GetEdge(r.DestMACAddr())
+	if !found {
+		return fmt.Errorf("cannot find edge for unicast forwarding: %s", r.EdgeMACAddr())
+	}
+
+	if err := s.forwardPacket(r.RawPacket(), targetEdge); err != nil {
+		s.stats.PacketsDropped.Add(1)
+		return fmt.Errorf("Supernode: Failed to forward packet to edge %s: %v", targetEdge.MACAddr, err)
+	}
+	s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
+	s.stats.PacketsForwarded.Add(1)
+	return nil
+
+}
+
+func (s *Supernode) ForwardWithFallBack(r *protocol.RawMessage) error {
+	cm, err := s.GetCommunity(r)
+	if err != nil {
+		return err
+	}
+	targetEdge, found := cm.GetEdge(r.DestMACAddr())
+	if found {
+		if err := s.forwardPacket(r.RawPacket(), targetEdge); err != nil {
+			s.stats.PacketsDropped.Add(1)
+			log.Printf("Supernode: Failed to forward packet to edge %s: %v", targetEdge.MACAddr, err)
+		} else {
+			s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
+			s.stats.PacketsForwarded.Add(1)
+			return nil
+		}
+	}
+	s.debugLog("Unable to selectively forward packet orNo destination MAC provided. Broadcasting to community %s", cm.name)
+	s.broadcast(r.RawPacket(), cm, r.EdgeMACAddr())
+	return nil
+}
+
 // forwardPacket sends a packet to a specific edge
 func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
 	packet, err := protocol.FlagPacketFromSupernode(packet)

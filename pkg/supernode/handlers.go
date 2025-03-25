@@ -6,8 +6,8 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
+	"n2n-go/pkg/protocol/spec"
 	"net"
-	"time"
 )
 
 func (s *Supernode) handleP2PStateInfoMessage(r *protocol.RawMessage) error {
@@ -165,47 +165,10 @@ func (s *Supernode) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 
 // handlePingMessage should only be forwareded
 func (s *Supernode) handlePingMessage(r *protocol.RawMessage) error { //packet []byte, srcID, community, destMAC string, seq uint16) {
-	pingMsg, err := protocol.ToMessage[*netstruct.PeerToPing](r)
-	if err != nil {
-		return err
+	if r.Header.PacketType != spec.TypePing {
+		return fmt.Errorf("not a %s packet", spec.TypePing)
 	}
-	cm, err := s.GetCommunity(pingMsg)
-	if err != nil {
-		return err
-	}
-	senderEdge, found := cm.GetEdge(pingMsg.EdgeMACAddr())
-	if !found {
-		return fmt.Errorf("cannot find senderEdge %v in community for pingMsg packet handling", pingMsg.EdgeMACAddr())
-	}
-	var targetEdge *Edge
-	if pingMsg.DestMACAddr() != "" {
-		te, found := cm.GetEdge(pingMsg.DestMACAddr())
-		if found {
-			targetEdge = te
-		}
-	}
-	if targetEdge == nil {
-		return fmt.Errorf("cannot find targetEdge %s in community for pingMsg packet handling", pingMsg.DestMACAddr())
-	}
-	// Update sender's heartbeat and sequence
-	cm.edgeMu.Lock()
-	if e, ok := cm.edges[pingMsg.EdgeMACAddr()]; ok {
-		e.LastHeartbeat = time.Now()
-		e.LastSequence = pingMsg.Header.Sequence
-	}
-	cm.edgeMu.Unlock()
-
-	s.debugLog("Ping packet received from edge %s", senderEdge.MACAddr)
-
-	if err := s.forwardPacket(pingMsg.ToPacket(), targetEdge); err != nil {
-		s.stats.PacketsDropped.Add(1)
-		log.Printf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
-		return fmt.Errorf("Supernode: Failed to forward pingMessage to edge %s: %v", targetEdge.MACAddr, err)
-	}
-	s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
-	s.stats.PacketsForwarded.Add(1)
-
-	return nil
+	return s.ForwardUnicast(r)
 }
 
 func (s *Supernode) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
@@ -225,51 +188,10 @@ func (s *Supernode) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 
 // handleDataMessage processes a data packet
 func (s *Supernode) handleDataMessage(r *protocol.RawMessage) error { //packet []byte, srcID, community, destMAC string, seq uint16) {
-
-	dataMsg, err := r.ToDataMessage()
-	if err != nil {
-		return err
+	if r.Header.PacketType != spec.TypeData {
+		return fmt.Errorf("not a %s packet type", spec.TypeData)
 	}
-	cm, err := s.GetCommunityForEdge(dataMsg.EdgeMACAddr, dataMsg.CommunityHash)
-	if err != nil {
-		return err
-	}
-	senderEdge, found := cm.GetEdge(dataMsg.EdgeMACAddr)
-	if !found {
-		return fmt.Errorf("cannot find senderEdge %v in community for data packet handling", dataMsg.EdgeMACAddr)
-	}
-	var targetEdge *Edge
-	if dataMsg.DestMACAddr != "" {
-		te, found := cm.GetEdge(dataMsg.DestMACAddr)
-		if found {
-			targetEdge = te
-		} else {
-
-		}
-	}
-	// Update sender's heartbeat and sequence
-	cm.edgeMu.Lock()
-	if e, ok := cm.edges[dataMsg.EdgeMACAddr]; ok {
-		e.LastHeartbeat = time.Now()
-		e.LastSequence = dataMsg.RawMsg.Header.Sequence
-	}
-	cm.edgeMu.Unlock()
-
-	s.debugLog("Data packet received from edge %s", senderEdge.MACAddr)
-
-	if targetEdge != nil {
-		if err := s.forwardPacket(dataMsg.ToPacket(), targetEdge); err != nil {
-			s.stats.PacketsDropped.Add(1)
-			log.Printf("Supernode: Failed to forward packet to edge %s: %v", targetEdge.MACAddr, err)
-		} else {
-			s.debugLog("Forwarded packet to edge %s", targetEdge.MACAddr)
-			s.stats.PacketsForwarded.Add(1)
-			return nil
-		}
-	}
-	s.debugLog("Unable to selectively forward packet orNo destination MAC provided. Broadcasting to community %s", cm.name)
-	s.broadcast(dataMsg.ToPacket(), cm, senderEdge.MACAddr)
-	return nil
+	return s.ForwardWithFallBack(r)
 }
 
 func (s *Supernode) handleVFuze(packet []byte) {

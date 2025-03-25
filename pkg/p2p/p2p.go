@@ -119,7 +119,7 @@ func (p *Peer) SetFullDuplex(value bool) error {
 		}
 	}
 	if value != p.IsFullDuplex {
-		log.Printf("peer desc=%s macaddr=%s set FullDuplex Status: %v", p.Infos.Desc, p.Infos.MACAddr, p.IsFullDuplex)
+		log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with FullDuplex=%v", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), value)
 	}
 	p.IsFullDuplex = value
 	return nil
