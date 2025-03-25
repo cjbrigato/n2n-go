@@ -137,27 +137,10 @@ enable_vfuze: true
 
 ## Architecture
 
-n2n-go implements a peer-to-peer virtual network with the following architecture:
+n2n-go implements a peer-to-peer virtual network. 
+You can see the network updating in realtime via the edge client api:
 
-```
-                  ┌─────────────────┐
-                  │    Supernode    │
-                  └─────────────────┘
-                           ▲
-                           │
-           ┌───────────────┴───────────────┐
-           │                               │
-           ▼                               ▼
-┌─────────────────┐               ┌─────────────────┐
-│     Edge A      │◀────P2P─────▶│     Edge B      │
-└─────────────────┘               └─────────────────┘
-           ▲                               ▲
-           │                               │
-           ▼                               ▼
-┌─────────────────┐               ┌─────────────────┐
-│ Local Network A │               │ Local Network B │
-└─────────────────┘               └─────────────────┘
-```
+![api_peers_visualisation](https://github.com/user-attachments/assets/027586df-690f-4360-a413-150f32cce7c6)
 
 1. Edges register with a Supernode
 2. Supernode assists with peer discovery
