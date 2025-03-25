@@ -114,6 +114,7 @@ d3.select("#legend").graphviz()
 
 const offlinegraph = `
 digraph G {
+label=<<font point-size="22">Offline Peers<br align="center"/></font>>
     rankdir=LR
     graph [fontname = "courier new" inputscale=0];
     labelloc="t"
@@ -163,7 +164,7 @@ digraph G {
 const header = `
 digraph G {
     graph [fontname = "courier new" inputscale=0];
-    label=<<font point-size="22">Network<br align="center"/>::<b>%s</b>::<br align="center"/></font>>
+    label=<<font point-size="22"><b>%s</b>'s Network<br align="center"/></font>>
     labelloc="t"
     fontsize=28
     center=true
@@ -177,7 +178,7 @@ digraph G {
  `
 
 func Header(community string) string {
-	return fmt.Sprintf(header, community)
+	return fmt.Sprintf(header, strings.ToTitle(community))
 }
 
 func SNPeerEdges(peersNodeIDs map[string]string) string {
@@ -205,8 +206,13 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 
 func GenOfflines(offlines map[string]PeerCachedInfo) string {
 	var offnodes string
-	for _, v := range offlines {
-		offnodes = add_offline(offnodes, v.Desc, v.VirtualIP.String())
+	keys := make([]string, 0, len(offlines))
+	for k := range offlines {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		offnodes = add_offline(offnodes, offlines[k].Desc, offlines[k].VirtualIP.String())
 	}
 	return fmt.Sprintf(offlinegraph, offnodes)
 }
