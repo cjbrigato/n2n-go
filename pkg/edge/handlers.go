@@ -257,6 +257,10 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
 	}
 
+	if e.isWaitingForSNRetryRegisterResponse {
+		return nil
+	}
+
 	err := e.RequestSNPublicKey()
 	if err != nil {
 		return err
