@@ -53,9 +53,12 @@ func (s *Supernode) ForwardWithFallBack(r *protocol.RawMessage) error {
 
 // forwardPacket sends a packet to a specific edge
 func (s *Supernode) forwardPacket(packet []byte, target *Edge) error {
-	packet, err := protocol.FlagPacketFromSupernode(packet)
-	if err != nil {
-		return err
+	var err error
+	if packet[0] == protocol.VersionV {
+		packet, err = protocol.FlagPacketFromSupernode(packet)
+		if err != nil {
+			return err
+		}
 	}
 	addr := target.UDPAddr()
 	s.debugLog("Forwarding packet to edge %s at %v", target.MACAddr, addr)
