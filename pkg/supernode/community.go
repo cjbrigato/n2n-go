@@ -37,10 +37,12 @@ type Community struct {
 	edges  map[string]*Edge // Map of edges by MACAddrString     // Map of edges by ID
 	//macMu     sync.RWMutex      // Protects macToEdge map
 	//macToEdge map[string]string // Maps MAC addresses to edge IDs
+
+	sn *Supernode
 }
 
 // NewCommunity creates a new community with the specified name and subnet
-func NewCommunity(name string, subnet netip.Prefix) (*Community, error) {
+func NewCommunity(name string, subnet netip.Prefix, sn *Supernode) (*Community, error) {
 	d := subnet.Masked().Bits()
 	cidr := fmt.Sprintf("%s/%d", subnet.Masked().Addr().String(), d)
 	var err error
@@ -60,17 +62,26 @@ func NewCommunity(name string, subnet netip.Prefix) (*Community, error) {
 		edges:                 make(map[string]*Edge),
 		communityPeerP2PInfos: make(map[string]p2p.PeerP2PInfos),
 		config:                DefaultConfig(), // Use default config if none specified
+		sn:                    sn,
 	}, nil
 }
 
 // NewCommunityWithConfig creates a new community with the specified configuration
-func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config) (*Community, error) {
-	c, err := NewCommunity(name, subnet)
+func NewCommunityWithConfig(name string, subnet netip.Prefix, config *Config, sn *Supernode) (*Community, error) {
+	c, err := NewCommunity(name, subnet, sn)
 	if err != nil {
 		return nil, err
 	}
 	c.config = config
 	return c, nil
+}
+
+func (c *Community) SetEdgeCachedInfo(macAddr string, desc string, isRegistered bool) {
+	c.sn.SetEdgeCachedInfo(macAddr, desc, c.Name(), isRegistered)
+}
+
+func (c *Community) GetEdgeCachedInfo(macAddr string) (*EdgeCachedInfos, bool) {
+	return c.sn.GetEdgeCachedInfo(macAddr)
 }
 
 func (c *Community) ResetP2PInfos() {
@@ -159,6 +170,7 @@ func (c *Community) Unregister(edgeMACAddr string) bool {
 		return false
 	}
 
+	c.SetEdgeCachedInfo(edgeMACAddr, edge.Desc, false)
 	delete(c.edges, edgeMACAddr)
 	c.p2pMu.Lock()
 	defer c.p2pMu.Unlock()
@@ -226,7 +238,7 @@ func (c *Community) EdgeUpdate(regMsg *protocol.Message[*netstruct.RegisterReque
 		}
 
 		c.edges[regMsg.Msg.EdgeMACAddr] = edge
-
+		c.SetEdgeCachedInfo(regMsg.Msg.EdgeMACAddr, edge.Desc, true)
 		log.Printf("Community[%s]: Registered new edge \"%s\" id=%s, assigned VIP=%s",
 			c.name, edge.Desc, edge.MACAddr, vip)
 	} else {
@@ -280,6 +292,38 @@ func (c *Community) GetAllEdges() []*Edge {
 
 func (c *Community) GetLease(macAddr string) *ippool.Lease {
 	return c.ips.GetLease(macAddr)
+}
+
+func (c *Community) IsRegistered(macAddr string) bool {
+	c.edgeMu.RLock()
+	_, exists := c.edges[macAddr]
+	c.edgeMu.RUnlock()
+	return exists
+}
+
+func (c *Community) GetLeasesWithEdgesInfos() map[string]netstruct.LeaseWithEdgeInfos {
+	leases := c.ips.GetAllLeases()
+	extLeases := make(map[string]netstruct.LeaseWithEdgeInfos)
+	for k, v := range leases {
+		extLease := netstruct.LeaseEdgeInfos{
+			EdgeID:              "unknown",
+			IsRegistered:        false,
+			TimeSinceLastUpdate: -(1 * time.Second),
+		}
+		mac := k
+		cachedInfos, exists := c.GetEdgeCachedInfo(mac)
+		if exists {
+			extLease.EdgeID = cachedInfos.Desc
+			extLease.IsRegistered = cachedInfos.IsRegistered
+			extLease.TimeSinceLastUpdate = time.Since(cachedInfos.UpdatedAt)
+		}
+		infos := netstruct.LeaseWithEdgeInfos{
+			Lease:          v,
+			LeaseEdgeInfos: extLease,
+		}
+		extLeases[k] = infos
+	}
+	return extLeases
 }
 
 func (c *Community) GetAllLease() map[string]ippool.Lease {

@@ -7,6 +7,14 @@ import (
 	"time"
 )
 
+type EdgeCachedInfos struct {
+	MACAddr      string
+	Desc         string
+	Community    string
+	IsRegistered bool
+	UpdatedAt    time.Time
+}
+
 // Edge represents a registered edge.
 type Edge struct {
 	Desc          string // from header.SourceID
@@ -22,8 +30,6 @@ type Edge struct {
 	MACAddr       string     // MAC address provided during registration
 	MachineID     []byte
 }
-
-
 
 func (e *Edge) UDPAddr() *net.UDPAddr {
 	return &net.UDPAddr{IP: e.PublicIP, Port: e.PublicPort}

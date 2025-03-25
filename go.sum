@@ -1,5 +1,7 @@
 github.com/cjbrigato/ippool v1.0.1 h1:P56YSJazDO6qZtMkPlY9sAlmxMJacs0Pmn0x22pVyjI=
 github.com/cjbrigato/ippool v1.0.1/go.mod h1:Sb7DXBlEbRt6E1exIezfo8RtylPdWindT4PPbalrK7o=
+github.com/cjbrigato/ippool v1.0.2 h1:l8BMv3AYkR/fbLIO3+KWh8NUmBOC9yqXSH6/7ousA08=
+github.com/cjbrigato/ippool v1.0.2/go.mod h1:Sb7DXBlEbRt6E1exIezfo8RtylPdWindT4PPbalrK7o=
 github.com/corona10/goimagehash v1.1.0 h1:teNMX/1e+Wn/AYSbLHX8mj+mF9r60R1kBeqE9MkoYwI=
 github.com/corona10/goimagehash v1.1.0/go.mod h1:VkvE0mLn84L4aF8vCb6mafVajEb6QYMHl2ZJLn0mOGI=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

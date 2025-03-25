@@ -56,11 +56,11 @@ func (s *Supernode) handleLeasesInfosMessage(r *protocol.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	leases := cm.GetAllLease()
+	leases := cm.GetLeasesWithEdgesInfos()
 	infos := &netstruct.LeasesInfos{
-		IsRequest:     false,
-		CommunityName: cm.Name(),
-		Leases:        leases,
+		IsRequest:            false,
+		CommunityName:        cm.Name(),
+		LeasesWithEdgesInfos: leases,
 	}
 	target, err := cm.GetEdgeUDPAddr(leaseMsg.EdgeMACAddr())
 	if err != nil {

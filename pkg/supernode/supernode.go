@@ -34,6 +34,9 @@ type Supernode struct {
 	edgesByMAC    map[string]*Edge
 	edgesBySocket map[string]*Edge // UDP.Addr(String)
 
+	edgeCacheMu     sync.RWMutex
+	edgeCachedInfos map[string]*EdgeCachedInfos // keyed by MacADDR, only overwrites
+
 	Conn       *net.UDPConn
 	config     *Config
 	shutdownCh chan struct{}
@@ -49,6 +52,25 @@ type Supernode struct {
 	SnMessageHandlers protocol.MessageHandlerMap
 
 	SNSecrets *crypto.SNSecrets
+}
+
+func (s *Supernode) SetEdgeCachedInfo(macAddr string, desc string, community string, isRegistered bool) {
+	s.edgeCacheMu.Lock()
+	defer s.edgeCacheMu.Unlock()
+	s.edgeCachedInfos[macAddr] = &EdgeCachedInfos{
+		MACAddr:      macAddr,
+		Desc:         desc,
+		Community:    community,
+		IsRegistered: isRegistered,
+		UpdatedAt:    time.Now(),
+	}
+}
+
+func (s *Supernode) GetEdgeCachedInfo(macAddr string) (*EdgeCachedInfos, bool) {
+	s.edgeCacheMu.RLock()
+	defer s.edgeCacheMu.RUnlock()
+	infos, ok := s.edgeCachedInfos[macAddr]
+	return infos, ok
 }
 
 func (s *Supernode) MacADDR() net.HardwareAddr {
@@ -88,6 +110,7 @@ func NewSupernodeWithConfig(conn *net.UDPConn, config *Config) *Supernode {
 		communities:       make(map[uint32]*Community),
 		edgesByMAC:        map[string]*Edge{},
 		edgesBySocket:     map[string]*Edge{},
+		edgeCachedInfos:   make(map[string]*EdgeCachedInfos),
 		Conn:              conn,
 		config:            config,
 		shutdownCh:        make(chan struct{}),
@@ -154,7 +177,7 @@ func (s *Supernode) RegisterCommunity(communityName string, communityHash uint32
 		return nil, fmt.Errorf("failed to allocate network for community %s: %w", communityName, err)
 	}
 
-	cm, err = NewCommunityWithConfig(communityName, prefix, s.config)
+	cm, err = NewCommunityWithConfig(communityName, prefix, s.config, s)
 	if err != nil {
 		return nil, err
 	}

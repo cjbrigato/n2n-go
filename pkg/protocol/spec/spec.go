@@ -15,6 +15,7 @@ const (
 	TypeP2PStateInfo         PacketType = 9
 	TypeP2PFullState         PacketType = 10
 	TypeLeasesInfos          PacketType = 11
+	TypeOnlineCheck          PacketType = 12
 	TypeSNPublicSecret       PacketType = 251
 	TypeRegisterResponse     PacketType = 252
 	TypeRetryRegisterRequest PacketType = 253
