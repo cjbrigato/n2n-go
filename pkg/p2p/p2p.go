@@ -56,8 +56,12 @@ func (psi *PeerP2PInfos) PacketType() spec.PacketType {
 type P2PFullState struct {
 	CommunityName string
 	IsRequest     bool
-	Reachables    map[string]PeerP2PInfos
-	UnReachables  map[string]PeerCachedInfo
+	P2PCommunityDatas
+}
+
+type P2PCommunityDatas struct {
+	Reachables   map[string]PeerP2PInfos
+	UnReachables map[string]PeerCachedInfo
 }
 
 func (pfs *P2PFullState) PacketType() spec.PacketType {
@@ -78,12 +82,11 @@ func (p *Peer) resetPendingTTL() {
 }
 
 type PeerRegistry struct {
-	peerMu                sync.RWMutex
-	Me                    *Peer
-	Peers                 map[string]*Peer //keyed by MACAddr.String()
-	Reachables            map[string]PeerP2PInfos
-	UnReachables          map[string]PeerCachedInfo
-	IsWaitingForFullState bool
+	peerMu sync.RWMutex
+	Me     *Peer
+	Peers  map[string]*Peer //keyed by MACAddr.String()
+	P2PCommunityDatas
+	IsWaitingCommunityDatas bool
 }
 
 func NewPeerRegistry() *PeerRegistry {

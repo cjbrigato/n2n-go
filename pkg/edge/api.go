@@ -25,13 +25,14 @@ func (eapi *EdgeClientApi) GetPeersJSON(c echo.Context) error {
 		return err
 	}
 	for {
-		if eapi.Client.Peers.IsWaitingForFullState {
+		if eapi.Client.Peers.IsWaitingCommunityDatas {
 			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
 	}
-	state := eapi.Client.Peers.Reachables
+
+	state := eapi.Client.Peers.P2PCommunityDatas
 	return c.JSON(http.StatusOK, state)
 }
 
@@ -56,14 +57,14 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 		return err
 	}
 	for {
-		if eapi.Client.Peers.IsWaitingForFullState {
+		if eapi.Client.Peers.IsWaitingCommunityDatas {
 			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
 	}
 	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
 	if err != nil {
 		return err
 	}
@@ -77,14 +78,14 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 		return err
 	}
 	for {
-		if eapi.Client.Peers.IsWaitingForFullState {
+		if eapi.Client.Peers.IsWaitingCommunityDatas {
 			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
 	}
 	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
 	if err != nil {
 		return err
 	}
@@ -101,14 +102,14 @@ func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
 		return err
 	}
 	for {
-		if eapi.Client.Peers.IsWaitingForFullState {
+		if eapi.Client.Peers.IsWaitingCommunityDatas {
 			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
 	}
 	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
 	if err != nil {
 		return err
 	}
@@ -143,13 +144,16 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 	req := &p2p.P2PFullState{
 		CommunityName: e.Community,
 		IsRequest:     true,
-		Reachables:    make(map[string]p2p.PeerP2PInfos),
+		P2PCommunityDatas: p2p.P2PCommunityDatas{
+			Reachables:   make(map[string]p2p.PeerP2PInfos),
+			UnReachables: make(map[string]p2p.PeerCachedInfo),
+		},
 	}
 	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
-	e.Peers.IsWaitingForFullState = true
+	e.Peers.IsWaitingCommunityDatas = true
 	return nil
 }
 

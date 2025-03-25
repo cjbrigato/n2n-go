@@ -104,8 +104,8 @@ func (c *Community) SetP2PInfosFor(edgeMacADDR string, infos *p2p.PeerP2PInfos) 
 	return nil
 }
 
-func (c *Community) CommunityP2PState() (*p2p.CommunityP2PState, error) {
-	return p2p.NewCommunityP2PState(c.Name(), c.communityPeerP2PInfos)
+func (c *Community) CommunityP2PState() (*p2p.CommunityP2PVizDatas, error) {
+	return p2p.NewCommunityP2PVizDatas(c.Name(), c.communityPeerP2PInfos)
 }
 
 func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PFullState, error) {
@@ -124,8 +124,10 @@ func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PF
 	return &p2p.P2PFullState{
 		CommunityName: c.Name(),
 		IsRequest:     false,
-		Reachables:    c.communityPeerP2PInfos,
-		UnReachables:  unreachables,
+		P2PCommunityDatas: p2p.P2PCommunityDatas{
+			Reachables:   c.communityPeerP2PInfos,
+			UnReachables: unreachables,
+		},
 	}, nil
 }
 

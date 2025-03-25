@@ -233,7 +233,7 @@ func (ppk PeerPairKey) GetPeers() (peerA, peerB string, err error) {
 	return
 }
 
-type CommunityP2PState struct {
+type CommunityP2PVizDatas struct {
 	CommunityName        string
 	PeersDescToVIP       map[string]string
 	P2PAvailabilityInfos map[string]PeerP2PInfos
@@ -242,7 +242,7 @@ type CommunityP2PState struct {
 	P2PStates            map[PeerPairKey]ConnectionType
 }
 
-func NewCommunityP2PState(community string, peerInfos map[string]PeerP2PInfos) (*CommunityP2PState, error) {
+func NewCommunityP2PVizDatas(community string, peerInfos map[string]PeerP2PInfos) (*CommunityP2PVizDatas, error) {
 	peersDescToVIP := make(map[string]string)
 	connectionData := make(map[PeerDirectedPairKey]ConnectionInfo)
 	peerPairs := make(map[PeerPairKey]bool)
@@ -285,7 +285,7 @@ func NewCommunityP2PState(community string, peerInfos map[string]PeerP2PInfos) (
 		P2PStates[pairKey] = connType
 	}
 
-	return &CommunityP2PState{
+	return &CommunityP2PVizDatas{
 		CommunityName:        community,
 		PeersDescToVIP:       peersDescToVIP,
 		P2PAvailabilityInfos: peerInfos,
@@ -313,7 +313,7 @@ func GetConnectionType(peerA, peerB string, connectionData map[PeerDirectedPairK
 	}
 }
 
-func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
+func (cs *CommunityP2PVizDatas) GenerateP2PGraphviz() string {
 	result := Header(cs.CommunityName)
 	result = fmt.Sprintf("%s\n%s", result, SNPeerEdges(cs.PeersDescToVIP))
 	result = fmt.Sprintf("%s\n%s", result, PeerEdges(cs.P2PStates))
@@ -322,18 +322,18 @@ func (cs *CommunityP2PState) GenerateP2PGraphviz() string {
 	return result
 }
 
-func (cs *CommunityP2PState) GenerateP2PGraphvizLegend() string {
+func (cs *CommunityP2PVizDatas) GenerateP2PGraphvizLegend() string {
 	return legend
 }
 
-func (cs *CommunityP2PState) GenerateP2PHTML() string {
+func (cs *CommunityP2PVizDatas) GenerateP2PHTML() string {
 	graph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphviz())
 	legraph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphvizLegend())
 	result := fmt.Sprintf(peersHTML, graph, legraph)
 	return result
 }
 
-func (cs *CommunityP2PState) GenerateP2PGraphImage() ([]byte, error) {
+func (cs *CommunityP2PVizDatas) GenerateP2PGraphImage() ([]byte, error) {
 	data := []byte(cs.GenerateP2PGraphviz())
 	graph, err := graphviz.ParseBytes(data)
 	if err != nil {

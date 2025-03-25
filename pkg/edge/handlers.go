@@ -295,8 +295,8 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	} else {
 		e.Peers.UnReachables = make(map[string]p2p.PeerCachedInfo)
 	}
-	if e.Peers.IsWaitingForFullState {
-		e.Peers.IsWaitingForFullState = false
+	if e.Peers.IsWaitingCommunityDatas {
+		e.Peers.IsWaitingCommunityDatas = false
 	}
 	return nil
 }
