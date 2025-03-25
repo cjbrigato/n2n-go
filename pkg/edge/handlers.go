@@ -262,6 +262,7 @@ func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 		return err
 	}
 	e.isWaitingForSNPubKeyUpdate = true
+	e.isWaitingForSNRetryRegisterResponse = true
 
 	return nil
 }
