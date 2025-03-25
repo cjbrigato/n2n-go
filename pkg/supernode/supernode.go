@@ -62,7 +62,7 @@ func (s *Supernode) GetOfflineCachedEdges(cm *Community) (map[string]p2p.PeerCac
 	communityName := cm.Name()
 	offlineEdges := make(map[string]p2p.PeerCachedInfo)
 	s.edgeCacheMu.RLock()
-	defer s.edgeMu.RUnlock()
+	defer s.edgeCacheMu.RUnlock()
 	for _, v := range s.edgeCachedInfos {
 		if v.Community != communityName || v.IsRegistered {
 			continue
