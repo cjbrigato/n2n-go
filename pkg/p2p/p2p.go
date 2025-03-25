@@ -23,7 +23,8 @@ const (
 	P2PUnknown     P2PCapacity = 0
 	P2PPending     P2PCapacity = 1
 	P2PAvailable   P2PCapacity = 2
-	P2PUnavailable P2PCapacity = 3
+	P2PFullDuplex  P2PCapacity = 3
+	P2PUnavailable P2PCapacity = 4
 )
 
 func (pt P2PCapacity) String() string {
@@ -36,6 +37,8 @@ func (pt P2PCapacity) String() string {
 		return "Available"
 	case P2PUnavailable:
 		return "Unavailable"
+	case P2PFullDuplex:
+		return "FullDuplex"
 	default:
 		return "Unknown"
 	}
@@ -60,13 +63,13 @@ func (pfs *P2PFullState) PacketType() spec.PacketType {
 	return spec.TypeP2PFullState
 }
 
-
 type Peer struct {
-	Infos      PeerInfo
-	P2PStatus  P2PCapacity
-	P2PCheckID string
-	pendingTTL int
-	UpdatedAt  time.Time
+	Infos        PeerInfo
+	P2PStatus    P2PCapacity
+	IsFullDuplex bool
+	P2PCheckID   string
+	pendingTTL   int
+	UpdatedAt    time.Time
 }
 
 func (p *Peer) resetPendingTTL() {
@@ -107,6 +110,19 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 		return nil, fmt.Errorf("peer with MAC address %s not found", MACAddr)
 	}
 	return peer, nil
+}
+
+func (p *Peer) SetFullDuplex(value bool) error {
+	if value {
+		if !(p.P2PStatus == P2PAvailable) {
+			return fmt.Errorf("cannot set full duplex without first P2PAvailable state")
+		}
+	}
+	if value != p.IsFullDuplex {
+		log.Printf("peer desc=%s macaddr=%s set FullDuplex Status: %v", p.Infos.Desc, p.Infos.MACAddr, p.IsFullDuplex)
+	}
+	p.IsFullDuplex = value
+	return nil
 }
 
 func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
@@ -155,7 +171,7 @@ func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) 
 		}
 		existingPeer.Infos = infos
 		existingPeer.UpdatedAt = time.Now()
-		log.Printf("Peers: updated known holde of %s MACAddr:", macAddr)
+		log.Printf("Peers: updated known hold of %s MACAddr:", macAddr)
 		log.Printf("  was: vip=%s PubSocket=%s desc=%s", origPeer.Infos.VirtualIP, origPeer.Infos.PubSocket, origPeer.Infos.Desc)
 		log.Printf("  now: vip=%s PubSocket=%s desc=%s", existingPeer.Infos.VirtualIP, existingPeer.Infos.PubSocket, existingPeer.Infos.Desc)
 		return existingPeer, nil

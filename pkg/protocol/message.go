@@ -71,6 +71,10 @@ func (r *RawMessage) CommunityHash() uint32 {
 	return r.Header.CommunityID
 }
 
+func (r *RawMessage) IsFromSupernode() bool {
+	return r.Header.IsFromSupernode()
+}
+
 func (r *RawMessage) ToPacket() []byte {
 	return r.rawPacket
 }

@@ -104,19 +104,6 @@ func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, d
 	if err != nil {
 		return err
 	}
-	/*
-		// Get buffer for full packet
-		packetBuf := s.packetBufPool.Get()
-		defer s.packetBufPool.Put(packetBuf)
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-			return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
-		}
-
-		payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
-		totalLen := protocol.ProtoVHeaderSize + payloadLen
-
-		// Send the packet
-		_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)*/
 	_, err = s.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), addr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)

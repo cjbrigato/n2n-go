@@ -328,6 +328,13 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr(), p.P2PCheckID, pingMsg.Msg.CheckID)
 			p.UpdateP2PStatus(p2p.P2PUnknown, "")
 		}
+		if p.P2PStatus == p2p.P2PAvailable {
+			if !pingMsg.Header.IsFromSupernode() {
+				p.SetFullDuplex(true)
+			} else {
+				p.SetFullDuplex(false)
+			}
+		}
 	}
 	return nil
 }
