@@ -13,14 +13,29 @@ import (
 const peersHTML = `
 <!DOCTYPE html>
 <meta charset="utf-8">
+<style>
+.grid-container {
+  display: grid;
+  grid-template-columns: 10%% 55%% 35%%;
+}
+</style>
 <body>
 <script src="//d3js.org/d3.v7.min.js"></script>
 <script src="https://unpkg.com/@hpcc-js/wasm@2.20.0/dist/graphviz.umd.js"></script>
 <script src="https://unpkg.com/d3-graphviz@5.6.0/build/d3-graphviz.js"></script>
+<div class="grid-container">
+<div></div>
 <div id="peers" style="text-align: center;"></div>
+<div id="offlines" style="text-align: left;"></div>
+</div>
+<div class="grid-container">
+<div></div>
 <div id="legend" style="text-align: center;"></div>
+<div></div>
+</div>
 <script>
 var dot = ""
+var dotoff = ""
 var graphviz = d3.select("#peers").graphviz()
     .transition(function () {
         return d3.transition("main")
@@ -31,10 +46,28 @@ var graphviz = d3.select("#peers").graphviz()
     .logEvents(true)
     .on("initEnd", render);
 
+	var graphvizOff = d3.select("#offlines").graphviz()
+    .transition(function () {
+        return d3.transition("main")
+            .ease(d3.easeLinear)
+            .delay(500)
+            .duration(1500);
+    })
+    .logEvents(true)
+    .on("initEnd", renderOff);
+
+	function renderOff() {
+		console.log(dotoff)
+		graphvizOff.addImage("/static/cloud.png","32px","32px")
+			.renderDot(dotoff)
+			.on("end", function () {
+				renderOff();
+			});
+	}
 
 	function render() {
 		console.log(dot)
-		graphviz
+		graphviz.addImage("/static/cloud.png","32px","32px")
 			.renderDot(dot)
 			.on("end", function () {
 				render();
@@ -44,6 +77,7 @@ var graphviz = d3.select("#peers").graphviz()
 
 let intervalId 
 const req = new XMLHttpRequest();
+const reqoff = new XMLHttpRequest();
 req.onreadystatechange = function(){
     "use strict";
     if(req.readyState === 4 && req.status === 200){
@@ -51,12 +85,24 @@ req.onreadystatechange = function(){
 		render()
     }
 };
+reqoff.onreadystatechange = function(){
+    "use strict";
+    if(reqoff.readyState === 4 && reqoff.status === 200){
+        dotoff=reqoff.responseText;
+		renderOff()
+    }
+};
+
 setInterval(update, 2000);
 
 function update(){
 req.open("GET", "/peers.dot");
 req.send();
+reqoff.open("GET", "/offlines.dot");
+reqoff.send();
 }
+
+d3.select("#offlines").graphviz().renderDot(%s);
 
 d3.select("#peers").graphviz()
     .renderDot(%s);
@@ -65,6 +111,29 @@ d3.select("#legend").graphviz()
 
 </script>
 `
+
+const offlinegraph = `
+digraph G {
+    rankdir=LR
+    graph [fontname = "courier new" inputscale=0];
+    labelloc="t"
+    fontsize=16
+    center=true
+    node [fontname = "courier new" fontsize=9 shape=plain];
+    edge [fontname = "courier new" len=4.5]
+   bgcolor=transparent;
+ fontsize=9
+ fontname = "courier new"
+ 
+ rank = same {
+ %s
+ }
+}
+`
+
+func add_offline(s string, desc string, ip string) string {
+	return fmt.Sprintf("%s\n\"%s\" [color=grey label=<<table BORDER=\"0\" CELLBORDER=\"0\"><tr><TD ROWSPAN=\"3\"><img src=\"/static/cloud.png\"/></TD><td align=\"left\">%s</td></tr><tr><TD align=\"left\">%s</TD></tr></table>>]", s, desc, desc, ip)
+}
 
 const legend = `
 digraph G {
@@ -132,6 +201,14 @@ func SNPeerEdges(peersNodeIDs map[string]string) string {
 	//result = fmt.Sprintf("%s\n%s\n", result, "}")
 	result = fmt.Sprintf("%s\n", result)
 	return result
+}
+
+func GenOfflines(offlines map[string]PeerCachedInfo) string {
+	var offnodes string
+	for _, v := range offlines {
+		offnodes = add_offline(offnodes, v.Desc, v.VirtualIP.String())
+	}
+	return fmt.Sprintf(offlinegraph, offnodes)
 }
 
 func PeerEdges(connections map[PeerPairKey]ConnectionType) string {
@@ -240,9 +317,10 @@ type CommunityP2PVizDatas struct {
 	ConnectionData       map[PeerDirectedPairKey]ConnectionInfo
 	PeerPairs            map[PeerPairKey]bool
 	P2PStates            map[PeerPairKey]ConnectionType
+	Offlines             map[string]PeerCachedInfo
 }
 
-func NewCommunityP2PVizDatas(community string, peerInfos map[string]PeerP2PInfos) (*CommunityP2PVizDatas, error) {
+func NewCommunityP2PVizDatas(community string, peerInfos map[string]PeerP2PInfos, offlines map[string]PeerCachedInfo) (*CommunityP2PVizDatas, error) {
 	peersDescToVIP := make(map[string]string)
 	connectionData := make(map[PeerDirectedPairKey]ConnectionInfo)
 	peerPairs := make(map[PeerPairKey]bool)
@@ -292,6 +370,7 @@ func NewCommunityP2PVizDatas(community string, peerInfos map[string]PeerP2PInfos
 		ConnectionData:       connectionData,
 		PeerPairs:            peerPairs,
 		P2PStates:            P2PStates,
+		Offlines:             offlines,
 	}, nil
 }
 
@@ -313,6 +392,10 @@ func GetConnectionType(peerA, peerB string, connectionData map[PeerDirectedPairK
 	}
 }
 
+func (cs *CommunityP2PVizDatas) GenerateP2POfflinesGraphviz() string {
+	return GenOfflines(cs.Offlines)
+}
+
 func (cs *CommunityP2PVizDatas) GenerateP2PGraphviz() string {
 	result := Header(cs.CommunityName)
 	result = fmt.Sprintf("%s\n%s", result, SNPeerEdges(cs.PeersDescToVIP))
@@ -329,7 +412,8 @@ func (cs *CommunityP2PVizDatas) GenerateP2PGraphvizLegend() string {
 func (cs *CommunityP2PVizDatas) GenerateP2PHTML() string {
 	graph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphviz())
 	legraph := fmt.Sprintf("`%s`", cs.GenerateP2PGraphvizLegend())
-	result := fmt.Sprintf(peersHTML, graph, legraph)
+	offgraph := fmt.Sprintf("`%s`", cs.GenerateP2POfflinesGraphviz())
+	result := fmt.Sprintf(peersHTML, offgraph, graph, legraph)
 	return result
 }
 

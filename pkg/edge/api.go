@@ -1,7 +1,9 @@
 package edge
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol/netstruct"
@@ -11,6 +13,18 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
+
+//go:embed assets
+var webAssets embed.FS
+
+func getFileSystem() (http.FileSystem, error) {
+	fsys, err := fs.Sub(webAssets, "assets")
+	if err != nil {
+		return nil, fmt.Errorf("cannot get embeded Filesystem")
+	}
+
+	return http.FS(fsys), nil
+}
 
 type EdgeClientApi struct {
 	Api                     *echo.Echo
@@ -51,6 +65,22 @@ func (eapi *EdgeClientApi) GetLeasesInfosJSON(c echo.Context) error {
 	return c.JSON(http.StatusOK, eapi.LastLeasesInfos)
 }
 
+func (eapi *EdgeClientApi) GetOfflinesDot(c echo.Context) error {
+	for {
+		if eapi.Client.Peers.IsWaitingCommunityDatas {
+			time.Sleep(300 * time.Millisecond)
+		} else {
+			break
+		}
+	}
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
+	if err != nil {
+		return err
+	}
+	res := cp2p.GenerateP2POfflinesGraphviz()
+	return c.String(http.StatusOK, res)
+}
+
 func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 	err := eapi.Client.sendP2PFullStateRequest()
 	if err != nil {
@@ -63,8 +93,7 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
 	if err != nil {
 		return err
 	}
@@ -84,8 +113,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
 	if err != nil {
 		return err
 	}
@@ -108,8 +136,7 @@ func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.Reachables
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, state)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
 	if err != nil {
 		return err
 	}
@@ -127,11 +154,18 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.HidePort = true
 	eapi.Api.Use(middleware.Recover())
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
+	fs, err := getFileSystem()
+	if err != nil {
+		log.Fatalf("Edge: unable to init edgeApi: %v", err)
+	}
+	assetHandler := http.FileServer(fs)
+	eapi.Api.GET("/static/*", echo.WrapHandler(http.StripPrefix("/static/", assetHandler)))
 	eapi.Api.GET("/peers", eapi.GetPeersHTML)
 	eapi.Api.GET("/peers.json", eapi.GetPeersJSON)
 	eapi.Api.GET("/peers.dot", eapi.GetPeersDot)
 	eapi.Api.GET("/peers.svg", eapi.GetPeersSVG)
 	eapi.Api.GET("/leases.json", eapi.GetLeasesInfosJSON)
+	eapi.Api.GET("/offlines.dot", eapi.GetOfflinesDot)
 	return eapi
 }
 
