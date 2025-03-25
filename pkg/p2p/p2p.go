@@ -81,7 +81,8 @@ type PeerRegistry struct {
 	peerMu                sync.RWMutex
 	Me                    *Peer
 	Peers                 map[string]*Peer //keyed by MACAddr.String()
-	FullState             map[string]PeerP2PInfos
+	Reachables            map[string]PeerP2PInfos
+	UnReachables          map[string]PeerCachedInfo
 	IsWaitingForFullState bool
 }
 

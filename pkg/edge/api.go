@@ -31,7 +31,7 @@ func (eapi *EdgeClientApi) GetPeersJSON(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.FullState
+	state := eapi.Client.Peers.Reachables
 	return c.JSON(http.StatusOK, state)
 }
 
@@ -62,7 +62,7 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.FullState
+	state := eapi.Client.Peers.Reachables
 	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.FullState
+	state := eapi.Client.Peers.Reachables
 	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
 			break
 		}
 	}
-	state := eapi.Client.Peers.FullState
+	state := eapi.Client.Peers.Reachables
 	cp2p, err := p2p.NewCommunityP2PState(eapi.Client.Community, state)
 	if err != nil {
 		return err
