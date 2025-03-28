@@ -73,11 +73,7 @@ func (eapi *EdgeClientApi) GetOfflinesDot(c echo.Context) error {
 			break
 		}
 	}
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
-	if err != nil {
-		return err
-	}
-	res := cp2p.GenerateP2POfflinesGraphviz()
+	res := eapi.Client.Peers.GenOfflinesDot()
 	return c.String(http.StatusOK, res)
 }
 
@@ -93,11 +89,7 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 			break
 		}
 	}
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
-	if err != nil {
-		return err
-	}
-	res := cp2p.GenerateP2PGraphviz()
+	res := eapi.Client.Peers.GenPeersDot()
 	return c.String(http.StatusOK, res)
 }
 
@@ -113,7 +105,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 			break
 		}
 	}
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
+	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables)
 	if err != nil {
 		return err
 	}
@@ -125,22 +117,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 }
 
 func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
-	err := eapi.Client.sendP2PFullStateRequest()
-	if err != nil {
-		return err
-	}
-	for {
-		if eapi.Client.Peers.IsWaitingCommunityDatas {
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			break
-		}
-	}
-	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables, eapi.Client.Peers.UnReachables)
-	if err != nil {
-		return err
-	}
-	res := cp2p.GenerateP2PHTML()
+	res := eapi.Client.Peers.GenPeersHTML()
 	return c.HTML(http.StatusOK, res)
 }
 

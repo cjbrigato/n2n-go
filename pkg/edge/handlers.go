@@ -286,19 +286,7 @@ func (e *EdgeClient) handleP2PFullStateMessage(r *protocol.RawMessage) error {
 	if fstateMsg.Msg.IsRequest {
 		return fmt.Errorf("edge shall not received Request type P2PFullStateMessage")
 	}
-	if fstateMsg.Msg.Reachables == nil {
-		return fmt.Errorf("received nil FullState in P2PFullStateMessage")
-	}
-	e.Peers.Reachables = fstateMsg.Msg.Reachables
-	if fstateMsg.Msg.UnReachables != nil {
-		e.Peers.UnReachables = fstateMsg.Msg.UnReachables
-	} else {
-		e.Peers.UnReachables = make(map[string]p2p.PeerCachedInfo)
-	}
-	if e.Peers.IsWaitingCommunityDatas {
-		e.Peers.IsWaitingCommunityDatas = false
-	}
-	return nil
+	return e.Peers.UpdateP2PCommunityDatas(fstateMsg.Msg.Reachables, fstateMsg.Msg.UnReachables)
 }
 
 func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {

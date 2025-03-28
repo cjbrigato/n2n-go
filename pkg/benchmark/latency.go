@@ -6,6 +6,7 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/edge"
 	"n2n-go/pkg/protocol"
+	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/supernode"
 	"n2n-go/pkg/tuntap"
 	"net"
@@ -566,7 +567,7 @@ func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 		testData[i] = byte(i % 256)
 	}
 
-	header, _ := protocol.NewProtoVHeader(protocol.VersionV, 64, protocol.TypeData, 1234, "testcommunity", nil, nil)
+	header, _ := protocol.NewProtoVHeader(protocol.VersionV, 64, spec.TypeData, 1234, "testcommunity", nil, nil)
 
 	// Get buffer pools
 	headerBuf := buffers.HeaderBufferPool.Get()

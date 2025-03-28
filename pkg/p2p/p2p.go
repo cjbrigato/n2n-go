@@ -82,16 +82,70 @@ func (p *Peer) resetPendingTTL() {
 }
 
 type PeerRegistry struct {
-	peerMu sync.RWMutex
-	Me     *Peer
-	Peers  map[string]*Peer //keyed by MACAddr.String()
+	CommunityName string
+	peerMu        sync.RWMutex
+	Me            *Peer
+	Peers         map[string]*Peer //keyed by MACAddr.String()
+	p2pDatasMu    sync.RWMutex
 	P2PCommunityDatas
 	IsWaitingCommunityDatas bool
 }
 
-func NewPeerRegistry() *PeerRegistry {
+func (reg *PeerRegistry) UpdateP2PCommunityDatas(reachables map[string]PeerP2PInfos, unreachables map[string]PeerCachedInfo) error {
+	if reachables == nil {
+		return fmt.Errorf("received nil reachables in P2PFullStateMessage")
+	}
+	reg.p2pDatasMu.Lock()
+	defer reg.p2pDatasMu.Unlock()
+
+	reg.Reachables = reachables
+	if unreachables != nil {
+		reg.UnReachables = unreachables
+	} else {
+		reg.UnReachables = make(map[string]PeerCachedInfo)
+	}
+	if reg.IsWaitingCommunityDatas {
+		reg.IsWaitingCommunityDatas = false
+	}
+	return nil
+}
+
+func (reg *PeerRegistry) GenPeersDot() string {
+	reg.p2pDatasMu.RLock()
+	defer reg.p2pDatasMu.RUnlock()
+	if reg.Reachables != nil {
+		cp2p, err := NewCommunityP2PVizDatas(reg.CommunityName, reg.Reachables)
+		if err != nil {
+			return ""
+		}
+		return cp2p.GenerateP2PGraphviz()
+	}
+	return ""
+}
+
+func (reg *PeerRegistry) GenOfflinesDot() string {
+	reg.p2pDatasMu.RLock()
+	defer reg.p2pDatasMu.RUnlock()
+	if reg.P2PCommunityDatas.UnReachables != nil {
+		return P2VizGenOfflinesDot(reg.P2PCommunityDatas.UnReachables)
+	}
+	return ""
+}
+
+func (reg *PeerRegistry) GenLegendDot() string {
+	return legend
+}
+
+func (reg *PeerRegistry) GenPeersHTML() string {
+	legraph := fmt.Sprintf("`%s`", reg.GenLegendDot())
+	result := fmt.Sprintf(peersHTML, legraph)
+	return result
+}
+
+func NewPeerRegistry(communityName string) *PeerRegistry {
 	return &PeerRegistry{
-		Peers: make(map[string]*Peer),
+		CommunityName: communityName,
+		Peers:         make(map[string]*Peer),
 	}
 }
 

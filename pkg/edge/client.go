@@ -121,7 +121,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	}
 
 	edge := &EdgeClient{
-		Peers:             p2p.NewPeerRegistry(),
+		Peers:             p2p.NewPeerRegistry(cfg.Community),
 		ID:                cfg.EdgeID,
 		Community:         cfg.Community,
 		SupernodeAddr:     snAddr,
