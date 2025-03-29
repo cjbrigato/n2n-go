@@ -3,7 +3,6 @@ package edge
 import (
 	"fmt"
 	"log"
-	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -157,14 +156,10 @@ func (e *EdgeClient) handleTAP() {
 			continue
 		}
 
-		payload := frameBuf[:n]
-		if e.encryptionEnabled {
-			encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
-			if err != nil {
-				log.Printf("Edge: Failed to encrypt payload %v", err)
-				continue
-			}
-			payload = encryptedPayload
+		payload, err := e.MaybeEncrypt(frameBuf[:n])
+		if err != nil {
+			log.Printf("Edge: Failed to encrypt payload %v", err)
+			continue
 		}
 
 		strategy := p2p.UDPEnforceSupernode
@@ -225,40 +220,27 @@ func (e *EdgeClient) handleUDP() {
 			continue
 		}
 
-		if e.enableVFuze {
-			if packetBuf[0] == protocol.VersionVFuze {
-				payload := packetBuf[protocol.ProtoVFuzeSize:n]
-				if e.encryptionEnabled {
-					plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
-					if err != nil {
-						log.Printf("Edge: warning: error while decrypting data IN VFUZE packets, droping (err: %v)\n", err)
-						continue
-					}
-					payload = plainPayload
-				}
-				_, err = e.TAP.Write(payload)
+		e.PacketsRecv.Add(1)
+
+		if packetBuf[0] == protocol.VersionVFuze {
+			if e.enableVFuze {
+				err := e.handleDataPayload(packetBuf[protocol.ProtoVFuzeSize:n])
 				if err != nil {
 					if strings.Contains(err.Error(), "file already closed") {
 						return
 					}
-					log.Printf("Edge: TAP write error: %v", err)
+					log.Printf("Edge: handleDataPayload Error: %v", err)
 				}
 				continue
 			}
-		}
-
-		// Handle short packets and ACKs
-		if n < protocol.ProtoVHeaderSize { // Even compact headers have minimum size
-			msg := strings.TrimSpace(string(packetBuf[:n]))
-			if msg == "ACK" {
-				// Just an ACK - nothing to do
-				continue
-			}
-			log.Printf("Edge: Received packet too short from %v: %q", addr, msg)
+			log.Printf("Edge: received VFuze data packet from %v but VFuze support is disabled", addr)
 			continue
 		}
 
-		e.PacketsRecv.Add(1)
+		if n < protocol.ProtoVHeaderSize {
+			log.Printf("Edge: Received packet too short from %v: %q", addr, string(packetBuf[:n]))
+			continue
+		}
 
 		rawMsg, err := protocol.NewRawMessage(packetBuf[:n], addr)
 		if err != nil {
@@ -273,6 +255,9 @@ func (e *EdgeClient) handleUDP() {
 		}
 		err = handler(rawMsg)
 		if err != nil {
+			if strings.Contains(err.Error(), "file already closed") {
+				return
+			}
 			log.Printf("Edge: Error from messageHandler: %v", err)
 		}
 	}

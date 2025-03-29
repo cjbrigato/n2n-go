@@ -239,3 +239,25 @@ func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
 	}
 	return encMachineID, nil
 }
+
+func (e *EdgeClient) MaybeEncrypt(payload []byte) ([]byte, error) {
+	if !e.encryptionEnabled {
+		return payload, nil
+	}
+	encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
+	if err != nil {
+		return nil, err
+	}
+	return encryptedPayload, nil
+}
+
+func (e *EdgeClient) MaybeDecrypt(payload []byte) ([]byte, error) {
+	if !e.encryptionEnabled {
+		return payload, nil
+	}
+	plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
+	if err != nil {
+		return nil, err
+	}
+	return plainPayload, nil
+}

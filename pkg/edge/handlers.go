@@ -10,7 +10,6 @@ import (
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/protocol/spec"
 	"net"
-	"strings"
 )
 
 var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
@@ -59,23 +58,20 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 	return nil
 }
 
-func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
-	payload := r.Payload
-	if e.encryptionEnabled {
-		plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
-		if err != nil {
-			return fmt.Errorf("error while decrypting data packets, droping (err: %w)", err)
-		}
-		payload = plainPayload
-	}
-	_, err := e.TAP.Write(payload)
+func (e *EdgeClient) handleDataPayload(payload []byte) error {
+	payload, err := e.MaybeDecrypt(payload)
 	if err != nil {
-		if !strings.Contains(err.Error(), "file already closed") {
-			log.Printf("Edge: TAP write error: %v", err)
-			return err
-		}
+		return fmt.Errorf("error while decrypting data packets, droping (err: %w)", err)
+	}
+	_, err = e.TAP.Write(payload)
+	if err != nil {
+		return fmt.Errorf("TAP write error: %w", err)
 	}
 	return nil
+}
+
+func (e *EdgeClient) handleDataMessage(r *protocol.RawMessage) error {
+	return e.handleDataPayload(r.Payload)
 }
 
 func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {

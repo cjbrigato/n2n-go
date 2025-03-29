@@ -22,3 +22,5 @@ func VFuzeHeaderBytes(dst net.HardwareAddr) []byte {
 	copy(buf[1:7], dst[:6])
 	return buf
 }
+
+
