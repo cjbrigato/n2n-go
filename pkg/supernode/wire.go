@@ -165,40 +165,11 @@ func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src,
 	}
 	packet := protocol.PackProtoVDatagram(header, payload)
 
-	/*packetBuf := s.packetBufPool.Get()
-	defer s.packetBufPool.Put(packetBuf)
-	var totalLen int
-
-	header, err := protocol.NewProtoVHeader(
-		protocol.VersionV,
-		64,
-		p.PacketType(),
-		0,
-		cm.Name(),
-		src,
-		dst,
-	)
-	if err != nil {
-		return err
-	}
-	header.SetFromSupernode(true)
-
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("Supernode: failed to protov %s header: %w", p.PacketType().String(), err)
-	}
-
-	payload, err := protocol.Encode(p)
-	if err != nil {
-		return err
-	}
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-
-	s.broadcast(packetBuf[:totalLen], cm, senderMac)*/
 	s.broadcast(packet, cm, senderMac)
 	return nil
 }
 
+/*
 func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
 	// Get buffer for full packet
 	packetBuf := s.packetBufPool.Get()
@@ -228,3 +199,4 @@ func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst 
 	s.broadcast(packetBuf[:totalLen], cm, senderMac)
 	return nil
 }
+*/
