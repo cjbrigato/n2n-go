@@ -19,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // EdgeClient encapsulates the state and configuration of an edge.
@@ -115,8 +117,13 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
 	processorTransforms := []transform.Transform{}
 	if cfg.CompressPayload {
-		log.Printf("Edge: added GzipTransform to payload Processor (compress-payload is true)")
-		processorTransforms = append(processorTransforms, transform.NewGzipTransform())
+		zstdTransform, err := transform.NewZstdTransform(zstd.SpeedDefault)
+		if err != nil {
+			log.Fatalf("Edge: unable to create zstdTransform for payloadProcessor (requested by compress-payload): %v", err)
+		}
+		log.Printf("Edge: added zstdTransform to payload Processor (compress-payload is true)")
+		log.Printf("Edge: Ensure all connected edges also uses compress-payload settings !")
+		processorTransforms = append(processorTransforms, zstdTransform)
 	}
 	if cfg.EncryptionPassphrase != "" {
 		aesGCMTransform, err := transform.NewAESGCMTransform(cfg.EncryptionPassphrase)

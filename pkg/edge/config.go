@@ -75,7 +75,7 @@ func LoadConfig() (*Config, error) {
 	flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", cfg.UDPBufferSize, "UDP BUffer Sizes")
 	flag.StringVar(&cfg.APIListenAddr, "api-listen", cfg.APIListenAddr, "API listen address")
 	flag.StringVar(&cfg.EncryptionPassphrase, "encryption-passphrase", cfg.EncryptionPassphrase, "Passphrase to encryption key derivation")
-	flag.BoolVar(&cfg.CompressPayload, "compress-payload", cfg.CompressPayload, "Add Gzip compression/decompression to data packets")
+	flag.BoolVar(&cfg.CompressPayload, "compress-payload", cfg.CompressPayload, "Add zstd fast compression/decompression to data packets")
 
 	flag.Parse() // MUST call this to parse the flags
 
