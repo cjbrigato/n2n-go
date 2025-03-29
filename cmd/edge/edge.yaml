@@ -9,3 +9,4 @@ heartbeat_interval: "10s"
 udp_buffer_size: 8388608
 api_listen_address: ":7778" #Optional api address
 encryption_passphrase: "Job1Jojobalol"
+compress_payload: true
