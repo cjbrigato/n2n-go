@@ -118,6 +118,10 @@ const peerHTML2 = `
         const legendContainer = d3.select("#legend");
         const offlinesContainer = d3.select("#offlines");
         const peersContainer = d3.select("#peers");
+        // --- State Variables ---
+        let isUpdating = false; // Flag to prevent concurrent updates
+        let lastPeersDot = null; // Cache for the last rendered peers DOT string
+        let lastOfflinesDot = null; // Cache for the last rendered offlines DOT string
 
         // --- Helper Functions ---
 
@@ -162,6 +166,44 @@ const peerHTML2 = `
             return graphvizInstance;
         }
 
+ /**
+         * Renders a DOT string if it's different from the cached version.
+         * @param {d3.graphviz} graphvizInstance - The graphviz instance.
+         * @param {string} newDotString - The newly fetched DOT string.
+         * @param {string | null} lastDotString - The cached DOT string.
+         * @param {d3.Selection} container - The container selection (for messages).
+         * @returns {boolean} - True if a render was initiated, false otherwise.
+         */
+        function renderGraphIfChanged(graphvizInstance, newDotString, lastDotString, container) {
+            // Trim whitespace for more reliable comparison
+            const trimmedNewDot = newDotString?.trim();
+            const trimmedLastDot = lastDotString?.trim();
+
+            if (trimmedNewDot === trimmedLastDot) {
+                 // console.log(` + "`Skipping render for #${container.attr('id')}: Data unchanged.`" + `);
+                return false; // Data hasn't changed, don't render
+            }
+
+            if (!trimmedNewDot) {
+                displayMessage(container, "No data to display.", false);
+                // container.select('svg').remove(); // Optional: clear svg explicitly
+                return true; // Indicate change occurred (from potentially something to nothing)
+            }
+
+            container.select('.graph-message').remove(); // Clear any previous messages
+
+            try {
+                console.log(` + "`Rendering updated data for #${container.attr('id')}`" + `);
+                graphvizInstance.renderDot(trimmedNewDot);
+                return true; // Render initiated
+            } catch (error) {
+                console.error(` + "`Error during renderDot call in #${container.attr('id')}:`" + `, error);
+                displayMessage(container, ` + "`Render error: ${error.message}`" + `, true);
+                return false; // Render failed
+            }
+        }
+
+
         /**
          * Renders a DOT string using a graphviz instance.
          * @param {d3.graphviz} graphvizInstance - The graphviz instance.
@@ -194,7 +236,8 @@ const peerHTML2 = `
              try {
                  const response = await fetch(url);
                  if (!response.ok) {
-                     throw new Error(` + "`HTTP error! Status: ${response.status} ${response.statusText}`" + `);
+				 const errorText = await response.text().catch(() => ''); // Try to get error body
+                     throw new Error(` + "`HTTP error! Status: ${response.status} ${response.statusText}. ${errorText}	`" + `);
                  }
                  return await response.text();
              } catch (error) {
@@ -240,21 +283,47 @@ const peerHTML2 = `
 
         // --- Data Update Logic ---
         async function updateDynamicGraphs() {
-            // Fetch peers data
-            try {
-                const peersDot = await fetchData(PEERS_DOT_URL);
-                renderGraph(graphvizPeers, peersDot, peersContainer);
-            } catch (error) {
-                 displayMessage(peersContainer, ` + "`Failed to load peers: ${error.message}`" + `, true);
+            // Prevent concurrent updates
+            if (isUpdating) {
+                console.log("Update skipped: Previous update still in progress.");
+                return;
             }
+            isUpdating = true;
+            // console.log("Starting update cycle...");
 
-            // Fetch offlines data
             try {
-                const offlinesDot = await fetchData(OFFLINES_DOT_URL);
-                renderGraph(graphvizOff, offlinesDot, offlinesContainer);
-                // Note: We are NOT re-rendering the static legend here anymore.
-            } catch (error) {
-                 displayMessage(offlinesContainer, ` + "`Failed to load offlines: ${error.message}`" + `, true);
+                // --- Fetch Peers ---
+                let peersDot;
+                try {
+                    peersDot = await fetchData(PEERS_DOT_URL);
+                    // Render only if data changed and update cache
+                    if (renderGraphIfChanged(graphvizPeers, peersDot, lastPeersDot, peersContainer)) {
+                         lastPeersDot = peersDot; // Update cache only on successful render trigger
+                     }
+                } catch (error) {
+                     // Don't update cache on fetch error
+                     displayMessage(peersContainer, ` + "`Failed to load peers: ${error.message}`" + `, true);
+                     // Optionally reset lastPeersDot = null; if desired
+                }
+
+                // --- Fetch Offlines ---
+                let offlinesDot;
+                 try {
+                    offlinesDot = await fetchData(OFFLINES_DOT_URL);
+                     // Render only if data changed and update cache
+                    if (renderGraphIfChanged(graphvizOff, offlinesDot, lastOfflinesDot, offlinesContainer)) {
+                         lastOfflinesDot = offlinesDot; // Update cache only on successful render trigger
+                     }
+                 } catch (error) {
+                     // Don't update cache on fetch error
+                     displayMessage(offlinesContainer, ` + "`Failed to load offlines: ${error.message}`" + `, true);
+                     // Optionally reset lastOfflinesDot = null; if desired
+                 }
+
+            } finally {
+                // Ensure the lock is always released, even if errors occur
+                isUpdating = false;
+                 // console.log("Update cycle finished.");
             }
         }
 
@@ -271,3 +340,66 @@ const peerHTML2 = `
 </body>
 </html>
 `
+
+const offlinegraph = `
+digraph G {
+label=<<br/><font point-size="22">Offline Peers<br align="center"/></font>>
+    rankdir=LR
+    graph [fontname = "courier new" inputscale=0];
+    labelloc="t"
+    fontsize=16
+    center=true
+    node [fontname = "courier new" fontsize=11 shape=plain];
+    edge [fontname = "courier new" len=4.5]
+   bgcolor=transparent;
+ fontsize=9
+ fontname = "courier new"
+ 
+ rank = same {
+ %s
+ }
+}
+`
+
+const legend = `
+digraph G {
+    rankdir=LR
+	label=<<font point-size="22">Legend<br align="center"/></font>>
+	labelloc="t"
+    fontsize=16
+    center=true
+    node [fontname = "courier new"];
+    edge [fontsize=11 fontname="courier new"];
+ 
+
+    fontsize=11
+    fontname = "courier new"
+    node [shape=plain];
+    A -> B [label="Supernode I/O (no P2P)" style="dashed"  arrowhead=none, color=grey len=3.0]
+    C -> D [label="Half Direct Connection" color=orange,style=bold len=3.0]
+    E -> F [label="Full Duplex P2P" dir=both,style=bold, color=green]
+
+  A [label=" "]
+  B [label=" "]
+  C [label=" "]
+  D [label=" "]
+  E [label=" "]
+  F [label=" "]
+}
+`
+
+const header = `
+digraph G {
+    graph [fontname = "courier new" inputscale=0];
+    label=<<font point-size="22"><b>%s</b>'s Network<br align="center"/></font>>
+    labelloc="t"
+    fontsize=28
+    center=true
+    node [fontname = "courier new" fontsize=11 shape=underline];
+    edge [fontname = "courier new" len=4.5]
+
+   bgcolor=transparent;
+   splines=true
+   layout=neato
+  normalize=-90
+ `

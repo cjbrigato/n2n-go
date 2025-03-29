@@ -11,203 +11,10 @@ import (
 )
 
 
-const peersHTML = `
-<!DOCTYPE html>
-<meta charset="utf-8">
-<style>
-.grid-container {
-  display: grid;
-  grid-template-columns: 25%% 75%%;
-  height: 95vh;
-}
-</style>
-<body>
-<script src="//d3js.org/d3.v7.min.js"></script>
-<script src="https://unpkg.com/@hpcc-js/wasm@2.20.0/dist/graphviz.umd.js"></script>
-<script src="https://unpkg.com/d3-graphviz@5.6.0/build/d3-graphviz.js"></script>
-<div class="grid-container" id="wrapper">
-	<div style="height: inherit; display: inherit;">
-		<div id="legend" style="display: contents; text-align: center;"></div>
-		<div id="offlines" style="display: contents; text-align: center;"></div>
-	</div>
-	<div id="peers" style="height: inherit; text-align: center;">
-	</div>
-</div>
-<script>
-
-var dotlegend = %s
-var dot = ""
-var dotoff = ""
-
-var graphvizLeg = d3.select("#legend").graphviz()
-    .transition(function () {
-        return d3.transition("main")
-            .ease(d3.easeLinear)
-            .delay(50)
-            .duration(1000);
-    })
-    .on("initEnd", renderLeg);
-
-var graphviz = d3.select("#peers").graphviz()
-    .transition(function () {
-        return d3.transition("main")
-            .ease(d3.easeLinear)
-            .delay(50)
-            .duration(1000);
-    })
-    .on("initEnd", render);
-
-
-var graphvizOff = d3.select("#offlines").graphviz()
-    .transition(function () {
-        return d3.transition("main")
-            .ease(d3.easeLinear)
-            .delay(50)
-            .duration(1000);
-    })
-    .on("initEnd", renderOff);
-
-
-	function renderLeg() {
-			    var clientHeight = "100%%"
-		var clientWidth = "100%%" 
-		graphvizLeg.addImage("/static/cloud.png","32px","32px")
-				.height(clientHeight)
-		.width(clientWidth)
-		.fit(true)
-			.renderDot(dotlegend).zoom(false)
-			.on("end", function () {
-				//renderLeg();
-			});
-	}
-
-	function renderOff() {
-			    var clientHeight = "100%%" 
-		var clientWidth = "100%%"
-		graphvizOff.addImage("/static/cloud.png","32px","32px")
-			.height(clientHeight)
-		.width(clientWidth)
-		.fit(true)
-			.renderDot(dotoff).zoom(false)
-			.on("end", function () {
-				//renderOff();
-			});
-	}
-
-	function render() {
-	    var clientHeight = "100%%" 
-		var clientWidth = "100%%" 
-		graphviz.addImage("/static/cloud.png","32px","32px")
-		.height(clientHeight)
-		.width(clientWidth)
-    		.fit(true)
-			.renderDot(dot).zoom(false)
-			.on("end", function () {
-				//render();
-			});
-	}
-	
-
-let intervalId 
-const req = new XMLHttpRequest();
-const reqoff = new XMLHttpRequest();
-req.onreadystatechange = function(){
-    "use strict";
-    if(req.readyState === 4 && req.status === 200){
-        dot=req.responseText;
-		render()
-    }
-};
-reqoff.onreadystatechange = function(){
-    "use strict";
-    if(reqoff.readyState === 4 && reqoff.status === 200){
-        dotoff=reqoff.responseText;
-		renderLeg()
-		renderOff()
-    }
-};
-
-setInterval(update, 2000);
-
-function update(){
-req.open("GET", "/peers.dot");
-req.send();
-reqoff.open("GET", "/offlines.dot");
-reqoff.send();
-}
-
-d3.select("#legend").graphviz()
-    .renderDot(dotlegend).zoom(false);
-
-</script>
-`
-
-const offlinegraph = `
-digraph G {
-label=<<br/><font point-size="22">Offline Peers<br align="center"/></font>>
-    rankdir=LR
-    graph [fontname = "courier new" inputscale=0];
-    labelloc="t"
-    fontsize=16
-    center=true
-    node [fontname = "courier new" fontsize=11 shape=plain];
-    edge [fontname = "courier new" len=4.5]
-   bgcolor=transparent;
- fontsize=9
- fontname = "courier new"
- 
- rank = same {
- %s
- }
-}
-`
-
 func add_offline(s string, desc string, ip string) string {
 	return fmt.Sprintf("%s\n\"%s\" [color=grey label=<<table BORDER=\"0\" CELLBORDER=\"0\"><tr><TD ROWSPAN=\"3\"><img src=\"/static/cloud.png\"/></TD><td align=\"left\">%s</td></tr><tr><TD align=\"left\">%s</TD></tr></table>>]", s, desc, desc, ip)
 }
 
-const legend = `
-digraph G {
-    rankdir=LR
-	label=<<font point-size="22">Legend<br align="center"/></font>>
-	labelloc="t"
-    fontsize=16
-    center=true
-    node [fontname = "courier new"];
-    edge [fontsize=11 fontname="courier new"];
- 
-
-    fontsize=11
-    fontname = "courier new"
-    node [shape=plain];
-    A -> B [label="Supernode I/O (no P2P)" style="dashed"  arrowhead=none, color=grey len=3.0]
-    C -> D [label="Half Direct Connection" color=orange,style=bold len=3.0]
-    E -> F [label="Full Duplex P2P" dir=both,style=bold, color=green]
-
-  A [label=" "]
-  B [label=" "]
-  C [label=" "]
-  D [label=" "]
-  E [label=" "]
-  F [label=" "]
-}
-`
-
-const header = `
-digraph G {
-    graph [fontname = "courier new" inputscale=0];
-    label=<<font point-size="22"><b>%s</b>'s Network<br align="center"/></font>>
-    labelloc="t"
-    fontsize=28
-    center=true
-    node [fontname = "courier new" fontsize=11 shape=underline];
-    edge [fontname = "courier new" len=4.5]
-
-   bgcolor=transparent;
-   splines=true
-   layout=neato
-  normalize=-90
- `
 
 func genHeader(community string) string {
 	return fmt.Sprintf(header, strings.ToTitle(community))
@@ -276,8 +83,13 @@ func peerEdges(connections map[PeerPairKey]ConnectionType) string {
 func peerNodes(peersIdLabels map[string]string) string {
 	result := fmt.Sprintf("%s", "# supernode def")
 	result = fmt.Sprintf("%s\n%s", result, "\"sn\" [shape=rectangle,style=\"rounded,bold\" color=\"#FFB0B0\" label=\"SUPER\\nNODE\" pos=\"60,0!\"]\n\n # nodedefs")
-	for k, v := range peersIdLabels {
-		result = fmt.Sprintf("%s\n \"%s\" [color=grey label=\"💻%s\\n%s\"]", result, k, v, k)
+	keys := make([]string, 0, len(peersIdLabels))
+	for k := range peersIdLabels {
+		keys = append(keys, string(k))
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		result = fmt.Sprintf("%s\n \"%s\" [color=grey label=\"💻%s\\n%s\"]", result, k, peersIdLabels[k], k)
 	}
 	result = fmt.Sprintf("%s\n%s\n", result, "}")
 	return result
