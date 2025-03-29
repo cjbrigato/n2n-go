@@ -83,39 +83,11 @@ func (e *EdgeClient) SendStruct(s netstruct.PacketTyped, dst net.HardwareAddr, s
 
 	header := e.EdgeHeader(s.PacketType(), dst)
 
-	/*seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-	// Get buffer for full packet
-	packetBuf := e.packetBufPool.Get()
-	defer e.packetBufPool.Put(packetBuf)
-	var totalLen int
-
-	header, err := protocol.NewProtoVHeader(
-		e.ProtocolVersion(),
-		64,
-		s.PacketType(),
-		seq,
-		e.Community,
-		e.MACAddr,
-		dst,
-	)
-	if err != nil {
-		return err
-	}*/
-
 	payload, err := protocol.Encode(s)
 	if err != nil {
 		return err
 	}
 
-	/*if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("edge: failed to protov %s header: %w", s.PacketType(), err)
-	}
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-	e.PacketsSent.Add(1)
-
-	// Send the packet
-	_, err = e.Conn.WriteToUDP(packetBuf[:totalLen], udpSocket)*/
 	_, err = e.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), udpSocket)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)

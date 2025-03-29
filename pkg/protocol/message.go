@@ -75,7 +75,6 @@ func (r *RawMessage) IsFromSupernode() bool {
 	return r.Header.IsFromSupernode()
 }
 
-
 func FlagPacketFromSupernode(packet []byte) ([]byte, error) {
 	header, payload, err := UnpackProtoVDatagram(packet)
 	if err != nil {

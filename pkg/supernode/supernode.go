@@ -381,7 +381,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		log.Printf("Supernode: Error from SnMessageHandler[%s]: %v", rawMsg.Header.PacketType.String(), err)
 		if errors.Is(err, ErrCommunityUnknownEdge) || errors.Is(err, ErrCommunityNotFound) {
 			log.Printf("Supernode: sending RetryRegisterRequest to addr:%s", addr.IP)
-			s.WritePacket(spec.TypeRetryRegisterRequest, "", s.MacADDR(), nil, "", addr)
+			s.WritePacket(spec.TypeRetryRegisterRequest, "", nil, nil, addr)
 		}
 	}
 }

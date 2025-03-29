@@ -90,45 +90,23 @@ func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
 	}
 }
 
-func (s *Supernode) WritePacket(pt spec.PacketType, community string, src, dst net.HardwareAddr, payloadStr string, addr *net.UDPAddr) error {
-	// Get buffer for full packet
-	packetBuf := s.packetBufPool.Get()
-	defer s.packetBufPool.Put(packetBuf)
-	var totalLen int
+func (s *Supernode) WritePacket(pt spec.PacketType, community string, dst net.HardwareAddr, payload []byte, addr *net.UDPAddr) error {
 
-	header, err := protocol.NewProtoVHeader(
-		protocol.VersionV,
-		64,
-		pt,
-		0,
-		community,
-		src,
-		dst,
-	)
-	if err != nil {
-		return err
-	}
-	header.SetFromSupernode(true)
-
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
-	}
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-
+	header := s.SNHeader(pt, community, dst)
+	packet := protocol.PackProtoVDatagram(header, payload)
 	// Send the packet
-	_, err = s.Conn.WriteToUDP(packetBuf[:totalLen], addr)
+	_, err := s.Conn.WriteToUDP(packet, addr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
 	return nil
 }
 
-func (s *Supernode) SNHeader(p netstruct.PacketTyped, community string, dst net.HardwareAddr) *protocol.ProtoVHeader {
+func (s *Supernode) SNHeader(pt spec.PacketType, community string, dst net.HardwareAddr) *protocol.ProtoVHeader {
 	h := &protocol.ProtoVHeader{
 		Version:     protocol.VersionV,
 		TTL:         64,
-		PacketType:  p.PacketType(),
+		PacketType:  pt,
 		Flags:       protocol.FlagFromSuperNode,
 		Sequence:    0,
 		CommunityID: protocol.HashCommunity(community),
@@ -141,9 +119,13 @@ func (s *Supernode) SNHeader(p netstruct.PacketTyped, community string, dst net.
 	return h
 }
 
+func (s *Supernode) SNStructHeader(p netstruct.PacketTyped, community string, dst net.HardwareAddr) *protocol.ProtoVHeader {
+	return s.SNHeader(p.PacketType(), community, dst)
+}
+
 func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, dst net.HardwareAddr, addr *net.UDPAddr) error {
 
-	header := s.SNHeader(p, community, dst)
+	header := s.SNStructHeader(p, community, dst)
 	payload, err := protocol.Encode(p)
 	if err != nil {
 		return err
@@ -158,7 +140,7 @@ func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, d
 func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src, dst net.HardwareAddr, senderMac string) error {
 	// Get buffer for full packet
 
-	header := s.SNHeader(p, cm.Name(), dst)
+	header := s.SNStructHeader(p, cm.Name(), dst)
 	payload, err := protocol.Encode(p)
 	if err != nil {
 		return err
