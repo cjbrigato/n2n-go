@@ -15,9 +15,6 @@ import (
 
 var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
 
-
-
-
 func (e *EdgeClient) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 	rresp, err := protocol.ToMessage[*netstruct.SNPublicSecret](r)
 	if err != nil {
@@ -53,6 +50,7 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 
 	log.Printf("Edge: Successfull Supernode Reregister")
 	e.isWaitingForSNRetryRegisterResponse = false
+	e.Peers.IsWaitingCommunityDatas = false
 	log.Printf("Edge: sending Recovery Peer List Request")
 	err = e.sendPeerListRequest()
 	if err != nil {
