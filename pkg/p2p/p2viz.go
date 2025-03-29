@@ -10,6 +10,7 @@ import (
 	"github.com/goccy/go-graphviz"
 )
 
+
 const peersHTML = `
 <!DOCTYPE html>
 <meta charset="utf-8">
@@ -42,8 +43,8 @@ var graphvizLeg = d3.select("#legend").graphviz()
     .transition(function () {
         return d3.transition("main")
             .ease(d3.easeLinear)
-            .delay(500)
-            .duration(1500);
+            .delay(50)
+            .duration(1000);
     })
     .on("initEnd", renderLeg);
 
@@ -51,8 +52,8 @@ var graphviz = d3.select("#peers").graphviz()
     .transition(function () {
         return d3.transition("main")
             .ease(d3.easeLinear)
-            .delay(500)
-            .duration(1500);
+            .delay(50)
+            .duration(1000);
     })
     .on("initEnd", render);
 
@@ -61,52 +62,48 @@ var graphvizOff = d3.select("#offlines").graphviz()
     .transition(function () {
         return d3.transition("main")
             .ease(d3.easeLinear)
-            .delay(500)
-            .duration(1500);
+            .delay(50)
+            .duration(1000);
     })
     .on("initEnd", renderOff);
 
 
 	function renderLeg() {
-		//var clientHeight = ((document.getElementById('wrapper').clientHeight / 100)*20) - 20
-		//var clientWidth = document.getElementById('legend').clientWidth - 20
-			    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
-		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
+			    var clientHeight = "100%%"
+		var clientWidth = "100%%" 
 		graphvizLeg.addImage("/static/cloud.png","32px","32px")
 				.height(clientHeight)
 		.width(clientWidth)
 		.fit(true)
 			.renderDot(dotlegend).zoom(false)
 			.on("end", function () {
-				renderLeg();
+				//renderLeg();
 			});
 	}
 
 	function renderOff() {
-		//var clientHeight = document.getElementById('wrapper').clientHeight - document.getElementById('legend').clientHeight - 20
-		//var clientWidth = document.getElementById('offlines').clientWidth - 20
-			    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
-		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
+			    var clientHeight = "100%%" 
+		var clientWidth = "100%%"
 		graphvizOff.addImage("/static/cloud.png","32px","32px")
-				.height(clientHeight)
+			.height(clientHeight)
 		.width(clientWidth)
 		.fit(true)
 			.renderDot(dotoff).zoom(false)
 			.on("end", function () {
-				renderOff();
+				//renderOff();
 			});
 	}
 
 	function render() {
-	    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
-		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
+	    var clientHeight = "100%%" 
+		var clientWidth = "100%%" 
 		graphviz.addImage("/static/cloud.png","32px","32px")
 		.height(clientHeight)
 		.width(clientWidth)
     		.fit(true)
 			.renderDot(dot).zoom(false)
 			.on("end", function () {
-				render();
+				//render();
 			});
 	}
 	

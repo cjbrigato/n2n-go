@@ -138,7 +138,7 @@ func (reg *PeerRegistry) GenLegendDot() string {
 
 func (reg *PeerRegistry) GenPeersHTML() string {
 	legraph := fmt.Sprintf("`%s`", reg.GenLegendDot())
-	result := fmt.Sprintf(peersHTML, legraph)
+	result := fmt.Sprintf(peerHTML2, legraph)
 	return result
 }
 
