@@ -132,13 +132,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 		return
 	}
 
-	handler, exists := s.SnMessageHandlers[rawMsg.Header.PacketType]
-	if !exists {
-		log.Printf("Supernode: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.FromAddr)
-		s.stats.PacketsDropped.Add(1)
-		return
-	}
-	err = handler(rawMsg)
+	err = s.SnMessageHandlers.Handle(rawMsg)
 	if err != nil {
 		log.Printf("Supernode: Error from SnMessageHandler[%s]: %v", rawMsg.Header.PacketType.String(), err)
 		if errors.Is(err, ErrCommunityUnknownEdge) || errors.Is(err, ErrCommunityNotFound) {
