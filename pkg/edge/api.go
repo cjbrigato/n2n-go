@@ -145,36 +145,3 @@ func (eapi *EdgeClientApi) Run() {
 	log.Printf("Edge: started management api at %s", eapi.Client.config.APIListenAddr)
 	eapi.Api.Logger.Fatal(eapi.Api.Start(eapi.Client.config.APIListenAddr))
 }
-
-func (e *EdgeClient) sendP2PFullStateRequest() error {
-	req := &p2p.P2PFullState{
-		CommunityName: e.Community,
-		IsRequest:     true,
-		P2PCommunityDatas: p2p.P2PCommunityDatas{
-			Reachables:   make(map[string]p2p.PeerP2PInfos),
-			UnReachables: make(map[string]p2p.PeerCachedInfo),
-		},
-	}
-	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
-	}
-	e.Peers.IsWaitingCommunityDatas = true
-	return nil
-}
-
-func (eapi *EdgeClientApi) sendLeasesInfosRequest() error {
-	if eapi.IsWaitingForLeasesInfos {
-		return nil
-	}
-	req := &netstruct.LeasesInfos{
-		CommunityName: eapi.Client.Community,
-		IsRequest:     true,
-	}
-	err := eapi.Client.SendStruct(req, nil, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
-	}
-	eapi.IsWaitingForLeasesInfos = true
-	return nil
-}

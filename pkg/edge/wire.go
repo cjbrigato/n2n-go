@@ -95,7 +95,3 @@ func (e *EdgeClient) SendStruct(s netstruct.PacketTyped, dst net.HardwareAddr, s
 	return nil
 }
 
-// ProtocolVersion returns the protocol version being used
-func (e *EdgeClient) ProtocolVersion() uint8 {
-	return protocol.VersionV
-}

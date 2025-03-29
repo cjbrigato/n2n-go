@@ -15,67 +15,8 @@ import (
 
 var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
 
-func (e *EdgeClient) RequestSNPublicKey() error {
-	log.Printf("Trying to get Supernode publickey with supernode at %s...", e.SupernodeAddr)
 
-	reqPub := &netstruct.SNPublicSecret{
-		IsRequest: true,
-	}
 
-	return e.SendStruct(reqPub, nil, p2p.UDPEnforceSupernode)
-}
-
-func (e *EdgeClient) RequestRegister() error {
-	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
-
-	encMachineID, err := e.EncryptedMachineID()
-	if err != nil {
-		return err
-	}
-
-	regReq := &netstruct.RegisterRequest{
-		EdgeMACAddr:        e.MACAddr.String(),
-		EdgeDesc:           e.ID,
-		CommunityName:      e.Community,
-		EncryptedMachineID: encMachineID,
-	}
-
-	return e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
-}
-
-func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
-	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
-	if err != nil {
-		return nil, err
-	}
-	return encMachineID, nil
-}
-
-// Unregister sends an unregister packet to the supernode.
-func (e *EdgeClient) Unregister() error {
-	if !e.registered {
-		return fmt.Errorf("cannot unregister an unregistered edge")
-	}
-	encMacid, err := e.EncryptedMachineID()
-	if err != nil {
-		return err
-	}
-	var unregErr error
-	e.unregisterOnce.Do(func() {
-		unreg := &netstruct.UnregisterRequest{
-			EdgeMACAddr:        e.MACAddr.String(),
-			CommunityName:      e.Community,
-			EncryptedMachineID: encMacid,
-		}
-		err := e.SendStruct(unreg, nil, p2p.UDPEnforceSupernode)
-		if err != nil {
-			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
-			return
-		}
-		log.Printf("Edge: Unregister message sent")
-	})
-	return unregErr
-}
 
 func (e *EdgeClient) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 	rresp, err := protocol.ToMessage[*netstruct.SNPublicSecret](r)

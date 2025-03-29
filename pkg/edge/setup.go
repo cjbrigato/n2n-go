@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"n2n-go/pkg/crypto"
+	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/tuntap"
@@ -213,4 +214,32 @@ func (e *EdgeClient) TunUp() error {
 	}
 	//return e.TAP.IfUp(e.VirtualIP)
 	return util.IfUp(e.TAP.Name(), e.VirtualIP)
+}
+
+func (e *EdgeClient) RequestSNPublicKey() error {
+	log.Printf("Trying to get Supernode publickey with supernode at %s...", e.SupernodeAddr)
+
+	reqPub := &netstruct.SNPublicSecret{
+		IsRequest: true,
+	}
+
+	return e.SendStruct(reqPub, nil, p2p.UDPEnforceSupernode)
+}
+
+func (e *EdgeClient) RequestRegister() error {
+	log.Printf("Registering with supernode at %s...", e.SupernodeAddr)
+
+	encMachineID, err := e.EncryptedMachineID()
+	if err != nil {
+		return err
+	}
+
+	regReq := &netstruct.RegisterRequest{
+		EdgeMACAddr:        e.MACAddr.String(),
+		EdgeDesc:           e.ID,
+		CommunityName:      e.Community,
+		EncryptedMachineID: encMachineID,
+	}
+
+	return e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 }

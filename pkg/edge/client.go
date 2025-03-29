@@ -154,3 +154,88 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	edge.messageHandlers[spec.TypeSNPublicSecret] = edge.handleSNPublicSecretMessage
 	return edge, nil
 }
+
+// Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
+func (e *EdgeClient) Run() {
+	if !e.running.CompareAndSwap(false, true) {
+		log.Printf("Edge: Already running, ignoring Run() call")
+		return
+	}
+	if !e.registered {
+		log.Printf("Edge: Cannot run an unregistered edge, ignoring Run() call")
+	}
+
+	go e.handleHeartbeat()
+	go e.handleTAP()
+	go e.handleUDP()
+
+	log.Printf("Edge: sending preliminary Peer List Request")
+	err := e.sendPeerListRequest()
+	if err != nil {
+		log.Printf("Edge: (warn) failed sending preliminary Peer List Request: %v", err)
+	}
+
+	log.Printf("Edge: starting P2PUpdate routines...")
+	go e.handleP2PUpdates()
+	go e.handleP2PInfos()
+
+	log.Printf("Edge: starting management api...")
+	eapi := NewEdgeApi(e)
+	e.EAPI = eapi
+	go eapi.Run()
+
+	<-e.ctx.Done() // Block until context is cancelled
+}
+
+// Close initiates a clean shutdown.
+func (e *EdgeClient) Close() {
+	if err := e.Unregister(); err != nil {
+		log.Printf("Edge: Unregister failed: %v", err)
+	}
+	if e.IgdClient != nil {
+		log.Printf(" UPnP > Cleaning up all portMappings...")
+		e.IgdClient.CleanupAllMappings()
+	}
+	e.cancel()
+
+	// Force read operations to unblock
+	if e.Conn != nil {
+		e.Conn.SetReadDeadline(time.Now())
+	}
+
+	// Wait for all goroutines to finish
+	e.wg.Wait()
+
+	// Close resources
+	if e.TAP != nil {
+		if err := e.TAP.Close(); err != nil {
+			log.Printf("Edge: Error closing TAP interface: %v", err)
+		}
+	}
+
+	if e.Conn != nil {
+		if err := e.Conn.Close(); err != nil {
+			log.Printf("Edge: Error closing UDP connection: %v", err)
+		}
+	}
+
+	e.running.Store(false)
+	log.Printf("Edge: Shutdown complete")
+}
+
+func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
+	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
+}
+
+// ProtocolVersion returns the protocol version being used
+func (e *EdgeClient) ProtocolVersion() uint8 {
+	return protocol.VersionV
+}
+
+func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
+	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
+	if err != nil {
+		return nil, err
+	}
+	return encMachineID, nil
+}

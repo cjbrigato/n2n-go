@@ -70,121 +70,6 @@ func (e *EdgeClient) handleP2PUpdates() {
 	}
 }
 
-// Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
-func (e *EdgeClient) Run() {
-	if !e.running.CompareAndSwap(false, true) {
-		log.Printf("Edge: Already running, ignoring Run() call")
-		return
-	}
-	if !e.registered {
-		log.Printf("Edge: Cannot run an unregistered edge, ignoring Run() call")
-	}
-
-	go e.handleHeartbeat()
-	go e.handleTAP()
-	go e.handleUDP()
-
-	log.Printf("Edge: sending preliminary Peer List Request")
-	err := e.sendPeerListRequest()
-	if err != nil {
-		log.Printf("Edge: (warn) failed sending preliminary Peer List Request: %v", err)
-	}
-
-	log.Printf("Edge: starting P2PUpdate routines...")
-	go e.handleP2PUpdates()
-	go e.handleP2PInfos()
-
-	log.Printf("Edge: starting management api...")
-	eapi := NewEdgeApi(e)
-	e.EAPI = eapi
-	go eapi.Run()
-
-	<-e.ctx.Done() // Block until context is cancelled
-}
-
-// Close initiates a clean shutdown.
-func (e *EdgeClient) Close() {
-	if err := e.Unregister(); err != nil {
-		log.Printf("Edge: Unregister failed: %v", err)
-	}
-	if e.IgdClient != nil {
-		log.Printf(" UPnP > Cleaning up all portMappings...")
-		e.IgdClient.CleanupAllMappings()
-	}
-	e.cancel()
-
-	// Force read operations to unblock
-	if e.Conn != nil {
-		e.Conn.SetReadDeadline(time.Now())
-	}
-
-	// Wait for all goroutines to finish
-	e.wg.Wait()
-
-	// Close resources
-	if e.TAP != nil {
-		if err := e.TAP.Close(); err != nil {
-			log.Printf("Edge: Error closing TAP interface: %v", err)
-		}
-	}
-
-	if e.Conn != nil {
-		if err := e.Conn.Close(); err != nil {
-			log.Printf("Edge: Error closing UDP connection: %v", err)
-		}
-	}
-
-	e.running.Store(false)
-	log.Printf("Edge: Shutdown complete")
-}
-
-// sendPeerListRequest sends a PeerRequest for all but sender's peerinfos
-// scoped by community
-func (e *EdgeClient) sendPeerListRequest() error {
-	req := &netstruct.PeerListRequest{
-		CommunityName: e.Community,
-	}
-	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send peerList Request: %w", err)
-	}
-	return nil
-}
-
-// sendHeartbeat sends a single heartbeat message
-func (e *EdgeClient) sendHeartbeat() error {
-	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-
-	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
-		return fmt.Errorf("edge: not sending heartbing while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
-	}
-
-	encmacid, err := e.EncryptedMachineID()
-	if err != nil {
-		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
-	}
-	pulse := &netstruct.HeartbeatPulse{EdgeMACAddr: e.MACAddr.String(), CommunityName: e.Community, EncryptedMachineID: encmacid}
-	err = e.SendStruct(pulse, nil, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
-	}
-	return nil
-}
-
-func (e *EdgeClient) sendP2PInfos() error {
-
-	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
-		return fmt.Errorf("edge: not sending P2PInfos while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
-	}
-
-	infos := e.Peers.GetPeerP2PInfos()
-	err := e.SendStruct(infos, nil, p2p.UDPEnforceSupernode)
-	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
-	}
-	return nil
-}
-
 func (e *EdgeClient) handleP2PInfos() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -361,9 +246,6 @@ func (e *EdgeClient) handleTAP() {
 	}
 }
 
-func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
-	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
-}
 
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {
