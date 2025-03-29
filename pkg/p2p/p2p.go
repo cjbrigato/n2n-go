@@ -89,6 +89,7 @@ type PeerRegistry struct {
 	p2pDatasMu    sync.RWMutex
 	P2PCommunityDatas
 	IsWaitingCommunityDatas bool
+	hasPendingChanges       bool
 }
 
 func (reg *PeerRegistry) UpdateP2PCommunityDatas(reachables map[string]PeerP2PInfos, unreachables map[string]PeerCachedInfo) error {
@@ -160,6 +161,18 @@ func (reg *PeerRegistry) GetPeerP2PInfos() *PeerP2PInfos {
 	}
 }
 
+func (reg *PeerRegistry) HasPendingChanges() bool {
+	return reg.hasPendingChanges
+}
+
+func (reg *PeerRegistry) SetPendingChanges() {
+	reg.hasPendingChanges = true
+}
+
+func (reg *PeerRegistry) ClearPendingChanges() {
+	reg.hasPendingChanges = false
+}
+
 func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 	reg.peerMu.RLock()
 	defer reg.peerMu.RUnlock()
@@ -171,20 +184,23 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 	return peer, nil
 }
 
-func (p *Peer) SetFullDuplex(value bool) error {
+func (p *Peer) SetFullDuplex(value bool) (bool, error) {
+	changed := false
 	if value {
 		if !(p.P2PStatus == P2PAvailable) {
-			return fmt.Errorf("cannot set full duplex without first P2PAvailable state")
+			return false, fmt.Errorf("cannot set full duplex without first P2PAvailable state")
 		}
 	}
 	if value != p.IsFullDuplex {
 		log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with FullDuplex=%v", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), value)
+		changed = true
 	}
 	p.IsFullDuplex = value
-	return nil
+	return changed, nil
 }
 
-func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
+func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) bool {
+	previousStatus := p.P2PStatus
 	var forcedStatement string
 	skipLog := false
 	if p.P2PStatus == status {
@@ -210,6 +226,7 @@ func (p *Peer) UpdateP2PStatus(status P2PCapacity, checkid string) {
 	if !skipLog {
 		log.Printf("Peers: Updated peer desc=%s vip=%s mac=%s with P2PStatus=%s %s", p.Infos.Desc, p.Infos.VirtualIP.String(), p.Infos.MACAddr.String(), p.P2PStatus.String(), forcedStatement)
 	}
+	return previousStatus != status
 }
 
 func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) {
@@ -233,6 +250,7 @@ func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) 
 		log.Printf("Peers: updated known hold of %s MACAddr:", macAddr)
 		log.Printf("  was: vip=%s PubSocket=%s desc=%s", origPeer.Infos.VirtualIP, origPeer.Infos.PubSocket, origPeer.Infos.Desc)
 		log.Printf("  now: vip=%s PubSocket=%s desc=%s", existingPeer.Infos.VirtualIP, existingPeer.Infos.PubSocket, existingPeer.Infos.Desc)
+		reg.SetPendingChanges()
 		return existingPeer, nil
 	}
 
@@ -244,6 +262,7 @@ func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) 
 	reg.Peers[macAddr] = peer
 	log.Printf("Peers:   Added peer with desc=%s vip=%s mac=%s", peer.Infos.Desc, peer.Infos.VirtualIP.String(), peer.Infos.MACAddr.String())
 	log.Printf("                         PubSocket=%s", peer.Infos.PubSocket)
+	reg.SetPendingChanges()
 	return peer, nil
 }
 
@@ -260,6 +279,7 @@ func (reg *PeerRegistry) RemovePeer(MACAddr string) error {
 	dVip := p.Infos.VirtualIP.String()
 	delete(reg.Peers, MACAddr)
 	log.Printf("Peers: Removed peer with desc=%s vip=%s mac=%s", dDesc, dVip, MACAddr)
+	reg.SetPendingChanges()
 	return nil
 }
 

@@ -160,16 +160,24 @@ func (e *EdgeClient) handlePingMessage(r *protocol.RawMessage) error {
 			return fmt.Errorf("received a pong for a MACAddress %s not in our peers list", pingMsg.EdgeMACAddr())
 		}
 		if p.P2PCheckID == pingMsg.Msg.CheckID {
-			p.UpdateP2PStatus(p2p.P2PAvailable, pingMsg.Msg.CheckID)
+			if p.UpdateP2PStatus(p2p.P2PAvailable, pingMsg.Msg.CheckID) {
+				e.Peers.SetPendingChanges()
+			}
 		} else {
 			err = fmt.Errorf("received a pong for MACAddress %s but checkID differs (want %s, received %s)", pingMsg.EdgeMACAddr(), p.P2PCheckID, pingMsg.Msg.CheckID)
-			p.UpdateP2PStatus(p2p.P2PUnknown, "")
+			if p.UpdateP2PStatus(p2p.P2PUnknown, "") {
+				e.Peers.SetPendingChanges()
+			}
 		}
 		if p.P2PStatus == p2p.P2PAvailable {
 			if !pingMsg.Header.IsFromSupernode() {
-				p.SetFullDuplex(true)
+				if changed, _ := p.SetFullDuplex(true); changed {
+					e.Peers.SetPendingChanges()
+				}
 			} else {
-				p.SetFullDuplex(false)
+				if changed, _ := p.SetFullDuplex(false); changed {
+					e.Peers.SetPendingChanges()
+				}
 			}
 		}
 	}

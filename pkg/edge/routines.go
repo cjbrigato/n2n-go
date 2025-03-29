@@ -43,7 +43,9 @@ func (e *EdgeClient) PingPeer(p *p2p.Peer, n int, interval time.Duration, status
 		IsPong:  false,
 		CheckID: checkid,
 	}
-	p.UpdateP2PStatus(status, checkid)
+	if p.UpdateP2PStatus(status, checkid) {
+		e.Peers.SetPendingChanges()
+	}
 	for range n {
 		e.SendStruct(pingMsg, p.Infos.MACAddr, p2p.UDPEnforceP2P)
 	}
@@ -72,7 +74,7 @@ func (e *EdgeClient) handleP2PInfos() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {

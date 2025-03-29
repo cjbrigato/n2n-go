@@ -72,7 +72,14 @@ func (e *EdgeClient) sendP2PInfos() error {
 		return fmt.Errorf("edge: not sending P2PInfos while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
 	}
 
+	if !e.Peers.HasPendingChanges() {
+		return nil
+	}
+
+	log.Printf("Edge: sending pending PeerP2PInfos changes to supernode...")
+
 	infos := e.Peers.GetPeerP2PInfos()
+	e.Peers.ClearPendingChanges()
 	err := e.SendStruct(infos, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
