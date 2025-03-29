@@ -1,10 +1,7 @@
 package protocol
 
 import (
-	"encoding/binary"
-	"errors"
 	"fmt"
-	"hash/crc32"
 	"n2n-go/pkg/protocol/spec"
 	"net"
 	"time"
@@ -85,90 +82,6 @@ func NewProtoVHeader(_, ttl uint8, pType spec.PacketType, seq uint16, community 
 	}
 
 	return h, nil
-}
-
-// MarshalBinary serializes the ProtoV header
-func (h *ProtoVHeader) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, ProtoVHeaderSize)
-
-	if err := h.MarshalBinaryTo(buf); err != nil {
-		return nil, err
-	}
-
-	return buf, nil
-}
-
-// MarshalBinaryTo serializes the ProtoV header into the provided buffer
-func (h *ProtoVHeader) MarshalBinaryTo(buf []byte) error {
-	if len(buf) < ProtoVHeaderSize {
-		return errors.New("buffer too small for ProtoV header")
-	}
-
-	// Basic info
-	buf[0] = h.Version
-	buf[1] = h.TTL
-	buf[2] = uint8(h.PacketType)
-	buf[3] = uint8(h.Flags)
-
-	// Identification
-	binary.BigEndian.PutUint16(buf[4:6], h.Sequence)
-	binary.BigEndian.PutUint32(buf[6:10], h.CommunityID) // 32-bit community hash
-
-	// Addressing
-	copy(buf[10:16], h.SourceID[:])
-	copy(buf[16:22], h.DestID[:])
-
-	// Timestamp
-	binary.BigEndian.PutUint32(buf[22:26], h.Timestamp)
-
-	// Zero checksum field for calculation
-	binary.BigEndian.PutUint32(buf[26:30], 0)
-
-	// Calculate checksum
-	h.Checksum = crc32.ChecksumIEEE(buf[:30])
-	binary.BigEndian.PutUint32(buf[26:30], h.Checksum)
-
-	return nil
-}
-
-// UnmarshalBinary deserializes the ProtoV header
-func (h *ProtoVHeader) UnmarshalBinary(data []byte) error {
-	if len(data) < ProtoVHeaderSize {
-		return errors.New("insufficient data for ProtoV header")
-	}
-
-	// Basic info
-	h.Version = data[0]
-	h.TTL = data[1]
-	h.PacketType = spec.PacketType(data[2])
-	h.Flags = PacketFlag(data[3])
-
-	// Identification
-	h.Sequence = binary.BigEndian.Uint16(data[4:6])
-	h.CommunityID = binary.BigEndian.Uint32(data[6:10]) // 32-bit community hash
-
-	// Addressing
-	copy(h.SourceID[:], data[10:16])
-	copy(h.DestID[:], data[16:22])
-
-	// Timestamp
-	h.Timestamp = binary.BigEndian.Uint32(data[22:26])
-	h.Checksum = binary.BigEndian.Uint32(data[26:30])
-
-	// Verify checksum
-	expectedChecksum := h.Checksum
-
-	// Zero checksum field for calculation
-	checksumData := make([]byte, ProtoVHeaderSize)
-	copy(checksumData, data[:ProtoVHeaderSize])
-	binary.BigEndian.PutUint32(checksumData[26:30], 0)
-
-	actualChecksum := crc32.ChecksumIEEE(checksumData)
-	if expectedChecksum != actualChecksum {
-		return errors.New("checksum verification failed")
-	}
-
-	return nil
 }
 
 // VerifyTimestamp checks if the header's timestamp is within the allowed drift

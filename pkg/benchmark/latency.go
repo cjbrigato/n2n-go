@@ -581,24 +581,15 @@ func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 	for i := 0; i < opts.Iterations; i++ {
 		iterStart := time.Now()
 
-		// Marshal header into packet buffer
-		if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-			log.Printf("Error marshaling header: %v", err)
+
+		packetBuf = protocol.PackProtoVDatagram(header,testData)
+
+	
+		newHeader, payload,err := protocol.UnpackProtoVDatagram(packetBuf)
+		if err != nil {
+			log.Printf("Error unpacking datagram: %v", err)
 			continue
 		}
-
-		// Copy test data after header
-		copy(packetBuf[protocol.ProtoVHeaderSize:], testData)
-
-		// Now unmarshal and decode
-		var newHeader protocol.ProtoVHeader
-		if err := newHeader.UnmarshalBinary(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-			log.Printf("Error unmarshaling header: %v", err)
-			continue
-		}
-
-		// Extract payload
-		payload := packetBuf[protocol.ProtoVHeaderSize:]
 
 		// Simple verification to make sure the compiler doesn't optimize away
 		if len(payload) != opts.PacketSize || newHeader.Version != header.Version {

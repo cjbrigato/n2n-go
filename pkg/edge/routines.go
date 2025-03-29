@@ -248,12 +248,7 @@ func (e *EdgeClient) handleUDP() {
 			continue
 		}
 
-		handler, exists := e.messageHandlers[rawMsg.Header.PacketType]
-		if !exists {
-			log.Printf("Edge: Unknown packet type %d from %v", rawMsg.Header.PacketType, rawMsg.FromAddr)
-			continue
-		}
-		err = handler(rawMsg)
+		err = e.messageHandlers.Handle(rawMsg)
 		if err != nil {
 			if strings.Contains(err.Error(), "file already closed") {
 				return

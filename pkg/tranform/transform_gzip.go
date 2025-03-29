@@ -1,5 +1,8 @@
 package transform
 
+// This transform is deprecated, inadapted in latency/cpu constrained contexts
+// and should never be used
+
 import (
 	"bytes"
 	"compress/gzip"
