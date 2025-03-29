@@ -95,3 +95,21 @@ func (e *EdgeClient) SendStruct(s netstruct.PacketTyped, dst net.HardwareAddr, s
 	return nil
 }
 
+func (e *EdgeClient) SendVFuze(dst net.HardwareAddr, n int, payload []byte, strategy p2p.UDPWriteStrategy) error {
+	udpSocket, err := e.UDPAddrWithStrategy(dst, strategy)
+	if err != nil {
+		return err
+	}
+
+	vfuzh := protocol.VFuzeHeaderBytes(dst)
+	totalLen := protocol.ProtoVFuzeSize + len(payload)
+	packet := make([]byte, totalLen)
+	copy(packet[0:7], vfuzh[0:7])
+	copy(packet[7:], payload)
+	e.PacketsSent.Add(1)
+	_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
+	if err != nil {
+		return err
+	}
+	return nil
+}

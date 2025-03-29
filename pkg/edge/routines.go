@@ -11,7 +11,6 @@ import (
 	"n2n-go/pkg/tuntap"
 	"net"
 	"strings"
-	"sync/atomic"
 	"time"
 )
 
@@ -109,31 +108,10 @@ func (e *EdgeClient) handleHeartbeat() {
 	}
 }
 
-func (e *EdgeClient) handleTAPVFuze(destMAC net.HardwareAddr, n int, payloadBuf []byte, udpSocket *net.UDPAddr) error {
-	payload := payloadBuf[:n]
-	if e.encryptionEnabled {
-		encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
-		if err != nil {
-			log.Printf("Edge: Failed to encrypt payload %v", err)
-			return err
-		}
-		payload = encryptedPayload
-	}
-
-	vfuzh := protocol.VFuzeHeaderBytes(destMAC)
-	totalLen := protocol.ProtoVFuzeSize + len(payload)
-	packet := make([]byte, totalLen)
-	copy(packet[0:7], vfuzh[0:7])
-	copy(packet[7:], payload)
-	e.PacketsSent.Add(1)
-	_, err := e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 // handleTAP reads packets from the TAP interface and (potentially) sends them to the supernode.
+// What's read from TAP right now are EthernetFrames and thus transformed into DATA packets
+// Then sent through UDP, to either Supernode or P2PDirect connection if available and relevant.
+// Alternative to Data Packet, if vFuze is enabled, it can be transfered early as Vfuze data packet.
 func (e *EdgeClient) handleTAP() {
 	e.wg.Add(1)
 	defer e.wg.Done()
@@ -144,9 +122,7 @@ func (e *EdgeClient) handleTAP() {
 
 	// Create separate areas for header and payload
 	headerSize := protocol.ProtoVHeaderSize
-
-	headerBuf := packetBuf[:headerSize]
-	payloadBuf := packetBuf[headerSize:]
+	frameBuf := packetBuf[headerSize:]
 
 	for {
 		select {
@@ -157,7 +133,7 @@ func (e *EdgeClient) handleTAP() {
 		}
 
 		// Read directly into payload area to avoid a copy
-		n, err := e.TAP.Read(payloadBuf)
+		n, err := e.TAP.Read(frameBuf)
 		if err != nil {
 			if strings.Contains(err.Error(), "file already closed") {
 				return
@@ -171,7 +147,7 @@ func (e *EdgeClient) handleTAP() {
 			continue
 		}
 
-		ethertype, err := tuntap.GetEthertype(payloadBuf)
+		ethertype, err := tuntap.GetEthertype(frameBuf)
 		if err != nil {
 			log.Printf("Edge: Cannot parse link layer frame for Ethertype, skipping: %v", err)
 			continue
@@ -180,49 +156,8 @@ func (e *EdgeClient) handleTAP() {
 			//log.Printf("Edge: (warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
 			continue
 		}
-		udpSocket := e.SupernodeAddr
-		destMAC := tuntap.FastDestination(payloadBuf)
-		if !tuntap.IsBroadcast(destMAC) {
-			udpSocket, err = e.UDPAddrWithStrategy(destMAC, p2p.UDPBestEffort)
-			if err != nil {
-				log.Printf("Edge: Error getting udpSocket with Strategy in handleTAP with destMAC: %v", err)
-				continue
-			}
-			if e.enableVFuze {
-				err = e.handleTAPVFuze(destMAC, n, payloadBuf, udpSocket)
-				if err != nil {
-					if strings.Contains(err.Error(), "use of closed network connection") {
-						return
-					}
-					log.Printf("Edge: Error sending packet with enableVFuze from TAP: %v with socket: %s", err, udpSocket)
-				}
-				continue
-			}
-		}
 
-		// Create and marshal header
-		seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
-
-		// Create compact header with destination MAC
-		header, err := protocol.NewProtoVHeader(
-			e.ProtocolVersion(),
-			64,
-			spec.TypeData,
-			seq,
-			e.Community,
-			e.MACAddr,
-			destMAC,
-		)
-
-		if err := header.MarshalBinaryTo(headerBuf); err != nil {
-			log.Printf("Edge: Failed to marshal protov data header: %v", err)
-			continue
-		}
-
-		// Update stats
-		e.PacketsSent.Add(1)
-
-		payload := payloadBuf[:n]
+		payload := frameBuf[:n]
 		if e.encryptionEnabled {
 			encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
 			if err != nil {
@@ -231,12 +166,28 @@ func (e *EdgeClient) handleTAP() {
 			}
 			payload = encryptedPayload
 		}
-		totalLen := headerSize + len(payload)
-		packet := make([]byte, totalLen)
-		copy(packet[0:headerSize], headerBuf)
-		copy(packet[headerSize:], payload)
-		// Send packet (header is already at the beginning of packetBuf)
-		_, err = e.Conn.WriteToUDP(packet[:totalLen], udpSocket)
+
+		strategy := p2p.UDPEnforceSupernode
+
+		destMAC := tuntap.FastDestination(frameBuf)
+		// if destMAC is not unicat
+		// 1. We change the strategy to BestEffort so we may try P2P Direct connection
+		// 2. We switch to vFuze packets if enabled by config
+		if !tuntap.IsBroadcast(destMAC) {
+			strategy = p2p.UDPBestEffort
+			if e.enableVFuze {
+				err = e.SendVFuze(destMAC, n, payload, strategy)
+				if err != nil {
+					if strings.Contains(err.Error(), "use of closed network connection") {
+						return
+					}
+					log.Printf("Edge: Error sending packet with enableVFuze from TAP: %v", err)
+				}
+				continue
+			}
+		}
+
+		err = e.WritePacket(spec.TypeData, destMAC, payload, strategy)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
@@ -245,7 +196,6 @@ func (e *EdgeClient) handleTAP() {
 		}
 	}
 }
-
 
 // handleUDP reads packets from the UDP connection and writes the payload to the TAP interface.
 func (e *EdgeClient) handleUDP() {
