@@ -25,11 +25,11 @@ const peersHTML = `
 <script src="https://unpkg.com/@hpcc-js/wasm@2.20.0/dist/graphviz.umd.js"></script>
 <script src="https://unpkg.com/d3-graphviz@5.6.0/build/d3-graphviz.js"></script>
 <div class="grid-container" id="wrapper">
-	<div>
-		<div id="legend" style="text-align: center;"></div>
-		<div id="offlines" style="text-align: center;"></div>
+	<div style="height: inherit; display: inherit;">
+		<div id="legend" style="display: contents; text-align: center;"></div>
+		<div id="offlines" style="display: contents; text-align: center;"></div>
 	</div>
-	<div id="peers" style="text-align: center;">
+	<div id="peers" style="height: inherit; text-align: center;">
 	</div>
 </div>
 <script>
@@ -69,8 +69,11 @@ var graphvizOff = d3.select("#offlines").graphviz()
 
 	function renderLeg() {
 		//var clientHeight = ((document.getElementById('wrapper').clientHeight / 100)*20) - 20
-		var clientWidth = document.getElementById('legend').clientWidth - 20
+		//var clientWidth = document.getElementById('legend').clientWidth - 20
+			    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
+		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
 		graphvizLeg.addImage("/static/cloud.png","32px","32px")
+				.height(clientHeight)
 		.width(clientWidth)
 		.fit(true)
 			.renderDot(dotlegend).zoom(false)
@@ -81,8 +84,11 @@ var graphvizOff = d3.select("#offlines").graphviz()
 
 	function renderOff() {
 		//var clientHeight = document.getElementById('wrapper').clientHeight - document.getElementById('legend').clientHeight - 20
-		var clientWidth = document.getElementById('offlines').clientWidth - 20
+		//var clientWidth = document.getElementById('offlines').clientWidth - 20
+			    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
+		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
 		graphvizOff.addImage("/static/cloud.png","32px","32px")
+				.height(clientHeight)
 		.width(clientWidth)
 		.fit(true)
 			.renderDot(dotoff).zoom(false)
@@ -92,8 +98,8 @@ var graphvizOff = d3.select("#offlines").graphviz()
 	}
 
 	function render() {
-	    var clientHeight = document.getElementById('wrapper').clientHeight - 20
-		var clientWidth = document.getElementById('peers').clientWidth - 20
+	    var clientHeight = "auto" //document.getElementById('wrapper').clientHeight - 20
+		var clientWidth = "100%%" //document.getElementById('peers').clientWidth - 20
 		graphviz.addImage("/static/cloud.png","32px","32px")
 		.height(clientHeight)
 		.width(clientWidth)
