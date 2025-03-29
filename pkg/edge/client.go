@@ -11,6 +11,7 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/spec"
+	transform "n2n-go/pkg/tranform"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/upnp"
 	"n2n-go/pkg/util"
@@ -31,8 +32,8 @@ type EdgeClient struct {
 	TAP           *tuntap.Interface
 	seq           uint32
 
-	EncryptionKey     []byte
-	encryptionEnabled bool
+	//EncryptionKey     []byte
+	//encryptionEnabled bool
 
 	protocolVersion   uint8
 	heartbeatInterval time.Duration
@@ -79,6 +80,8 @@ type EdgeClient struct {
 
 	isWaitingForSNPubKeyUpdate          bool
 	isWaitingForSNRetryRegisterResponse bool
+
+	payloadProcessor *transform.PayloadProcessor
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.
@@ -110,12 +113,29 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		log.Fatalf("err: %v", err)
 	}
 
-	encryptionEnabled := false
-	var encryptionKey []byte
+	processorTransforms := []transform.Transform{}
+	if cfg.CompressPayload {
+		log.Printf("Edge: added GzipTransform to payload Processor (compress-payload is true)")
+		processorTransforms = append(processorTransforms, transform.NewGzipTransform())
+	}
 	if cfg.EncryptionPassphrase != "" {
+		aesGCMTransform, err := transform.NewAESGCMTransform(cfg.EncryptionPassphrase)
+		if err != nil {
+			log.Fatalf("cannot instanciate aesGCMTransform for payloadProcessor: %v", err)
+		}
+		log.Printf("Edge: added AESGCMTransform to payload Processor (encryption-passphrase is set)")
 		log.Printf("Edge: Attention! Encryption of data packets payload is enabled. Ensure all edge for the community uses same passphrase !")
-		encryptionEnabled = true
-		encryptionKey = crypto.KeyFromPassphrase(cfg.EncryptionPassphrase)
+		processorTransforms = append(processorTransforms, aesGCMTransform)
+	}
+
+	if len(processorTransforms) < 1 {
+		log.Printf("Edge: added NoOpTransform to payload Processor since none have been enabled")
+		processorTransforms = append(processorTransforms, transform.NewNoOpTransform())
+	}
+
+	payloadProcessor, err := transform.NewPayloadProcessor(processorTransforms)
+	if err != nil {
+		log.Fatalf("cannot instanciate payloadProcessor: %v", err)
 	}
 
 	edge := &EdgeClient{
@@ -141,8 +161,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		headerBufPool:     buffers.HeaderBufferPool,
 		messageHandlers:   make(protocol.MessageHandlerMap),
 		config:            &cfg,
-		encryptionEnabled: encryptionEnabled,
-		EncryptionKey:     encryptionKey,
+		payloadProcessor:  payloadProcessor,
 	}
 	edge.messageHandlers[spec.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[spec.TypePeerInfo] = edge.handlePeerInfoMessage
@@ -240,24 +259,10 @@ func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
 	return encMachineID, nil
 }
 
-func (e *EdgeClient) MaybeEncrypt(payload []byte) ([]byte, error) {
-	if !e.encryptionEnabled {
-		return payload, nil
-	}
-	encryptedPayload, err := crypto.EncryptPayload(e.EncryptionKey, payload)
-	if err != nil {
-		return nil, err
-	}
-	return encryptedPayload, nil
+func (e *EdgeClient) ProcessOutgoingPayload(payload []byte) ([]byte, error) {
+	return e.payloadProcessor.PrepareOutput(payload)
 }
 
-func (e *EdgeClient) MaybeDecrypt(payload []byte) ([]byte, error) {
-	if !e.encryptionEnabled {
-		return payload, nil
-	}
-	plainPayload, err := crypto.DecryptPayload(e.EncryptionKey, payload)
-	if err != nil {
-		return nil, err
-	}
-	return plainPayload, nil
+func (e *EdgeClient) ProcessIncomingPayload(payload []byte) ([]byte, error) {
+	return e.payloadProcessor.ParseInput(payload)
 }

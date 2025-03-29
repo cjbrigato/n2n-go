@@ -156,9 +156,9 @@ func (e *EdgeClient) handleTAP() {
 			continue
 		}
 
-		payload, err := e.MaybeEncrypt(frameBuf[:n])
+		payload, err := e.ProcessOutgoingPayload(frameBuf[:n])
 		if err != nil {
-			log.Printf("Edge: Failed to encrypt payload %v", err)
+			log.Printf("Edge: Failed to process Outgoing payload %v", err)
 			continue
 		}
 

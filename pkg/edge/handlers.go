@@ -59,9 +59,9 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 }
 
 func (e *EdgeClient) handleDataPayload(payload []byte) error {
-	payload, err := e.MaybeDecrypt(payload)
+	payload, err := e.ProcessIncomingPayload(payload)
 	if err != nil {
-		return fmt.Errorf("error while decrypting data packets, droping (err: %w)", err)
+		return fmt.Errorf("error while processing Incoming data packets, droping (err: %w)", err)
 	}
 	_, err = e.TAP.Write(payload)
 	if err != nil {

@@ -24,6 +24,7 @@ type Config struct {
 	ConfigFile           string        `mapstructure:"config_file"` // Path to the config file
 	APIListenAddr        string        `mapstructure:"api_listen_address"`
 	EncryptionPassphrase string        `mapstructure:"encryption_passphrase"`
+	CompressPayload      bool          `mapstructure:"compress_payload"`
 }
 
 func DefaultConfig() *Config {
@@ -74,6 +75,7 @@ func LoadConfig() (*Config, error) {
 	flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", cfg.UDPBufferSize, "UDP BUffer Sizes")
 	flag.StringVar(&cfg.APIListenAddr, "api-listen", cfg.APIListenAddr, "API listen address")
 	flag.StringVar(&cfg.EncryptionPassphrase, "encryption-passphrase", cfg.EncryptionPassphrase, "Passphrase to encryption key derivation")
+	flag.BoolVar(&cfg.CompressPayload, "compress-payload", cfg.CompressPayload, "Add Gzip compression/decompression to data packets")
 
 	flag.Parse() // MUST call this to parse the flags
 
