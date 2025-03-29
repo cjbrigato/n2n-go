@@ -147,7 +147,7 @@ func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
 	}
 	defer edge1.Close()
 
-	if err := edge1.Register(); err != nil {
+	if err := edge1.InitialRegister(); err != nil {
 		return nil, fmt.Errorf("failed to register edge1: %w", err)
 	}
 
@@ -173,7 +173,7 @@ func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
 	}
 	defer edge2.Close()
 
-	if err := edge2.Register(); err != nil {
+	if err := edge2.InitialRegister(); err != nil {
 		return nil, fmt.Errorf("failed to register edge2: %w", err)
 	}
 

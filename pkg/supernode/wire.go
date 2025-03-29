@@ -93,9 +93,8 @@ func (s *Supernode) broadcast(packet []byte, cm *Community, senderID string) {
 func (s *Supernode) WritePacket(pt spec.PacketType, community string, dst net.HardwareAddr, payload []byte, addr *net.UDPAddr) error {
 
 	header := s.SNHeader(pt, community, dst)
-	packet := protocol.PackProtoVDatagram(header, payload)
-	// Send the packet
-	_, err := s.Conn.WriteToUDP(packet, addr)
+
+	_, err := s.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), addr)
 	if err != nil {
 		return fmt.Errorf("edge: failed to send packet: %w", err)
 	}
@@ -150,35 +149,3 @@ func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src,
 	s.broadcast(packet, cm, senderMac)
 	return nil
 }
-
-/*
-func (s *Supernode) BroadcastPacket(pt spec.PacketType, cm *Community, src, dst net.HardwareAddr, payloadStr string, senderMac string) error {
-	// Get buffer for full packet
-	packetBuf := s.packetBufPool.Get()
-	defer s.packetBufPool.Put(packetBuf)
-	var totalLen int
-
-	header, err := protocol.NewProtoVHeader(
-		protocol.VersionV,
-		64,
-		pt,
-		0,
-		cm.Name(),
-		src,
-		dst,
-	)
-	if err != nil {
-		return err
-	}
-	header.SetFromSupernode(true)
-
-	if err := header.MarshalBinaryTo(packetBuf[:protocol.ProtoVHeaderSize]); err != nil {
-		return fmt.Errorf("Supernode: failed to protov %s header: %w", pt.String(), err)
-	}
-	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], []byte(payloadStr))
-	totalLen = protocol.ProtoVHeaderSize + payloadLen
-
-	s.broadcast(packetBuf[:totalLen], cm, senderMac)
-	return nil
-}
-*/

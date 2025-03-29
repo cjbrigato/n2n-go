@@ -11,7 +11,6 @@ import (
 	"n2n-go/pkg/protocol/spec"
 	"net"
 	"strings"
-	"time"
 )
 
 var ErrNACKRegister = errors.New("Edge: supernode refused register request. Aborting")
@@ -44,102 +43,12 @@ func (e *EdgeClient) RequestRegister() error {
 	return e.SendStruct(regReq, nil, p2p.UDPEnforceSupernode)
 }
 
-// Register sends a registration packet to the supernode.
-func (e *EdgeClient) GetSNPublicKey() error {
-	err := e.RequestSNPublicKey()
-	if err != nil {
-		return err
-	}
-	// Set a timeout for the response
-	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return fmt.Errorf("edge: failed to set read deadline: %w", err)
-	}
-
-	// Read the response
-	respBuf := e.packetBufPool.Get()
-	defer e.packetBufPool.Put(respBuf)
-
-	n, addr, err := e.Conn.ReadFromUDP(respBuf)
-	if err != nil {
-		return fmt.Errorf("edge: pubkey ACK timeout: %w", err)
-	}
-
-	// Reset deadline
-	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
-		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
-	}
-
-	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("Edge: short packet while waiting for initial SnSecretsPub")
-	}
-
-	rresp, err := protocol.MessageFromPacket[*netstruct.SNPublicSecret](respBuf, addr)
-	if err != nil {
-		return err
-	}
-
-	pubkey, err := crypto.PublicKeyFromPEMData(rresp.Msg.PemData)
-	if err != nil {
-		return err
-	}
-	e.SNPubKey = pubkey
-	log.Printf("Got Supernode public key !")
-
-	return nil
-}
-
 func (e *EdgeClient) EncryptedMachineID() ([]byte, error) {
 	encMachineID, err := crypto.EncryptSequence(e.machineId, e.SNPubKey)
 	if err != nil {
 		return nil, err
 	}
 	return encMachineID, nil
-}
-
-// Register sends a registration packet to the supernode.
-func (e *EdgeClient) Register() error {
-	err := e.RequestRegister()
-	if err != nil {
-		return err
-	}
-
-	// Set a timeout for the response
-	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return fmt.Errorf("edge: failed to set read deadline: %w", err)
-	}
-
-	// Read the response
-	respBuf := e.packetBufPool.Get()
-	defer e.packetBufPool.Put(respBuf)
-
-	n, addr, err := e.Conn.ReadFromUDP(respBuf)
-	if err != nil {
-		return fmt.Errorf("edge: registration ACK timeout: %w", err)
-	}
-
-	// Reset deadline
-	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
-		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
-	}
-
-	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("Edge: short packet while waiting for initial RegisterResponse")
-	}
-
-	rresp, err := protocol.MessageFromPacket[*netstruct.RegisterResponse](respBuf, addr)
-
-	if err != nil {
-		return err
-	}
-
-	if !rresp.Msg.IsRegisterOk {
-		return ErrNACKRegister
-	}
-	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
-	log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
-	log.Printf("Edge: Registration successful (ACK from %v)", addr)
-	e.registered = true
-	return nil
 }
 
 // Unregister sends an unregister packet to the supernode.

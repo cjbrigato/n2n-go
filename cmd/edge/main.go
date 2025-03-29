@@ -44,7 +44,7 @@ func main() {
 		os.Exit(0)
 	}()
 
-	if err := client.Setup(); err != nil {
+	if err := client.InitialSetup(); err != nil {
 		log.Printf("Edge setup failed: %v", err)
 		client.Close()
 		os.Exit(127)
