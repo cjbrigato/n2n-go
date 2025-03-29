@@ -157,7 +157,15 @@ func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, d
 
 func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src, dst net.HardwareAddr, senderMac string) error {
 	// Get buffer for full packet
-	packetBuf := s.packetBufPool.Get()
+
+	header := s.SNHeader(p, cm.Name(), dst)
+	payload, err := protocol.Encode(p)
+	if err != nil {
+		return err
+	}
+	packet := protocol.PackProtoVDatagram(header, payload)
+
+	/*packetBuf := s.packetBufPool.Get()
 	defer s.packetBufPool.Put(packetBuf)
 	var totalLen int
 
@@ -186,7 +194,8 @@ func (s *Supernode) BroadcastStruct(p netstruct.PacketTyped, cm *Community, src,
 	payloadLen := copy(packetBuf[protocol.ProtoVHeaderSize:], payload)
 	totalLen = protocol.ProtoVHeaderSize + payloadLen
 
-	s.broadcast(packetBuf[:totalLen], cm, senderMac)
+	s.broadcast(packetBuf[:totalLen], cm, senderMac)*/
+	s.broadcast(packet, cm, senderMac)
 	return nil
 }
 

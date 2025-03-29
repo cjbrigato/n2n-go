@@ -130,7 +130,3 @@ func (e *EdgeClient) ProtocolVersion() uint8 {
 	return protocol.VersionV
 }
 
-// GetHeaderSize returns the current header size in bytes
-func (e *EdgeClient) GetHeaderSize() int {
-	return protocol.ProtoVHeaderSize
-}

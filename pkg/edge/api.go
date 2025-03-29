@@ -45,9 +45,7 @@ func (eapi *EdgeClientApi) GetPeersJSON(c echo.Context) error {
 			break
 		}
 	}
-
-	state := eapi.Client.Peers.P2PCommunityDatas
-	return c.JSON(http.StatusOK, state)
+	return c.JSON(http.StatusOK, eapi.Client.Peers.P2PCommunityDatas)
 }
 
 func (eapi *EdgeClientApi) GetLeasesInfosJSON(c echo.Context) error {
@@ -73,8 +71,7 @@ func (eapi *EdgeClientApi) GetOfflinesDot(c echo.Context) error {
 			break
 		}
 	}
-	res := eapi.Client.Peers.GenOfflinesDot()
-	return c.String(http.StatusOK, res)
+	return c.String(http.StatusOK, eapi.Client.Peers.GenOfflinesDot())
 }
 
 func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
@@ -89,8 +86,7 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 			break
 		}
 	}
-	res := eapi.Client.Peers.GenPeersDot()
-	return c.String(http.StatusOK, res)
+	return c.String(http.StatusOK, eapi.Client.Peers.GenPeersDot())
 }
 
 func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
@@ -117,8 +113,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 }
 
 func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
-	res := eapi.Client.Peers.GenPeersHTML()
-	return c.HTML(http.StatusOK, res)
+	return c.HTML(http.StatusOK, eapi.Client.Peers.GenPeersHTML())
 }
 
 func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
