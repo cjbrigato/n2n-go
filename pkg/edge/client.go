@@ -8,12 +8,12 @@ import (
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/machine"
+	"n2n-go/pkg/natclient"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/spec"
 	transform "n2n-go/pkg/tranform"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/upnp"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -47,7 +47,7 @@ type EdgeClient struct {
 
 	wg sync.WaitGroup
 
-	IgdClient *upnp.UPnPClient
+	NatClient natclient.NATClient
 
 	VirtualIP string
 	MACAddr   net.HardwareAddr
@@ -107,7 +107,8 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	communityHash := protocol.HashCommunity(cfg.Community)
-	igdClient := SetupUPnP(conn, cfg.EdgeID)
+
+	natClient := natclient.SetupNAT(conn, cfg.EdgeID, cfg.SupernodeAddr)
 
 	err = tap.IfMac(predictableMac.String())
 	if err != nil {
@@ -152,7 +153,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		Conn:              conn,
 		TAP:               tap,
 		seq:               0,
-		IgdClient:         igdClient,
+		NatClient:         natClient,
 		MACAddr:           tap.HardwareAddr(),
 		predictableMac:    predictableMac,
 		machineId:         machineId,
@@ -217,9 +218,9 @@ func (e *EdgeClient) Close() {
 	if err := e.Unregister(); err != nil {
 		log.Printf("Unregister failed: %v", err)
 	}
-	if e.IgdClient != nil {
-		log.Printf("upnp: Cleaning up all portMappings...")
-		e.IgdClient.CleanupAllMappings()
+	if e.NatClient != nil {
+		log.Printf("nat: Cleaning up all portMappings...")
+		natclient.Cleanup(e.NatClient)
 	}
 	e.cancel()
 

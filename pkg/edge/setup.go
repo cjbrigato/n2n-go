@@ -8,7 +8,6 @@ import (
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/upnp"
 	"n2n-go/pkg/util"
 	"net"
 	"strconv"
@@ -58,39 +57,6 @@ func setupUDPConnection(localPort int, bufferSize int) (*net.UDPConn, error) {
 	}
 
 	return conn, nil
-}
-
-func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
-	udpPort := uint16(conn.LocalAddr().(*net.UDPAddr).Port)
-	log.Printf("seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
-	igdClient, err := upnp.NewUPnPClient()
-	if err != nil {
-		log.Printf("unable to use UPnP/IGD on this network: %v", err)
-	} else {
-		description := fmt.Sprintf("n2n-go.portmap for %s client", edgeID)
-		leaseDuration := uint32(0)
-		protocol := "udp"
-		log.Printf("upnp: IGD discovered on network. Starting upnpClient thread...")
-		log.Printf("upnp: successfully connected to IGD (%s)", igdClient.GatewayType)
-		log.Printf("upnp: local IP: %s", igdClient.LocalIP)
-		log.Printf("upnp: external IP: %s", igdClient.ExternalIP)
-		log.Printf("upnp: creating port mapping: %s %d -> %s:%d (%s)",
-			"udp", udpPort, igdClient.LocalIP, udpPort, edgeID)
-		err = igdClient.AddPortMapping(
-			protocol,
-			udpPort,
-			udpPort,
-			description,
-			leaseDuration,
-		)
-		if err != nil {
-			log.Printf("upnp: failed to add port mapping: %v :-(", err)
-			igdClient = nil
-		} else {
-			log.Println("upnp: port mapping added successfully (will be automatically deleted when edge closes)")
-		}
-	}
-	return igdClient
 }
 
 func (e *EdgeClient) InitialSetup() error {
