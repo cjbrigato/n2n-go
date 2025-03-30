@@ -17,7 +17,7 @@ func (s *Supernode) ForwardUnicast(r *protocol.RawMessage) error {
 	}
 	targetEdge, found := cm.GetEdge(r.DestMACAddr())
 	if !found {
-		return fmt.Errorf("cannot find edge for unicast forwarding: %s", r.EdgeMACAddr())
+		return fmt.Errorf("%w: %s", ErrUnicastForwardFail, r.EdgeMACAddr())
 	}
 
 	if err := s.forwardPacket(r.RawPacket(), targetEdge); err != nil {
