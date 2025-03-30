@@ -105,9 +105,8 @@ func (reg *PeerRegistry) UpdateP2PCommunityDatas(reachables map[string]PeerP2PIn
 	} else {
 		reg.UnReachables = make(map[string]PeerCachedInfo)
 	}
-	if reg.IsWaitingCommunityDatas {
-		reg.IsWaitingCommunityDatas = false
-	}
+	reg.IsWaitingCommunityDatas = false
+
 	return nil
 }
 

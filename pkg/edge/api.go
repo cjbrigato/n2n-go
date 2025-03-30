@@ -63,14 +63,22 @@ func (eapi *EdgeClientApi) GetLeasesInfosJSON(c echo.Context) error {
 	return c.JSON(http.StatusOK, eapi.LastLeasesInfos)
 }
 
-func (eapi *EdgeClientApi) GetOfflinesDot(c echo.Context) error {
+func (eapi *EdgeClientApi) WaitForCommunityDatasUpdate(timeout time.Duration) {
+	start := time.Now()
 	for {
 		if eapi.Client.Peers.IsWaitingCommunityDatas {
 			time.Sleep(300 * time.Millisecond)
 		} else {
 			break
 		}
+		if time.Since(start) >= timeout {
+			eapi.Client.Peers.IsWaitingCommunityDatas = false
+		}
 	}
+}
+
+func (eapi *EdgeClientApi) GetOfflinesDot(c echo.Context) error {
+	eapi.WaitForCommunityDatasUpdate(3 * time.Second)
 	return c.String(http.StatusOK, eapi.Client.Peers.GenOfflinesDot())
 }
 
@@ -79,13 +87,7 @@ func (eapi *EdgeClientApi) GetPeersDot(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	for {
-		if eapi.Client.Peers.IsWaitingCommunityDatas {
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	eapi.WaitForCommunityDatasUpdate(3 * time.Second)
 	return c.String(http.StatusOK, eapi.Client.Peers.GenPeersDot())
 }
 
@@ -94,13 +96,7 @@ func (eapi *EdgeClientApi) GetPeersSVG(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	for {
-		if eapi.Client.Peers.IsWaitingCommunityDatas {
-			time.Sleep(300 * time.Millisecond)
-		} else {
-			break
-		}
-	}
+	eapi.WaitForCommunityDatasUpdate(3 * time.Second)
 	cp2p, err := p2p.NewCommunityP2PVizDatas(eapi.Client.Community, eapi.Client.Peers.Reachables)
 	if err != nil {
 		return err

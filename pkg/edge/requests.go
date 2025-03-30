@@ -91,6 +91,7 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 	if e.Peers.IsWaitingCommunityDatas {
 		return nil
 	}
+	e.Peers.IsWaitingCommunityDatas = true
 	req := &p2p.P2PFullState{
 		CommunityName: e.Community,
 		IsRequest:     true,
@@ -103,7 +104,7 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 	if err != nil {
 		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
 	}
-	e.Peers.IsWaitingCommunityDatas = true
+
 	return nil
 }
 
