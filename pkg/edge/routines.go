@@ -16,21 +16,21 @@ import (
 func (e *EdgeClient) UpdatePeersP2PStates() {
 	peers := e.Peers.GetP2PUnknownPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Second, p2p.P2PPending)
+		err := e.PingPeer(p, 3, 300*time.Second, p2p.P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PendingPeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Second, p2p.P2PPending)
+		err := e.PingPeer(p, 3, 300*time.Second, p2p.P2PPending)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
 	}
 	peers = e.Peers.GetP2PAvailablePeers()
 	for _, p := range peers {
-		err := e.PingPeer(p, 5, 300*time.Millisecond, p2p.P2PAvailable)
+		err := e.PingPeer(p, 3, 300*time.Millisecond, p2p.P2PAvailable)
 		if err != nil {
 			log.Printf("handleP2PUpdates: error in UpdatePeersP2PStates for peer with MACAddress %s: %v", p.Infos.MACAddr.String(), err)
 		}
@@ -57,7 +57,7 @@ func (e *EdgeClient) handleP2PUpdates() {
 	e.wg.Add(1)
 	defer e.wg.Done()
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -255,4 +255,3 @@ func (e *EdgeClient) handleUDP() {
 		}
 	}
 }
-
