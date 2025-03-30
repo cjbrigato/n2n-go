@@ -206,7 +206,11 @@ func (s *Supernode) handleVFuze(packet []byte) {
 				log.Printf("Supernode: VersionVFuze error: %v", err)
 			}
 		} else {
-			log.Printf("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr %s", dst.String())
+			// happens when UDPStategy fall back to Supernode on edge side because peer was removed
+			// but the peer still is in arp cache, and since we don't fallback to broadcast with vfuze
+			// and have not info about community, this happens.
+			// Since it is only know case of happening under normal condition, it's going to debuglog
+			s.debugLog("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr %s", dst.String())
 		}
 	} else {
 		log.Printf("Supernode: received a VFuze Protocol packet but configuration disabled it")
