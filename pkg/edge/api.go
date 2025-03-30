@@ -124,7 +124,7 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.Use(middleware.RemoveTrailingSlash())
 	fs, err := getFileSystem()
 	if err != nil {
-		log.Fatalf("edge: unable to init edgeApi: %v", err)
+		log.Fatalf(" unable to init edgeApi: %v", err)
 	}
 	assetHandler := http.FileServer(fs)
 	eapi.Api.GET("/static/*", echo.WrapHandler(http.StripPrefix("/static/", assetHandler)))
@@ -138,6 +138,6 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 }
 
 func (eapi *EdgeClientApi) Run() {
-	log.Printf("edge: started management api at %s", eapi.Client.config.APIListenAddr)
+	log.Printf("started management api at %s", eapi.Client.config.APIListenAddr)
 	eapi.Api.Logger.Fatal(eapi.Api.Start(eapi.Client.config.APIListenAddr))
 }

@@ -93,12 +93,12 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("edge: got machine-id: %s", hex.EncodeToString(machineId))
+	log.Printf("got machine-id: %s", hex.EncodeToString(machineId))
 	predictableMac, err := machine.GenerateMac(cfg.Community)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("edge: %s TAP ifName machine-id based Community %s MAC Address: %s", cfg.TapName, cfg.Community, predictableMac.String())
+	log.Printf("%s TAP ifName machine-id based Community %s MAC Address: %s", cfg.TapName, cfg.Community, predictableMac.String())
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg)
 	if err != nil {
@@ -119,10 +119,10 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	if cfg.CompressPayload {
 		zstdTransform, err := transform.NewZstdTransform(zstd.SpeedDefault)
 		if err != nil {
-			log.Fatalf("edge: unable to create zstdTransform for payloadProcessor (requested by compress-payload): %v", err)
+			log.Fatalf(" unable to create zstdTransform for payloadProcessor (requested by compress-payload): %v", err)
 		}
-		log.Printf("edge: added zstdTransform to payload Processor (compress-payload is true)")
-		log.Printf("edge: Ensure all connected edges also uses compress-payload settings !")
+		log.Printf("added zstdTransform to payload Processor (compress-payload is true)")
+		log.Printf("ensure all connected edges also uses compress-payload settings !")
 		processorTransforms = append(processorTransforms, zstdTransform)
 	}
 	if cfg.EncryptionPassphrase != "" {
@@ -130,13 +130,13 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		if err != nil {
 			log.Fatalf("cannot instanciate aesGCMTransform for payloadProcessor: %v", err)
 		}
-		log.Printf("edge: added AESGCMTransform to payload Processor (encryption-passphrase is set)")
-		log.Printf("edge: Attention! Encryption of data packets payload is enabled. Ensure all edge for the community uses same passphrase !")
+		log.Printf("added AESGCMTransform to payload Processor (encryption-passphrase is set)")
+		log.Printf("Attention! Encryption of data packets payload is enabled. Ensure all edge for the community uses same passphrase !")
 		processorTransforms = append(processorTransforms, aesGCMTransform)
 	}
 
 	if len(processorTransforms) < 1 {
-		log.Printf("edge: added NoOpTransform to payload Processor since none have been enabled")
+		log.Printf("added NoOpTransform to payload Processor since none have been enabled")
 		processorTransforms = append(processorTransforms, transform.NewNoOpTransform())
 	}
 
@@ -184,28 +184,28 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 // Run launches heartbeat, TAP-to-supernode, and UDP-to-TAP goroutines.
 func (e *EdgeClient) Run() {
 	if !e.running.CompareAndSwap(false, true) {
-		log.Printf("edge: Already running, ignoring Run() call")
+		log.Printf("Already running, ignoring Run() call")
 		return
 	}
 	if !e.registered {
-		log.Printf("edge: Cannot run an unregistered edge, ignoring Run() call")
+		log.Printf("Cannot run an unregistered edge, ignoring Run() call")
 	}
 
 	go e.handleHeartbeat()
 	go e.handleTAP()
 	go e.handleUDP()
 
-	log.Printf("edge: sending preliminary Peer List Request")
+	log.Printf("sending preliminary Peer List Request")
 	err := e.sendPeerListRequest()
 	if err != nil {
-		log.Printf("edge: (warn) failed sending preliminary Peer List Request: %v", err)
+		log.Printf("(warn) failed sending preliminary Peer List Request: %v", err)
 	}
 
-	log.Printf("edge: starting P2PUpdate routines...")
+	log.Printf("starting P2PUpdate routines...")
 	go e.handleP2PUpdates()
 	go e.handleP2PInfos()
 
-	log.Printf("edge: starting management api...")
+	log.Printf("starting management api...")
 	eapi := NewEdgeApi(e)
 	e.EAPI = eapi
 	go eapi.Run()
@@ -216,7 +216,7 @@ func (e *EdgeClient) Run() {
 // Close initiates a clean shutdown.
 func (e *EdgeClient) Close() {
 	if err := e.Unregister(); err != nil {
-		log.Printf("edge: Unregister failed: %v", err)
+		log.Printf("Unregister failed: %v", err)
 	}
 	if e.IgdClient != nil {
 		log.Printf("upnp: Cleaning up all portMappings...")
@@ -235,18 +235,18 @@ func (e *EdgeClient) Close() {
 	// Close resources
 	if e.TAP != nil {
 		if err := e.TAP.Close(); err != nil {
-			log.Printf("edge: Error closing TAP interface: %v", err)
+			log.Printf("Error closing TAP interface: %v", err)
 		}
 	}
 
 	if e.Conn != nil {
 		if err := e.Conn.Close(); err != nil {
-			log.Printf("edge: Error closing UDP connection: %v", err)
+			log.Printf("Error closing UDP connection: %v", err)
 		}
 	}
 
 	e.running.Store(false)
-	log.Printf("edge: Shutdown complete")
+	log.Printf("Shutdown complete")
 }
 
 func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {

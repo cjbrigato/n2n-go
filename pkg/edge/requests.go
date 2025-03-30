@@ -25,10 +25,10 @@ func (e *EdgeClient) Unregister() error {
 		}
 		err := e.SendStruct(unreg, nil, p2p.UDPEnforceSupernode)
 		if err != nil {
-			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
+			unregErr = fmt.Errorf(" failed to send unregister: %w", err)
 			return
 		}
-		log.Printf("edge: Unregister message sent")
+		log.Printf("Unregister message sent")
 	})
 	return unregErr
 }
@@ -41,7 +41,7 @@ func (e *EdgeClient) sendPeerListRequest() error {
 	}
 	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send peerList Request: %w", err)
+		return fmt.Errorf(" failed to send peerList Request: %w", err)
 	}
 	return nil
 }
@@ -51,17 +51,17 @@ func (e *EdgeClient) sendHeartbeat() error {
 	//seq := uint16(atomic.AddUint32(&e.seq, 1) & 0xFFFF)
 
 	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
-		return fmt.Errorf("edge: not sending heartbing while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
+		return fmt.Errorf(" not sending heartbing while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
 	}
 
 	encmacid, err := e.EncryptedMachineID()
 	if err != nil {
-		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
+		return fmt.Errorf(" failed to send heartbeat: %w", err)
 	}
 	pulse := &netstruct.HeartbeatPulse{EdgeMACAddr: e.MACAddr.String(), CommunityName: e.Community, EncryptedMachineID: encmacid}
 	err = e.SendStruct(pulse, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send heartbeat: %w", err)
+		return fmt.Errorf(" failed to send heartbeat: %w", err)
 	}
 	return nil
 }
@@ -69,20 +69,20 @@ func (e *EdgeClient) sendHeartbeat() error {
 func (e *EdgeClient) sendP2PInfos() error {
 
 	if e.isWaitingForSNPubKeyUpdate || e.isWaitingForSNRetryRegisterResponse {
-		return fmt.Errorf("edge: not sending P2PInfos while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
+		return fmt.Errorf(" not sending P2PInfos while waiting for SNPubkeyUpdate or SNRetryRegisterResponse")
 	}
 
 	if !e.Peers.HasPendingChanges() {
 		return nil
 	}
 
-	log.Printf("edge: sending pending PeerP2PInfos changes to supernode...")
+	log.Printf("sending pending PeerP2PInfos changes to supernode...")
 
 	infos := e.Peers.GetPeerP2PInfos()
 	e.Peers.ClearPendingChanges()
 	err := e.SendStruct(infos, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
+		return fmt.Errorf(" failed to send updated P2PInfos: %w", err)
 	}
 	return nil
 }
@@ -102,7 +102,7 @@ func (e *EdgeClient) sendP2PFullStateRequest() error {
 	}
 	err := e.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
+		return fmt.Errorf(" failed to send updated P2PInfos: %w", err)
 	}
 
 	return nil
@@ -118,7 +118,7 @@ func (eapi *EdgeClientApi) sendLeasesInfosRequest() error {
 	}
 	err := eapi.Client.SendStruct(req, nil, p2p.UDPEnforceSupernode)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send updated P2PInfos: %w", err)
+		return fmt.Errorf(" failed to send updated P2PInfos: %w", err)
 	}
 	eapi.IsWaitingForLeasesInfos = true
 	return nil

@@ -172,7 +172,7 @@ func Encode[T any](s T) ([]byte, error) {
 func MessageFromPacket[T netstruct.PacketTyped](packet []byte, addr *net.UDPAddr) (*Message[T], error) {
 	rawMsg, err := NewRawMessage(packet, addr)
 	if err != nil {
-		return nil, fmt.Errorf("edge: error while parsing MessageFromPacket: %w", err)
+		return nil, fmt.Errorf(" error while parsing MessageFromPacket: %w", err)
 	}
 	return ToMessage[T](rawMsg)
 }

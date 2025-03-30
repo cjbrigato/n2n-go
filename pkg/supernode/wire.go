@@ -96,7 +96,7 @@ func (s *Supernode) WritePacket(pt spec.PacketType, community string, dst net.Ha
 
 	_, err := s.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), addr)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send packet: %w", err)
+		return fmt.Errorf(" failed to send packet: %w", err)
 	}
 	return nil
 }
@@ -131,7 +131,7 @@ func (s *Supernode) SendStruct(p netstruct.PacketTyped, community string, src, d
 	}
 	_, err = s.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), addr)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send packet: %w", err)
+		return fmt.Errorf(" failed to send packet: %w", err)
 	}
 	return nil
 }

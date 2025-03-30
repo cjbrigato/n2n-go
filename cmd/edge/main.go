@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
-	log.Printf("edge: using config file %s", cfg.ConfigFile)
+	log.Printf("using config file %s", cfg.ConfigFile)
 
 	client, err := edge.NewEdgeClient(*cfg) // Pass the config struct
 	if err != nil {
@@ -45,19 +45,19 @@ func main() {
 	}()
 
 	if err := client.InitialSetup(); err != nil {
-		log.Printf("Edge setup failed: %v", err)
+		log.Printf("edge setup failed: %v", err)
 		client.Close()
 		os.Exit(127)
 	}
-	log.Printf("Edge setup successful")
+	log.Printf("edge setup successful")
 	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
-	log.Printf("Edge %s registered on local UDP port %d. TAP interface: %s",
+	log.Printf("edge %s registered on local UDP port %d. TAP interface: %s",
 		cfg.EdgeID, udpPort, cfg.TapName)
 	headerFormat := "protoV"
 	log.Printf("Using %s header format - protocol v%d", headerFormat, client.ProtocolVersion())
-	log.Printf("Edge node is running. Press Ctrl+C to stop.")
+	log.Printf("edge node is running. Press Ctrl+C to stop.")
 
 	client.Run() // Start the edge client.
 
-	log.Printf("Edge node has been shut down.")
+	log.Printf("edge node has been shut down.")
 }

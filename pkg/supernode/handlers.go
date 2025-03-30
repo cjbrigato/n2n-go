@@ -215,10 +215,10 @@ func (s *Supernode) handleVFuze(packet []byte) {
 	} else {
 		log.Printf("Supernode: received a VFuze Protocol packet but configuration disabled it")
 		if !ok {
-			log.Printf("         -> cannot give hint about which edge has misconfiguration")
-			log.Printf("           -> no edge found with requested HardwareAddr routing")
+			log.Printf("        -> cannot give hint about which edge has misconfiguration")
+			log.Printf("          -> no edge found with requested HardwareAddr routing")
 		} else {
-			log.Printf("          -> Misconfigured edge Informations: Desc=%s, VIP=%s, MAC=%s", edge.Desc, edge.VirtualIP, edge.MACAddr)
+			log.Printf("         -> Misconfigured edge Informations: Desc=%s, VIP=%s, MAC=%s", edge.Desc, edge.VirtualIP, edge.MACAddr)
 		}
 	}
 }

@@ -81,7 +81,7 @@ func (e *EdgeClient) handleP2PInfos() {
 		select {
 		case <-ticker.C:
 			if err := e.sendP2PInfos(); err != nil {
-				log.Printf("edge: sendP2PInfos error: %v", err)
+				log.Printf("sendP2PInfos error: %v", err)
 			}
 		case <-e.ctx.Done():
 			return
@@ -101,7 +101,7 @@ func (e *EdgeClient) handleHeartbeat() {
 		select {
 		case <-ticker.C:
 			if err := e.sendHeartbeat(); err != nil {
-				log.Printf("edge: Heartbeat error: %v", err)
+				log.Printf("Heartbeat error: %v", err)
 			}
 		case <-e.ctx.Done():
 			return
@@ -139,28 +139,28 @@ func (e *EdgeClient) handleTAP() {
 			if strings.Contains(err.Error(), "file already closed") {
 				return
 			}
-			log.Printf("edge: TAP read error: %v", err)
+			log.Printf("TAP read error: %v", err)
 			continue
 		}
 
 		if n < 14 {
-			log.Printf("edge: Packet too short to contain Ethernet header (%d bytes)", n)
+			log.Printf("Packet too short to contain Ethernet header (%d bytes)", n)
 			continue
 		}
 
 		ethertype, err := tuntap.GetEthertype(frameBuf)
 		if err != nil {
-			log.Printf("edge: Cannot parse link layer frame for Ethertype, skipping: %v", err)
+			log.Printf("Cannot parse link layer frame for Ethertype, skipping: %v", err)
 			continue
 		}
 		if ethertype == tuntap.IPv6 {
-			//log.Printf("edge: (warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
+			//log.Printf("(warn) skipping TAP frame with IPv6 Ethertype: %v", ethertype)
 			continue
 		}
 
 		payload, err := e.ProcessOutgoingPayload(frameBuf[:n])
 		if err != nil {
-			log.Printf("edge: Failed to process Outgoing payload %v", err)
+			log.Printf("Failed to process Outgoing payload %v", err)
 			continue
 		}
 
@@ -178,7 +178,7 @@ func (e *EdgeClient) handleTAP() {
 					if strings.Contains(err.Error(), "use of closed network connection") {
 						return
 					}
-					log.Printf("edge: Error sending packet with enableVFuze from TAP: %v", err)
+					log.Printf("Error sending packet with enableVFuze from TAP: %v", err)
 				}
 				continue
 			}
@@ -189,7 +189,7 @@ func (e *EdgeClient) handleTAP() {
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				return
 			}
-			log.Printf("edge: Error sending packet to supernode: %v", err)
+			log.Printf("Error sending packet to supernode: %v", err)
 		}
 	}
 }
@@ -218,7 +218,7 @@ func (e *EdgeClient) handleUDP() {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				continue
 			}
-			log.Printf("edge: UDP read error: %v", err)
+			log.Printf("UDP read error: %v", err)
 			continue
 		}
 
@@ -231,22 +231,22 @@ func (e *EdgeClient) handleUDP() {
 					if strings.Contains(err.Error(), "file already closed") {
 						return
 					}
-					log.Printf("edge: handleDataPayload Error: %v", err)
+					log.Printf("handleDataPayload Error: %v", err)
 				}
 				continue
 			}
-			log.Printf("edge: received VFuze data packet from %v but VFuze support is disabled", addr)
+			log.Printf("received VFuze data packet from %v but VFuze support is disabled", addr)
 			continue
 		}
 
 		if n < protocol.ProtoVHeaderSize {
-			log.Printf("edge: Received packet too short from %v: %q", addr, string(packetBuf[:n]))
+			log.Printf("Received packet too short from %v: %q", addr, string(packetBuf[:n]))
 			continue
 		}
 
 		rawMsg, err := protocol.NewRawMessage(packetBuf[:n], addr)
 		if err != nil {
-			log.Printf("edge: error while parsing UDP Packet: %v", err)
+			log.Printf("error while parsing UDP Packet: %v", err)
 			continue
 		}
 
@@ -255,7 +255,7 @@ func (e *EdgeClient) handleUDP() {
 			if strings.Contains(err.Error(), "file already closed") {
 				return
 			}
-			log.Printf("edge: Error from messageHandler: %v", err)
+			log.Printf("Error from messageHandler: %v", err)
 		}
 	}
 }

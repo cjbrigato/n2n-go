@@ -19,18 +19,18 @@ import (
 func setupNetworkComponents(cfg Config) (*net.UDPConn, *tuntap.Interface, *net.UDPAddr, error) {
 	snAddr, err := net.ResolveUDPAddr("udp4", cfg.SupernodeAddr)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("edge: failed to resolve supernode address: %w", err)
+		return nil, nil, nil, fmt.Errorf(" failed to resolve supernode address: %w", err)
 	}
 
 	conn, err := setupUDPConnection(cfg.LocalPort, cfg.UDPBufferSize)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("edge: %w", err)
+		return nil, nil, nil, fmt.Errorf(" %w", err)
 	}
 
 	tap, err := tuntap.NewInterface(cfg.TapName, "tap")
 	if err != nil {
 		conn.Close() // Clean up on error
-		return nil, nil, nil, fmt.Errorf("edge: failed to create TAP interface: %w", err)
+		return nil, nil, nil, fmt.Errorf(" failed to create TAP interface: %w", err)
 	}
 
 	return conn, tap, snAddr, nil
@@ -62,19 +62,19 @@ func setupUDPConnection(localPort int, bufferSize int) (*net.UDPConn, error) {
 
 func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
 	udpPort := uint16(conn.LocalAddr().(*net.UDPAddr).Port)
-	log.Printf("edge: seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
+	log.Printf("seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
 	igdClient, err := upnp.NewUPnPClient()
 	if err != nil {
-		log.Printf("edge: unable to use UPnP/IGD on this network: %v", err)
+		log.Printf("unable to use UPnP/IGD on this network: %v", err)
 	} else {
 		description := fmt.Sprintf("n2n-go.portmap for %s client", edgeID)
 		leaseDuration := uint32(0)
 		protocol := "udp"
-		log.Printf("edge: Discovered IGD on network ! Starting upnpClient thread...")
-		log.Printf("upnp: Successfully connected to IGD (%s)", igdClient.GatewayType)
-		log.Printf("upnp: Local IP: %s", igdClient.LocalIP)
-		log.Printf("upnp: External IP: %s", igdClient.ExternalIP)
-		log.Printf("upnp: Creating port mapping: %s %d -> %s:%d (%s)",
+		log.Printf("upnp: IGD discovered on network. Starting upnpClient thread...")
+		log.Printf("upnp: successfully connected to IGD (%s)", igdClient.GatewayType)
+		log.Printf("upnp: local IP: %s", igdClient.LocalIP)
+		log.Printf("upnp: external IP: %s", igdClient.ExternalIP)
+		log.Printf("upnp: creating port mapping: %s %d -> %s:%d (%s)",
 			"udp", udpPort, igdClient.LocalIP, udpPort, edgeID)
 		err = igdClient.AddPortMapping(
 			protocol,
@@ -84,10 +84,10 @@ func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
 			leaseDuration,
 		)
 		if err != nil {
-			log.Printf("upnp: Failed to add port mapping: %v :-(", err)
+			log.Printf("upnp: failed to add port mapping: %v :-(", err)
 			igdClient = nil
 		} else {
-			log.Println("upnp: Port mapping added successfully (will be automatically deleted when edge closes)")
+			log.Println("upnp: port mapping added successfully (will be automatically deleted when edge closes)")
 		}
 	}
 	return igdClient
@@ -106,7 +106,7 @@ func (e *EdgeClient) InitialSetup() error {
 		return err
 	}
 
-	log.Printf("edge: sending preliminary gratuitous ARP")
+	log.Printf("sending preliminary gratuitous ARP")
 	if err := e.sendGratuitousARP(); err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (e *EdgeClient) InitialGetSNPublicKey() error {
 	}
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return fmt.Errorf("edge: failed to set read deadline: %w", err)
+		return fmt.Errorf(" failed to set read deadline: %w", err)
 	}
 
 	// Read the response
@@ -131,16 +131,16 @@ func (e *EdgeClient) InitialGetSNPublicKey() error {
 
 	n, addr, err := e.Conn.ReadFromUDP(respBuf)
 	if err != nil {
-		return fmt.Errorf("edge: pubkey ACK timeout: %w", err)
+		return fmt.Errorf(" pubkey ACK timeout: %w", err)
 	}
 
 	// Reset deadline
 	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
-		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
+		return fmt.Errorf(" failed to reset read deadline: %w", err)
 	}
 
 	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("edge: short packet while waiting for initial SnSecretsPub")
+		return fmt.Errorf(" short packet while waiting for initial SnSecretsPub")
 	}
 
 	rresp, err := protocol.MessageFromPacket[*netstruct.SNPublicSecret](respBuf, addr)
@@ -153,7 +153,7 @@ func (e *EdgeClient) InitialGetSNPublicKey() error {
 		return err
 	}
 	e.SNPubKey = pubkey
-	log.Printf("Got Supernode public key !")
+	log.Printf("sucessfull supernode public key retrieval")
 
 	return nil
 }
@@ -167,7 +167,7 @@ func (e *EdgeClient) InitialRegister() error {
 
 	// Set a timeout for the response
 	if err := e.Conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		return fmt.Errorf("edge: failed to set read deadline: %w", err)
+		return fmt.Errorf(" failed to set read deadline: %w", err)
 	}
 
 	// Read the response
@@ -176,16 +176,16 @@ func (e *EdgeClient) InitialRegister() error {
 
 	n, addr, err := e.Conn.ReadFromUDP(respBuf)
 	if err != nil {
-		return fmt.Errorf("edge: registration ACK timeout: %w", err)
+		return fmt.Errorf(" registration ACK timeout: %w", err)
 	}
 
 	// Reset deadline
 	if err := e.Conn.SetReadDeadline(time.Time{}); err != nil {
-		return fmt.Errorf("edge: failed to reset read deadline: %w", err)
+		return fmt.Errorf(" failed to reset read deadline: %w", err)
 	}
 
 	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("edge: short packet while waiting for initial RegisterResponse")
+		return fmt.Errorf(" short packet while waiting for initial RegisterResponse")
 	}
 
 	rresp, err := protocol.MessageFromPacket[*netstruct.RegisterResponse](respBuf, addr)
@@ -198,8 +198,8 @@ func (e *EdgeClient) InitialRegister() error {
 		return ErrNACKRegister
 	}
 	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
-	log.Printf("edge: Assigned virtual IP %s", e.VirtualIP)
-	log.Printf("edge: Registration successful (ACK from %v)", addr)
+	log.Printf("Assigned virtual IP %s", e.VirtualIP)
+	log.Printf("Registration successful (ACK from %v)", addr)
 	e.registered = true
 	return nil
 }

@@ -301,32 +301,32 @@ func debugPrintPacket(buf []byte, maxLen int) {
 
 	// Print Ethernet header
 	log.Printf("Ethernet Header:")
-	log.Printf("  Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+	log.Printf(" Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x",
 		buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
-	log.Printf("  Src MAC:  %02x:%02x:%02x:%02x:%02x:%02x",
+	log.Printf(" Src MAC:  %02x:%02x:%02x:%02x:%02x:%02x",
 		buf[6], buf[7], buf[8], buf[9], buf[10], buf[11])
-	log.Printf("  EtherType: 0x%02x%02x", buf[12], buf[13])
+	log.Printf(" EtherType: 0x%02x%02x", buf[12], buf[13])
 
 	// Print IP header
 	log.Printf("IP Header:")
-	log.Printf("  Version/IHL: 0x%02x", buf[14])
-	log.Printf("  ToS: 0x%02x", buf[15])
-	log.Printf("  Total Length: %d", uint16(buf[16])<<8|uint16(buf[17]))
-	log.Printf("  ID: 0x%02x%02x", buf[18], buf[19])
-	log.Printf("  Flags/Fragment: 0x%02x%02x", buf[20], buf[21])
-	log.Printf("  TTL: %d", buf[22])
-	log.Printf("  Protocol: %d", buf[23])
-	log.Printf("  Checksum: 0x%02x%02x", buf[24], buf[25])
-	log.Printf("  Source IP: %d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
-	log.Printf("  Dest IP: %d.%d.%d.%d", buf[30], buf[31], buf[32], buf[33])
+	log.Printf(" Version/IHL: 0x%02x", buf[14])
+	log.Printf(" ToS: 0x%02x", buf[15])
+	log.Printf(" Total Length: %d", uint16(buf[16])<<8|uint16(buf[17]))
+	log.Printf(" ID: 0x%02x%02x", buf[18], buf[19])
+	log.Printf(" Flags/Fragment: 0x%02x%02x", buf[20], buf[21])
+	log.Printf(" TTL: %d", buf[22])
+	log.Printf(" Protocol: %d", buf[23])
+	log.Printf(" Checksum: 0x%02x%02x", buf[24], buf[25])
+	log.Printf(" Source IP: %d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
+	log.Printf(" Dest IP: %d.%d.%d.%d", buf[30], buf[31], buf[32], buf[33])
 
 	// Print ICMP header
 	log.Printf("ICMP Header:")
-	log.Printf("  Type: %d", buf[34])
-	log.Printf("  Code: %d", buf[35])
-	log.Printf("  Checksum: 0x%02x%02x", buf[36], buf[37])
-	log.Printf("  Identifier: 0x%02x%02x", buf[38], buf[39])
-	log.Printf("  Sequence: %d", uint16(buf[40])<<8|uint16(buf[41]))
+	log.Printf(" Type: %d", buf[34])
+	log.Printf(" Code: %d", buf[35])
+	log.Printf(" Checksum: 0x%02x%02x", buf[36], buf[37])
+	log.Printf(" Identifier: 0x%02x%02x", buf[38], buf[39])
+	log.Printf(" Sequence: %d", uint16(buf[40])<<8|uint16(buf[41]))
 }
 
 // createPingPacket creates a complete Ethernet+IPv4+ICMP echo request packet
@@ -600,36 +600,36 @@ func debugDumpFullPacket(buf []byte, label string) {
 	// Try to interpret as Ethernet + IP
 	if len(buf) >= 14 {
 		log.Printf("Ethernet Header:")
-		log.Printf("  Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+		log.Printf(" Dest MAC: %02x:%02x:%02x:%02x:%02x:%02x",
 			buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
-		log.Printf("  Src MAC:  %02x:%02x:%02x:%02x:%02x:%02x",
+		log.Printf(" Src MAC:  %02x:%02x:%02x:%02x:%02x:%02x",
 			buf[6], buf[7], buf[8], buf[9], buf[10], buf[11])
-		log.Printf("  EtherType: 0x%02x%02x", buf[12], buf[13])
+		log.Printf(" EtherType: 0x%02x%02x", buf[12], buf[13])
 
 		// Check for IPv4
 		if buf[12] == 0x08 && buf[13] == 0x00 && len(buf) >= 34 {
 			log.Printf("IPv4 Header:")
-			log.Printf("  Version/IHL: 0x%02x", buf[14])
-			log.Printf("  ToS: 0x%02x", buf[15])
+			log.Printf(" Version/IHL: 0x%02x", buf[14])
+			log.Printf(" ToS: 0x%02x", buf[15])
 			totalLen := uint16(buf[16])<<8 | uint16(buf[17])
-			log.Printf("  Total Length: %d", totalLen)
-			log.Printf("  ID: 0x%02x%02x", buf[18], buf[19])
-			log.Printf("  Flags/Fragment: 0x%02x%02x", buf[20], buf[21])
-			log.Printf("  TTL: %d", buf[22])
-			log.Printf("  Protocol: %d", buf[23])
-			log.Printf("  Checksum: 0x%02x%02x", buf[24], buf[25])
-			log.Printf("  Source IP: %d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
-			log.Printf("  Dest IP: %d.%d.%d.%d", buf[30], buf[31], buf[32], buf[33])
+			log.Printf(" Total Length: %d", totalLen)
+			log.Printf(" ID: 0x%02x%02x", buf[18], buf[19])
+			log.Printf(" Flags/Fragment: 0x%02x%02x", buf[20], buf[21])
+			log.Printf(" TTL: %d", buf[22])
+			log.Printf(" Protocol: %d", buf[23])
+			log.Printf(" Checksum: 0x%02x%02x", buf[24], buf[25])
+			log.Printf(" Source IP: %d.%d.%d.%d", buf[26], buf[27], buf[28], buf[29])
+			log.Printf(" Dest IP: %d.%d.%d.%d", buf[30], buf[31], buf[32], buf[33])
 
 			// Check for ICMP
 			if buf[23] == 1 && len(buf) >= 42 {
 				log.Printf("ICMP Header:")
-				log.Printf("  Type: %d", buf[34])
-				log.Printf("  Code: %d", buf[35])
-				log.Printf("  Checksum: 0x%02x%02x", buf[36], buf[37])
-				log.Printf("  Identifier: 0x%02x%02x", buf[38], buf[39])
+				log.Printf(" Type: %d", buf[34])
+				log.Printf(" Code: %d", buf[35])
+				log.Printf(" Checksum: 0x%02x%02x", buf[36], buf[37])
+				log.Printf(" Identifier: 0x%02x%02x", buf[38], buf[39])
 				seq := uint16(buf[40])<<8 | uint16(buf[41])
-				log.Printf("  Sequence: %d", seq)
+				log.Printf(" Sequence: %d", seq)
 			}
 		}
 

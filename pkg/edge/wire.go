@@ -70,7 +70,7 @@ func (e *EdgeClient) WritePacket(pt spec.PacketType, dst net.HardwareAddr, paylo
 
 	_, err = e.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), udpSocket)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send packet: %w", err)
+		return fmt.Errorf(" failed to send packet: %w", err)
 	}
 	return nil
 }
@@ -90,7 +90,7 @@ func (e *EdgeClient) SendStruct(s netstruct.PacketTyped, dst net.HardwareAddr, s
 
 	_, err = e.Conn.WriteToUDP(protocol.PackProtoVDatagram(header, payload), udpSocket)
 	if err != nil {
-		return fmt.Errorf("edge: failed to send packet: %w", err)
+		return fmt.Errorf(" failed to send packet: %w", err)
 	}
 	return nil
 }
