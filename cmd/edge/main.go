@@ -11,6 +11,8 @@ import (
 	"syscall"
 
 	"n2n-go/pkg/edge"
+
+	_ "github.com/cjbrigato/ensure/linux" // edge only works on linux right now
 )
 
 const banner = "ICAgICBfICAgICAgIF8KICAgIC8gL19fIF9ffCB8X18gXyAgX18gICAKIF8gLyAvIC1fKSBfYCAvIF9gIC8gLV8pICAKKF8pXy9cX19fXF9fLF9cX18sIFxfX198Ci0tLS0tLS0tLS0tLS0tfF9fXy9AbjJuLWdvLSVzIChidWlsdCAlcykgICAgICAK"

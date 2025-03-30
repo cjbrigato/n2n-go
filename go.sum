@@ -1,3 +1,5 @@
+github.com/cjbrigato/ensure v0.0.0-20250330162609-d4e8cc89b4dc h1:xObPAVw7bmfuc+M+P4cu0f5KzbN16akaDjXVviRDknM=
+github.com/cjbrigato/ensure v0.0.0-20250330162609-d4e8cc89b4dc/go.mod h1:m85oC9phugBrt37O/WlKJ5S/y7M/g5XTMN/MCc3WViQ=
 github.com/cjbrigato/ippool v1.0.1 h1:P56YSJazDO6qZtMkPlY9sAlmxMJacs0Pmn0x22pVyjI=
 github.com/cjbrigato/ippool v1.0.1/go.mod h1:Sb7DXBlEbRt6E1exIezfo8RtylPdWindT4PPbalrK7o=
 github.com/cjbrigato/ippool v1.0.2 h1:l8BMv3AYkR/fbLIO3+KWh8NUmBOC9yqXSH6/7ousA08=

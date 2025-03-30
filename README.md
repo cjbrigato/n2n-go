@@ -30,6 +30,10 @@ Once edges discover each other through the supernode, they establish direct peer
 - **VFuze Data FastPath**: Optimized data path for reduced overhead and improved performance
 - **Stable Virtual IPs**: IP address allocation with persistence
 
+## OS Compatibility
+- **Supernode**: can run on any GOOS
+- **Edge**: only run on linux right now (compilation will fail early thanks to `github.com/cjbrigato/ensure` package) but windows/darwin/*bsd compatibility is planned
+
 ## Installation
 
 ### Prerequisites

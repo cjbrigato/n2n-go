@@ -35,6 +35,7 @@ require (
 )
 
 require (
+	github.com/cjbrigato/ensure v0.0.0-20250330162609-d4e8cc89b4dc
 	github.com/cjbrigato/ippool v1.0.3
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/flopp/go-findfont v0.1.0 // indirect
