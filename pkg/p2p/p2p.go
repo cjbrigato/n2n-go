@@ -86,6 +86,7 @@ type PeerRegistry struct {
 	peerMu        sync.RWMutex
 	Me            *Peer
 	Peers         map[string]*Peer //keyed by MACAddr.String()
+	peerBySocket  map[string]*Peer // keyed by net.UDPAddr.String()
 	p2pDatasMu    sync.RWMutex
 	P2PCommunityDatas
 	IsWaitingCommunityDatas bool
@@ -146,6 +147,7 @@ func NewPeerRegistry(communityName string) *PeerRegistry {
 	return &PeerRegistry{
 		CommunityName: communityName,
 		Peers:         make(map[string]*Peer),
+		peerBySocket:  make(map[string]*Peer),
 	}
 }
 
@@ -179,6 +181,22 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 	peer, exists := reg.Peers[MACAddr]
 	if !exists {
 		return nil, fmt.Errorf("peer with MAC address %s not found", MACAddr)
+	}
+	return peer, nil
+}
+
+
+
+func (reg *PeerRegistry) GetPeerBySocket(addr *net.UDPAddr) (*Peer, error) {
+	if addr == nil {
+		return nil, fmt.Errorf("cannot GetPeerBySocket with nil net.UDPAddr")
+	}
+	reg.peerMu.RLock()
+	defer reg.peerMu.RUnlock()
+
+	peer, exists := reg.peerBySocket[addr.String()]
+	if !exists {
+		return nil, fmt.Errorf("peer with Socket %s not found", addr.String())
 	}
 	return peer, nil
 }
@@ -244,11 +262,14 @@ func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) 
 			existingPeer.P2PStatus = P2PUnknown
 			existingPeer.P2PCheckID = ""
 		}
+
 		existingPeer.Infos = infos
 		existingPeer.UpdatedAt = time.Now()
 		log.Printf("updated peer nown hold of %s MACAddr:", macAddr)
 		log.Printf(" was: vip=%s PubSocket=%s desc=%s", origPeer.Infos.VirtualIP, origPeer.Infos.PubSocket, origPeer.Infos.Desc)
 		log.Printf(" now: vip=%s PubSocket=%s desc=%s", existingPeer.Infos.VirtualIP, existingPeer.Infos.PubSocket, existingPeer.Infos.Desc)
+		delete(reg.peerBySocket, origPeer.UDPAddr().String())
+		reg.peerBySocket[existingPeer.UDPAddr().String()] = existingPeer
 		reg.SetPendingChanges()
 		return existingPeer, nil
 	}
@@ -259,6 +280,7 @@ func (reg *PeerRegistry) AddPeer(infos PeerInfo, overwrite bool) (*Peer, error) 
 		UpdatedAt: time.Now(),
 	}
 	reg.Peers[macAddr] = peer
+	reg.peerBySocket[peer.UDPAddr().String()] = peer
 	log.Printf("added peer %s/%s/%s with PubSocket=%s", peer.Infos.Desc, peer.Infos.VirtualIP.String(), peer.Infos.MACAddr.String(), peer.Infos.PubSocket)
 	reg.SetPendingChanges()
 	return peer, nil
@@ -275,7 +297,9 @@ func (reg *PeerRegistry) RemovePeer(MACAddr string) error {
 
 	dDesc := p.Infos.Desc
 	dVip := p.Infos.VirtualIP.String()
+	dUDPAddrString := p.UDPAddr().String()
 	delete(reg.Peers, MACAddr)
+	delete(reg.peerBySocket, dUDPAddrString)
 	log.Printf("removed peer %s/%s/%s", dDesc, dVip, MACAddr)
 	reg.SetPendingChanges()
 	return nil
@@ -332,6 +356,7 @@ func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *PeerInfoList, reset bo
 		if reset {
 			reg.peerMu.Lock()
 			reg.Peers = make(map[string]*Peer)
+			reg.peerBySocket = make(map[string]*Peer)
 			reg.peerMu.Unlock()
 			log.Println("resetting peer registry")
 		}

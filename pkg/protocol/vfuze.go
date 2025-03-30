@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -23,4 +24,12 @@ func VFuzeHeaderBytes(dst net.HardwareAddr) []byte {
 	return buf
 }
 
-
+func VFuzePacketDestMACAddr(packet []byte) (net.HardwareAddr,error){
+	if len(packet) < ProtoVFuzeSize {
+		return nil, fmt.Errorf("short packet not vFuze")
+	}
+	if packet[0] != VersionVFuze {
+		return nil, fmt.Errorf("packet is not VersionVFuze")
+	}
+	return net.HardwareAddr(packet[1:7]),nil
+}

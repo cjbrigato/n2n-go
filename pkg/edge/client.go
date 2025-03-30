@@ -249,6 +249,14 @@ func (e *EdgeClient) Close() {
 	log.Printf("Shutdown complete")
 }
 
+func (e *EdgeClient) IsKnownPeerSocket(addr *net.UDPAddr) bool {
+	peer, err := e.Peers.GetPeerBySocket(addr)
+	if err != nil || peer == nil {
+		return false
+	}
+	return true
+}
+
 func (e *EdgeClient) IsSupernodeUDPAddr(addr *net.UDPAddr) bool {
 	return (addr.IP.Equal(e.SupernodeAddr.IP)) && (addr.Port == e.SupernodeAddr.Port)
 }

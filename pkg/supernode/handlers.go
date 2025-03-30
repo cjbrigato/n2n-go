@@ -194,31 +194,32 @@ func (s *Supernode) handleDataMessage(r *protocol.RawMessage) error { //packet [
 	return s.ForwardWithFallBack(r)
 }
 
-func (s *Supernode) handleVFuze(packet []byte) {
-	dst := net.HardwareAddr(packet[1:7])
+func (s *Supernode) handleVFuze(packet []byte, addr *net.UDPAddr) {
+	dst, err := protocol.VFuzePacketDestMACAddr(packet)
+	if err != nil {
+		s.debugLog("Supernode: vFuze Packet error: %v", err)
+		return
+	}
+	if !s.config.EnableVFuze {
+		log.Printf("Supernode: received a VFuze packet from %s to %s but vFuze is disabled by configuration", addr.String(), dst.String())
+		return
+	}
 	s.edgeMu.Lock()
-	edge, ok := s.edgesByMAC[dst.String()]
+	dstedge, dstok := s.edgesByMAC[dst.String()]
+	srcedge, srcok := s.edgesBySocket[addr.String()]
 	s.edgeMu.Unlock()
-	if s.config.EnableVFuze {
-		if ok {
-			err := s.forwardPacket(packet, edge)
-			if err != nil {
-				log.Printf("Supernode: VersionVFuze error: %v", err)
-			}
-		} else {
-			// happens when UDPStategy fall back to Supernode on edge side because peer was removed
-			// but the peer still is in arp cache, and since we don't fallback to broadcast with vfuze
-			// and have not info about community, this happens.
-			// Since it is only know case of happening under normal condition, it's going to debuglog
-			s.debugLog("Supernode: cannot process VFuze packet: no edge found with this HardwareAddr %s", dst.String())
-		}
-	} else {
-		log.Printf("Supernode: received a VFuze Protocol packet but configuration disabled it")
-		if !ok {
-			log.Printf("        -> cannot give hint about which edge has misconfiguration")
-			log.Printf("          -> no edge found with requested HardwareAddr routing")
-		} else {
-			log.Printf("         -> Misconfigured edge Informations: Desc=%s, VIP=%s, MAC=%s", edge.Desc, edge.VirtualIP, edge.MACAddr)
-		}
+	if !dstok || !srcok {
+		s.debugLog("vFuze error: missing either dstedge (found: %v), srcedge(found: %v) or both", dstok, srcok)
+		return
+	}
+
+	if dstedge.Community != srcedge.Community {
+		log.Printf("Supernode: received a VFuze packet from %s (community %s) to %s (community %s) but communities don't match", addr.String(), srcedge.Community, dst.String(), dstedge.Community)
+		return
+	}
+
+	err = s.forwardPacket(packet, dstedge)
+	if err != nil {
+		log.Printf("Supernode: VersionVFuze error: %v", err)
 	}
 }

@@ -45,8 +45,7 @@ type Supernode struct {
 }
 
 func (s *Supernode) MacADDR() net.HardwareAddr {
-	mac, _ := net.ParseMAC("CA:FE:C0:FF:EE:00")
-	return mac
+	return protocol.SupernodeMACAddr()
 }
 
 // NewSupernode creates a new Supernode instance with default config
@@ -122,7 +121,7 @@ func (s *Supernode) ProcessPacket(packet []byte, addr *net.UDPAddr) {
 
 	s.stats.PacketsProcessed.Add(1)
 	if packet[0] == protocol.VersionVFuze {
-		s.handleVFuze(packet)
+		s.handleVFuze(packet, addr)
 		return
 	}
 

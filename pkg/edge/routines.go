@@ -225,17 +225,13 @@ func (e *EdgeClient) handleUDP() {
 		e.PacketsRecv.Add(1)
 
 		if packetBuf[0] == protocol.VersionVFuze {
-			if e.enableVFuze {
-				err := e.handleDataPayload(packetBuf[protocol.ProtoVFuzeSize:n])
-				if err != nil {
-					if strings.Contains(err.Error(), "file already closed") {
-						return
-					}
-					log.Printf("handleDataPayload Error: %v", err)
+			err = e.handleVFuzePacket(packetBuf, n, addr)
+			if err != nil {
+				if strings.Contains(err.Error(), "file already closed") {
+					return
 				}
-				continue
+				log.Printf("handleVFuzePacket Error: %v", err)
 			}
-			log.Printf("received VFuze data packet from %v but VFuze support is disabled", addr)
 			continue
 		}
 
@@ -259,3 +255,4 @@ func (e *EdgeClient) handleUDP() {
 		}
 	}
 }
+

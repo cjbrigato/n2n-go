@@ -58,6 +58,35 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 	return nil
 }
 
+// handleVFuzePacket processes incoming VFuze packets
+func (e *EdgeClient) handleVFuzePacket(packetBuf []byte, n int, addr *net.UDPAddr) error {
+	if !e.enableVFuze {
+		log.Printf("received VFuze data packet from %v but VFuze support is disabled", addr)
+		return nil
+	}
+
+	dst, err := protocol.VFuzePacketDestMACAddr(packetBuf)
+	if err != nil {
+		log.Printf("ignoring VFuze packet with non extractable destMac: %v", err)
+		return nil
+	}
+
+	if e.MACAddr.String() != dst.String() {
+		log.Printf("ignoring VFuze packet with destMAC (%s) not matching our (%s)", dst.String(), e.MACAddr.String())
+		return nil
+	}
+
+	// if not from supernode, we check that we now this peer
+	if !e.IsSupernodeUDPAddr(addr) {
+		if !e.IsKnownPeerSocket(addr) {
+			log.Printf("ignoring VFuze packet from not in known peers: %s", addr.String())
+			return nil
+		}
+	}
+
+	return e.handleDataPayload(packetBuf[protocol.ProtoVFuzeSize:n])
+}
+
 func (e *EdgeClient) handleDataPayload(payload []byte) error {
 	payload, err := e.ProcessIncomingPayload(payload)
 	if err != nil {
