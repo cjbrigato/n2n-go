@@ -212,8 +212,7 @@ func (e *EdgeClient) TunUp() error {
 	if e.VirtualIP == "" {
 		return fmt.Errorf("cannot configure TAP link before VirtualIP is set")
 	}
-	//return e.TAP.IfUp(e.VirtualIP)
-	return util.IfUp(e.TAP.Name(), e.VirtualIP)
+	return e.TAP.IfUp(e.VirtualIP)
 }
 
 func (e *EdgeClient) RequestSNPublicKey() error {

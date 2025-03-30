@@ -14,7 +14,6 @@ import (
 	transform "n2n-go/pkg/tranform"
 	"n2n-go/pkg/tuntap"
 	"n2n-go/pkg/upnp"
-	"n2n-go/pkg/util"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -110,7 +109,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	communityHash := protocol.HashCommunity(cfg.Community)
 	igdClient := SetupUPnP(conn, cfg.EdgeID)
 
-	err = util.IfMac(tap.Name(), predictableMac.String())
+	err = tap.IfMac(predictableMac.String())
 	if err != nil {
 		log.Fatalf("err: %v", err)
 	}
