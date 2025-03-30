@@ -76,11 +76,13 @@ func (e *EdgeClient) handleVFuzePacket(packetBuf []byte, n int, addr *net.UDPAdd
 		return nil
 	}
 
-	// if not from supernode, we check that we now this peer
-	if !e.IsSupernodeUDPAddr(addr) {
-		if !e.IsKnownPeerSocket(addr) {
-			log.Printf("ignoring VFuze packet from not in known peers: %s", addr.String())
-			return nil
+	if !disablePeerSocketCheckingInVFuze {
+		// if not from supernode, we check that we now this peer
+		if !e.IsSupernodeUDPAddr(addr) {
+			if !e.IsKnownPeerSocket(addr) {
+				log.Printf("ignoring VFuze packet from not in known peers: %s", addr.String())
+				return nil
+			}
 		}
 	}
 
