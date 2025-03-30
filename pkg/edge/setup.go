@@ -62,19 +62,19 @@ func setupUDPConnection(localPort int, bufferSize int) (*net.UDPConn, error) {
 
 func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
 	udpPort := uint16(conn.LocalAddr().(*net.UDPAddr).Port)
-	log.Printf("Edge: seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
+	log.Printf("edge: seeking for an optional UPnP/IGD<1|2> support to ease with nat traversal...")
 	igdClient, err := upnp.NewUPnPClient()
 	if err != nil {
-		log.Printf("Edge: unable to use UPnP/IGD on this network: %v", err)
+		log.Printf("edge: unable to use UPnP/IGD on this network: %v", err)
 	} else {
 		description := fmt.Sprintf("n2n-go.portmap for %s client", edgeID)
 		leaseDuration := uint32(0)
 		protocol := "udp"
-		log.Printf("Edge: Discovered IGD on network ! Starting upnpClient thread...")
-		log.Printf(" UPnP > Successfully connected to IGD (%s)", igdClient.GatewayType)
-		log.Printf(" UPnP > Local IP: %s", igdClient.LocalIP)
-		log.Printf(" UPnP > External IP: %s", igdClient.ExternalIP)
-		log.Printf(" UPnP > Creating port mapping: %s %d -> %s:%d (%s)",
+		log.Printf("edge: Discovered IGD on network ! Starting upnpClient thread...")
+		log.Printf("upnp: Successfully connected to IGD (%s)", igdClient.GatewayType)
+		log.Printf("upnp: Local IP: %s", igdClient.LocalIP)
+		log.Printf("upnp: External IP: %s", igdClient.ExternalIP)
+		log.Printf("upnp: Creating port mapping: %s %d -> %s:%d (%s)",
 			"udp", udpPort, igdClient.LocalIP, udpPort, edgeID)
 		err = igdClient.AddPortMapping(
 			protocol,
@@ -84,10 +84,10 @@ func SetupUPnP(conn *net.UDPConn, edgeID string) *upnp.UPnPClient {
 			leaseDuration,
 		)
 		if err != nil {
-			log.Printf("UPnP: Failed to add port mapping: %v :-(", err)
+			log.Printf("upnp: Failed to add port mapping: %v :-(", err)
 			igdClient = nil
 		} else {
-			log.Println(" UPnP > Port mapping added successfully (will be automatically deleted when edge closes)")
+			log.Println("upnp: Port mapping added successfully (will be automatically deleted when edge closes)")
 		}
 	}
 	return igdClient
@@ -106,7 +106,7 @@ func (e *EdgeClient) InitialSetup() error {
 		return err
 	}
 
-	log.Printf("Edge: sending preliminary gratuitous ARP")
+	log.Printf("edge: sending preliminary gratuitous ARP")
 	if err := e.sendGratuitousARP(); err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (e *EdgeClient) InitialGetSNPublicKey() error {
 	}
 
 	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("Edge: short packet while waiting for initial SnSecretsPub")
+		return fmt.Errorf("edge: short packet while waiting for initial SnSecretsPub")
 	}
 
 	rresp, err := protocol.MessageFromPacket[*netstruct.SNPublicSecret](respBuf, addr)
@@ -185,7 +185,7 @@ func (e *EdgeClient) InitialRegister() error {
 	}
 
 	if n < protocol.ProtoVHeaderSize {
-		return fmt.Errorf("Edge: short packet while waiting for initial RegisterResponse")
+		return fmt.Errorf("edge: short packet while waiting for initial RegisterResponse")
 	}
 
 	rresp, err := protocol.MessageFromPacket[*netstruct.RegisterResponse](respBuf, addr)
@@ -198,8 +198,8 @@ func (e *EdgeClient) InitialRegister() error {
 		return ErrNACKRegister
 	}
 	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
-	log.Printf("Edge: Assigned virtual IP %s", e.VirtualIP)
-	log.Printf("Edge: Registration successful (ACK from %v)", addr)
+	log.Printf("edge: Assigned virtual IP %s", e.VirtualIP)
+	log.Printf("edge: Registration successful (ACK from %v)", addr)
 	e.registered = true
 	return nil
 }

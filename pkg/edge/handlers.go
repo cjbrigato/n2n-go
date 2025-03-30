@@ -25,7 +25,7 @@ func (e *EdgeClient) handleSNPublicSecretMessage(r *protocol.RawMessage) error {
 		return err
 	}
 	e.SNPubKey = pubkey
-	log.Printf("Edge: Updated Supernode public key !")
+	log.Printf("edge: Updated Supernode public key !")
 	e.isWaitingForSNPubKeyUpdate = false
 	if e.isWaitingForSNRetryRegisterResponse {
 
@@ -47,13 +47,13 @@ func (e *EdgeClient) handleRegisterResponseMessage(r *protocol.RawMessage) error
 		return ErrNACKRegister
 	}
 
-	log.Printf("Edge: Successfull Supernode Reregister")
+	log.Printf("edge: Successfull Supernode Reregister")
 	e.isWaitingForSNRetryRegisterResponse = false
 	e.Peers.IsWaitingCommunityDatas = false
-	log.Printf("Edge: sending Recovery Peer List Request")
+	log.Printf("edge: sending Recovery Peer List Request")
 	err = e.sendPeerListRequest()
 	if err != nil {
-		log.Printf("Edge: (warn) failed sending Recovery Peer List Request: %v", err)
+		log.Printf("edge: (warn) failed sending Recovery Peer List Request: %v", err)
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func (e *EdgeClient) handlePeerInfoMessage(r *protocol.RawMessage) error {
 	peerInfos := peerMsg.Msg
 	err = e.Peers.HandlePeerInfoList(peerInfos, false, true)
 	if err != nil {
-		log.Printf("Edge: error in HandlePeerInfoList: %v", err)
+		log.Printf("edge: error in HandlePeerInfoList: %v", err)
 		return err
 	}
 	return nil
@@ -103,7 +103,7 @@ func (s *EdgeClient) handleLeasesInfosMessage(r *protocol.RawMessage) error {
 
 func (e *EdgeClient) handleRetryRegisterRequest(r *protocol.RawMessage) error {
 	if r.Header.PacketType != spec.TypeRetryRegisterRequest {
-		return fmt.Errorf("Edge: routing failure: not a TypeRetryRegisterRequest")
+		return fmt.Errorf("edge: routing failure: not a TypeRetryRegisterRequest")
 	}
 
 	if e.isWaitingForSNRetryRegisterResponse {

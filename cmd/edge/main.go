@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
-	log.Printf("Edge: using config file %s", cfg.ConfigFile)
+	log.Printf("edge: using config file %s", cfg.ConfigFile)
 
 	client, err := edge.NewEdgeClient(*cfg) // Pass the config struct
 	if err != nil {

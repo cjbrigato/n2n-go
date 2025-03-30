@@ -28,7 +28,7 @@ func (e *EdgeClient) Unregister() error {
 			unregErr = fmt.Errorf("edge: failed to send unregister: %w", err)
 			return
 		}
-		log.Printf("Edge: Unregister message sent")
+		log.Printf("edge: Unregister message sent")
 	})
 	return unregErr
 }
@@ -76,7 +76,7 @@ func (e *EdgeClient) sendP2PInfos() error {
 		return nil
 	}
 
-	log.Printf("Edge: sending pending PeerP2PInfos changes to supernode...")
+	log.Printf("edge: sending pending PeerP2PInfos changes to supernode...")
 
 	infos := e.Peers.GetPeerP2PInfos()
 	e.Peers.ClearPendingChanges()
