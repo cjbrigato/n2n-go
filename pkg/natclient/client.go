@@ -37,6 +37,18 @@ func SetupNAT(conn *net.UDPConn, edgeID string, dialAddr string) NATClient {
 		log.Printf("NAT Setup: Could not get UDP address from connection: %v", conn.LocalAddr())
 		return nil
 	}
+
+	localIP, err := getLocalIP(dialAddr)
+	if err != nil {
+		log.Println("NAT Setup: Unable to get suitable LocalIP, no further NAT Setup")
+		return nil
+	}
+	ipv4 := net.ParseIP(localIP)
+	if !ipv4.IsPrivate() {
+		log.Println("NAT Setup: local IP is public, no further  NAT Setup is required")
+		return nil
+	}
+
 	udpPort := uint16(localUDPAddr.Port)
 	protocol := "udp" // Assuming UDP for n2n-go
 
