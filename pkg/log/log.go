@@ -8,6 +8,7 @@ import (
 	stdlog "log" // Use alias to avoid conflict with package name
 	"path"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	//_ "github.com/mattn/go-sqlite3" // SQLite driver
@@ -20,6 +21,7 @@ import (
 // --- Global state for the package logger ---
 
 var (
+	writeSinceStart        atomic.Int64
 	pkgLogger              = zerolog.Nop() // Default to no-op logger
 	dbWriterInstance       *sqliteWriter
 	dbHandle               *sql.DB      // The single handle used for writing and reading
@@ -94,6 +96,7 @@ func (w *sqliteWriter) Write(p []byte) (n int, err error) {
 		stdlog.Printf("ERROR writing log to SQLite: %v\n", err)
 		return 0, err
 	}
+	writeSinceStart.Add(1)
 	return len(p), nil
 }
 
@@ -257,6 +260,12 @@ func parseDBTimestamp(ts string) time.Time {
 	// Log warning if parsing fails completely
 	stdlog.Printf("Warning: Could not parse inserted_at timestamp '%s' with known formats", ts)
 	return time.Time{} // Return zero time if unparseable
+}
+
+// GetLogsSince start uses the writeSinceStart counter to retrieve the last N logs since current edge start
+func GetLogsSinceStart() ([]LogEntry, error) {
+	n := writeSinceStart.Load()
+	return GetLastNLogs(int(n))
 }
 
 // GetLastNLogs retrieves the most recent 'n' log entries using the internal DB handle.

@@ -350,7 +350,7 @@ func (s *ManagementServer) handleLogsCommand(args []string) (string, error) {
 		return scanner.Err()
 	}
 
-	entries, err := log.GetLastNLogs(20)
+	entries, err := log.GetLogsSinceStart()
 	if err != nil {
 		return "", err
 	}
