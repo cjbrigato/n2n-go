@@ -61,7 +61,7 @@ func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error {
 	if err := netlink.LinkSetMTU(link, mtu); err != nil {
 		return fmt.Errorf("failed to set MTU %d on interface %q: %w", mtu, ifName, err)
 	}
-	log.Printf("Set MTU %d on interface %s\n", mtu, ifName)
+	log.Printf("Set MTU %d on interface %s", mtu, ifName)
 
 	if err := netlink.LinkSetUp(link); err != nil {
 		return fmt.Errorf("failed to bring up interface %q: %w", ifName, err)
