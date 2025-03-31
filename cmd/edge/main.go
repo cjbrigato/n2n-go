@@ -4,10 +4,13 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	stdlog "log"
 	"n2n-go/pkg/log"
+	"n2n-go/pkg/management"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"n2n-go/pkg/edge"
@@ -22,8 +25,21 @@ var (
 	BuildTime = "unknown"
 )
 
-func main() {
+func ctl(command string) {
+	cfg, err := edge.LoadConfig(false) // Load config using Viper
+	if err != nil {
+		stdlog.Fatalf("Failed to load configuration: %v", err)
+	}
+	client := management.NewManagementClient("edge", cfg.Community)
+	res, err := client.SendCommand(command)
+	if err != nil {
+		stdlog.Fatalf("%v", err)
+	}
+	fmt.Println(res)
+	os.Exit(0)
+}
 
+func up() {
 	err := log.Init("edge.db")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize logger: %v\n", err)
@@ -34,7 +50,7 @@ func main() {
 	b, _ := base64.StdEncoding.DecodeString(banner)
 	fmt.Printf(string(b), Version, BuildTime)
 
-	cfg, err := edge.LoadConfig() // Load config using Viper
+	cfg, err := edge.LoadConfig(true) // Load config using Viper
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
@@ -70,4 +86,13 @@ func main() {
 	client.Run() // Start the edge client.
 
 	log.Printf("edge node has been shut down.")
+}
+
+func main() {
+	if len(os.Args) > 1 {
+		if os.Args[1] == "ctl" {
+			ctl(strings.Join(os.Args[2:], " "))
+		}
+	}
+	up()
 }

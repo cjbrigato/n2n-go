@@ -42,7 +42,7 @@ func DefaultConfig() *Config {
 }
 
 // LoadConfig loads configuration from file, environment, and flags, in that order of precedence.
-func LoadConfig() (*Config, error) {
+func LoadConfig(parseFlags bool) (*Config, error) {
 	cfg := DefaultConfig()
 
 	// Use Viper to load configuration
@@ -62,23 +62,24 @@ func LoadConfig() (*Config, error) {
 		// Config file not found; ignore error if desired
 	}
 
-	// Bind command-line flags to Viper
-	// This is where we connect our flags to our config struct
-	flag.StringVar(&cfg.ConfigFile, "config", cfg.ConfigFile, "Path to the configuration file")
-	flag.StringVar(&cfg.EdgeID, "id", cfg.EdgeID, "Unique edge identifier (defaults to hostname if omitted)")
-	flag.StringVar(&cfg.Community, "community", cfg.Community, "Community name")
-	flag.StringVar(&cfg.TapName, "tap", cfg.TapName, "TAP interface name")
-	flag.IntVar(&cfg.LocalPort, "port", cfg.LocalPort, "Local UDP port (0 for system-assigned)")
-	flag.BoolVar(&cfg.EnableVFuze, "enableFuze", cfg.EnableVFuze, "enable fuze fastpath")
-	flag.StringVar(&cfg.SupernodeAddr, "supernode", cfg.SupernodeAddr, "Supernode address (host:port)")
-	flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "Heartbeat interval")
-	flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", cfg.UDPBufferSize, "UDP BUffer Sizes")
-	flag.StringVar(&cfg.APIListenAddr, "api-listen", cfg.APIListenAddr, "API listen address")
-	flag.StringVar(&cfg.EncryptionPassphrase, "encryption-passphrase", cfg.EncryptionPassphrase, "Passphrase to encryption key derivation")
-	flag.BoolVar(&cfg.CompressPayload, "compress-payload", cfg.CompressPayload, "Add zstd fast compression/decompression to data packets")
+	if parseFlags {
+		// Bind command-line flags to Viper
+		// This is where we connect our flags to our config struct
+		flag.StringVar(&cfg.ConfigFile, "config", cfg.ConfigFile, "Path to the configuration file")
+		flag.StringVar(&cfg.EdgeID, "id", cfg.EdgeID, "Unique edge identifier (defaults to hostname if omitted)")
+		flag.StringVar(&cfg.Community, "community", cfg.Community, "Community name")
+		flag.StringVar(&cfg.TapName, "tap", cfg.TapName, "TAP interface name")
+		flag.IntVar(&cfg.LocalPort, "port", cfg.LocalPort, "Local UDP port (0 for system-assigned)")
+		flag.BoolVar(&cfg.EnableVFuze, "enableFuze", cfg.EnableVFuze, "enable fuze fastpath")
+		flag.StringVar(&cfg.SupernodeAddr, "supernode", cfg.SupernodeAddr, "Supernode address (host:port)")
+		flag.DurationVar(&cfg.HeartbeatInterval, "heartbeat", cfg.HeartbeatInterval, "Heartbeat interval")
+		flag.IntVar(&cfg.UDPBufferSize, "udpbuffersize", cfg.UDPBufferSize, "UDP BUffer Sizes")
+		flag.StringVar(&cfg.APIListenAddr, "api-listen", cfg.APIListenAddr, "API listen address")
+		flag.StringVar(&cfg.EncryptionPassphrase, "encryption-passphrase", cfg.EncryptionPassphrase, "Passphrase to encryption key derivation")
+		flag.BoolVar(&cfg.CompressPayload, "compress-payload", cfg.CompressPayload, "Add zstd fast compression/decompression to data packets")
 
-	flag.Parse() // MUST call this to parse the flags
-
+		flag.Parse() // MUST call this to parse the flags
+	}
 	// Unmarshal the config into our struct.
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, err

@@ -3,6 +3,7 @@ package management
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,8 @@ import (
 
 const (
 	defaultSocketDir = "/run/n2n-go"
+	okAuthString     = "OK:AUTHENTICATED"
+	nokAuthString    = "NOK:UNAUTHENTICATED"
 )
 
 func GetDefaultSocketPath(app string) string {
@@ -209,10 +212,10 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				log.Printf("mgmt: authentication timeout for %s", remoteAddr)
-				fmt.Fprintln(writer, ".")
+				fmt.Fprintln(writer, nokAuthString)
 			} else {
 				log.Printf("mgmt: error reading password from %s: %v", remoteAddr, err)
-				fmt.Fprintln(writer, ".")
+				fmt.Fprintln(writer, nokAuthString)
 			}
 			writer.Flush()
 			time.Sleep(2000 * time.Millisecond)
@@ -225,23 +228,16 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 		clientPass = strings.TrimSpace(clientPass)
 		if clientPass != s.password {
 			log.Printf("mgmt: authentication failed for %s", remoteAddr)
-			fmt.Fprintln(writer, ".")
+			fmt.Fprintln(writer, nokAuthString)
 			writer.Flush()
 			// Optional: Add a small delay to slow down brute-force attempts
 			time.Sleep(2000 * time.Millisecond)
 			return // Disconnect on wrong password
 		}
-		// Password is correct
-		//log.Printf("mgmt: client authenticated successfully: %s", remoteAddr)
-		// Send confirmation (optional but good practice)
-		// fmt.Fprintln(writer, "OK: Authenticated") // Client needs to handle this extra line
-		// writer.Flush() // Ensure confirmation is sent before proceeding
-		// For simplicity in the client, we might skip sending the OK back for auth
-
-	} else {
-		// No password configured on server, connection allowed directly
-		//log.Printf("mgmt: client connected (no auth required): %s", remoteAddr)
+		fmt.Fprintln(writer, okAuthString)
+		writer.Flush()
 	}
+
 	for {
 		// ... (Read deadline and read logic remains the same) ...
 		// Set a read deadline
@@ -287,8 +283,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 		var handlerErr error
 
 		s.mu.RLock()
-		// Retrieve CommandInfo struct
-		cmdInfo, ok := s.handlers[command] // <-- Changed to get CommandInfo
+		cmdInfo, ok := s.handlers[command]
 		s.mu.RUnlock()
 
 		if ok {
@@ -303,19 +298,78 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 			log.Printf("mgmt: received unknown command: %s", command)
 		}
 
-		// ... (Write response logic remains the same) ...
-		// Send response back to client
-		_, err = writer.WriteString(response + "\n")
+		err = sendMessage(writer, response)
 		if err != nil {
-			log.Printf("mgmt: error writing response to %s: %v", conn.RemoteAddr().String(), err)
-			return // Stop if we can't write
-		}
-		err = writer.Flush()
-		if err != nil {
-			log.Printf("mgmt: error flushing writer for %s: %v", conn.RemoteAddr().String(), err)
-			return // Stop if we can't flush
+			log.Printf("mgmt: error sendMessage for %s: %v", conn.RemoteAddr().String(), err)
+			return
 		}
 	}
+}
+
+func recvMessage(reader *bufio.Reader) (string, error) {
+
+	lenBytes := make([]byte, 4)
+	_, err := io.ReadFull(reader, lenBytes)
+	if err != nil {
+		if err == io.EOF {
+			return "", fmt.Errorf("Connection closed before receiving length.")
+		} else if err == io.ErrUnexpectedEOF {
+			return "", fmt.Errorf("Connection closed unexpectedly while reading length (got %d bytes, expected 4)", len(lenBytes))
+		} else {
+			return "", fmt.Errorf("Failed to read length prefix: %v\n", err)
+		}
+	}
+
+	messageLen := binary.BigEndian.Uint32(lenBytes)
+
+	/*const maxMessageSize = 1024 * 1024 // e.g., 1MB limit
+	if messageLen > maxMessageSize {
+		return "", fmt.Errorf("Declared message length (%d) exceeds maximum (%d)\n", messageLen, maxMessageSize)
+	}*/
+	if messageLen == 0 {
+		return "", fmt.Errorf("Received zero length message.")
+	}
+
+	messageBytes := make([]byte, messageLen)
+	n, err := io.ReadFull(reader, messageBytes)
+	if err != nil {
+		if err == io.EOF { // Should ideally be ErrUnexpectedEOF if length was non-zero
+			return "", fmt.Errorf("connection closed before receiving full message body (got %d bytes, expected %d)\n", n, messageLen)
+		} else if err == io.ErrUnexpectedEOF {
+			return "", fmt.Errorf("connection closed unexpectedly while reading message body (got %d bytes, expected %d)\n", n, messageLen)
+		} else {
+			return "", fmt.Errorf("failed to read message body: %v\n", err)
+		}
+	}
+
+	// 5. Convert message bytes to string
+	return string(messageBytes), nil
+}
+
+func sendMessage(writer *bufio.Writer, message string) error {
+	messageBytes := []byte(message)
+	messageLen := uint32(len(messageBytes))
+	lenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBytes, messageLen)
+	n, err := writer.Write(lenBytes)
+	if err != nil {
+		return err
+	}
+	if n != 4 {
+		return fmt.Errorf("shortwrite lenbytes: %d", n)
+	}
+	n, err = writer.Write(messageBytes)
+	if err != nil {
+		return fmt.Errorf("err write messagebytes: %w", err)
+	}
+	if n != int(messageLen) {
+		return fmt.Errorf("shortwrite messagebytes: %d", n)
+	}
+	err = writer.Flush()
+	if err != nil {
+		return fmt.Errorf("errflush: %w", err)
+	}
+	return nil
 }
 
 // --- Default Command Handlers ---
