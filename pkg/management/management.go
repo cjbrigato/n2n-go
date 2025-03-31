@@ -195,7 +195,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 	defer conn.Close()
 	remoteAddr := conn.RemoteAddr().String() // Get address once for logging
 
-	log.Printf("mgmt: client connected: %s", remoteAddr)
+	//log.Printf("mgmt: client connected: %s", remoteAddr)
 
 	reader := bufio.NewReader(conn)
 	writer := bufio.NewWriter(conn)
@@ -232,7 +232,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 			return // Disconnect on wrong password
 		}
 		// Password is correct
-		log.Printf("mgmt: client authenticated successfully: %s", remoteAddr)
+		//log.Printf("mgmt: client authenticated successfully: %s", remoteAddr)
 		// Send confirmation (optional but good practice)
 		// fmt.Fprintln(writer, "OK: Authenticated") // Client needs to handle this extra line
 		// writer.Flush() // Ensure confirmation is sent before proceeding
@@ -240,7 +240,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 
 	} else {
 		// No password configured on server, connection allowed directly
-		log.Printf("mgmt: client connected (no auth required): %s", remoteAddr)
+		//log.Printf("mgmt: client connected (no auth required): %s", remoteAddr)
 	}
 	for {
 		// ... (Read deadline and read logic remains the same) ...
@@ -251,7 +251,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 		cmdLine, err := reader.ReadString('\n')
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				log.Printf("mgmt: client read timeout: %s", conn.RemoteAddr().String())
+				//log.Printf("mgmt: client read timeout: %s", conn.RemoteAddr().String())
 				fmt.Fprintln(writer, "error: Read timeout") // Inform client
 				writer.Flush()
 				return // Close connection on timeout
@@ -260,7 +260,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 			if err.Error() != "EOF" { // Don't log EOF as an error
 				log.Printf("mgmt: error reading command from %s: %v", conn.RemoteAddr().String(), err)
 			} else {
-				log.Printf("mgmt: client disconnected: %s", conn.RemoteAddr().String())
+				//log.Printf("mgmt: client disconnected: %s", conn.RemoteAddr().String())
 			}
 			return // Close connection
 		}
@@ -273,7 +273,7 @@ func (s *ManagementServer) handleConnection(conn net.Conn) {
 			continue // Ignore empty lines
 		}
 		if cmdLine == "quit" { // Special command for client to disconnect cleanly
-			log.Printf("mgmt: client %s requested quit.", conn.RemoteAddr().String())
+			//log.Printf("mgmt: client %s requested quit.", conn.RemoteAddr().String())
 			fmt.Fprintln(writer, "OK: Bye!")
 			writer.Flush()
 			return
