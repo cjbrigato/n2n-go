@@ -1,7 +1,7 @@
 package supernode
 
 import (
-	"log"
+	"n2n-go/pkg/log"
 	"time"
 )
 

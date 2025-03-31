@@ -4,7 +4,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"net"
 	"os"
 	"os/signal"
@@ -23,6 +23,14 @@ var (
 )
 
 func main() {
+
+	err := log.Init("edge.db")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	log.Printf("starting edge...")
+
 	b, _ := base64.StdEncoding.DecodeString(banner)
 	fmt.Printf(string(b), Version, BuildTime)
 

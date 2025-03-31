@@ -2,9 +2,9 @@ package supernode
 
 import (
 	"errors"
-	"log"
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/crypto"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/spec"
 	"net"

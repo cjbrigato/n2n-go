@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/hex"
-	"log"
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/crypto"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/machine"
+	"n2n-go/pkg/management"
 	"n2n-go/pkg/natclient"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
@@ -70,6 +71,7 @@ type EdgeClient struct {
 	PacketsRecv atomic.Uint64
 
 	EAPI *EdgeClientApi
+	Mgmt *management.ManagementServer
 
 	SNPubKey *rsa.PublicKey
 
@@ -145,6 +147,12 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		log.Fatalf("cannot instanciate payloadProcessor: %v", err)
 	}
 
+	mgmtServer := management.NewManagementServer("edge", cfg.Community)
+	err = mgmtServer.Start()
+	if err != nil {
+		log.Fatalf("Failed to start management server: %v", err)
+	}
+
 	edge := &EdgeClient{
 		Peers:             p2p.NewPeerRegistry(cfg.Community),
 		ID:                cfg.EdgeID,
@@ -152,6 +160,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		SupernodeAddr:     snAddr,
 		Conn:              conn,
 		TAP:               tap,
+		Mgmt:              mgmtServer,
 		seq:               0,
 		NatClient:         natClient,
 		MACAddr:           tap.HardwareAddr(),
@@ -222,6 +231,7 @@ func (e *EdgeClient) Close() {
 		log.Printf("nat: Cleaning up all portMappings...")
 		natclient.Cleanup(e.NatClient)
 	}
+	e.Mgmt.Stop()
 	e.cancel()
 
 	// Force read operations to unblock

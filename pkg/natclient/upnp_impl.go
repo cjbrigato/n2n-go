@@ -3,7 +3,7 @@ package natclient
 import (
 	"context"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"strings"
 	"time" // Needed for getLocalIP fallback
 

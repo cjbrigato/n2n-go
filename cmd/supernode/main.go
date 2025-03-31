@@ -4,7 +4,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/supernode"
 	"net"
 	"os"
@@ -22,6 +22,14 @@ var (
 )
 
 func main() {
+
+	err := log.Init("supernode.db")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	log.Printf("starting supernode...")
+
 	b, _ := base64.StdEncoding.DecodeString(banner)
 	fmt.Printf(string(b), Version, BuildTime)
 

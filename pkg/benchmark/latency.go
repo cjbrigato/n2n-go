@@ -2,9 +2,9 @@ package benchmark
 
 import (
 	"fmt"
-	"log"
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/edge"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/spec"
 	"n2n-go/pkg/supernode"
@@ -103,7 +103,7 @@ func benchmarkEndToEnd(opts *BenchmarkOptions) (*LatencyResults, error) {
 	// and measures ping latency between them
 
 	// 1. Start a supernode
-	log.Println("Starting temporary supernode...")
+	log.Printf("Starting temporary supernode...")
 	snPort := 17777
 	snAddr := fmt.Sprintf("127.0.0.1:%d", snPort)
 
@@ -581,11 +581,9 @@ func benchmarkProtocolOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 	for i := 0; i < opts.Iterations; i++ {
 		iterStart := time.Now()
 
+		packetBuf = protocol.PackProtoVDatagram(header, testData)
 
-		packetBuf = protocol.PackProtoVDatagram(header,testData)
-
-	
-		newHeader, payload,err := protocol.UnpackProtoVDatagram(packetBuf)
+		newHeader, payload, err := protocol.UnpackProtoVDatagram(packetBuf)
 		if err != nil {
 			log.Printf("Error unpacking datagram: %v", err)
 			continue

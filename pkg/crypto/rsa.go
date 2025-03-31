@@ -7,7 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 )
 
 type SNSecrets struct {

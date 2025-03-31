@@ -4,7 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"log"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol/netstruct"
 	"net/http"

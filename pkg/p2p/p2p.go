@@ -2,7 +2,7 @@ package p2p
 
 import (
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/protocol/spec"
 	"net"
 	"sync"
@@ -185,8 +185,6 @@ func (reg *PeerRegistry) GetPeer(MACAddr string) (*Peer, error) {
 	return peer, nil
 }
 
-
-
 func (reg *PeerRegistry) GetPeerBySocket(addr *net.UDPAddr) (*Peer, error) {
 	if addr == nil {
 		return nil, fmt.Errorf("cannot GetPeerBySocket with nil net.UDPAddr")
@@ -358,7 +356,7 @@ func (reg *PeerRegistry) HandlePeerInfoList(peerInfoList *PeerInfoList, reset bo
 			reg.Peers = make(map[string]*Peer)
 			reg.peerBySocket = make(map[string]*Peer)
 			reg.peerMu.Unlock()
-			log.Println("resetting peer registry")
+			log.Printf("resetting peer registry")
 		}
 		if peerInfoList.HasOrigin {
 			me := &Peer{

@@ -3,7 +3,7 @@ package tuntap
 import (
 	"errors"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"net"
 	"syscall"
 

@@ -3,7 +3,7 @@ package supernode
 import (
 	"bytes"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
@@ -109,7 +109,6 @@ func (c *Community) CommunityP2PState() (*p2p.CommunityP2PVizDatas, error) {
 	return p2p.NewCommunityP2PVizDatas(c.Name(), c.communityPeerP2PInfos,c.)
 }
 */
-
 
 func (c *Community) GetCommunityPeerP2PInfosDatas(edgeMacADDR string) (*p2p.P2PFullState, error) {
 	c.edgeMu.RLock()

@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"os"
 	"path"
 	"strings"
@@ -36,7 +36,7 @@ func appDir() string {
 	if appDirCache == "" {
 		s, err := os.UserHomeDir()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("%v", err)
 		}
 		appDirCache = path.Join(s, ".n2n-go")
 	}

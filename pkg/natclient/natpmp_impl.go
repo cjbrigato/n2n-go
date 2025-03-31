@@ -2,7 +2,7 @@ package natclient
 
 import (
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"net"
 	"strings"
 	"time"

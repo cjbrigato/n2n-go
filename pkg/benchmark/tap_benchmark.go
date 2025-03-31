@@ -2,7 +2,7 @@ package benchmark
 
 import (
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"n2n-go/pkg/tuntap"
 	"net"
 	"os/exec"

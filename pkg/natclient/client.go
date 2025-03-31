@@ -2,7 +2,7 @@ package natclient
 
 import (
 	"fmt"
-	"log"
+	"n2n-go/pkg/log"
 	"net"
 	"strings"
 	"time"
@@ -29,7 +29,7 @@ type NATClient interface {
 // Returns a NATClient interface instance on success, or nil if both methods fail.
 func SetupNAT(conn *net.UDPConn, edgeID string, dialAddr string) NATClient {
 	if conn == nil || conn.LocalAddr() == nil {
-		log.Println("NAT Setup: Invalid UDP connection provided.")
+		log.Printf("NAT Setup: Invalid UDP connection provided.")
 		return nil
 	}
 	localUDPAddr, ok := conn.LocalAddr().(*net.UDPAddr)
@@ -40,12 +40,12 @@ func SetupNAT(conn *net.UDPConn, edgeID string, dialAddr string) NATClient {
 
 	localIP, err := getLocalIP(dialAddr)
 	if err != nil {
-		log.Println("NAT Setup: Unable to get suitable LocalIP, no further NAT Setup")
+		log.Printf("NAT Setup: Unable to get suitable LocalIP, no further NAT Setup")
 		return nil
 	}
 	ipv4 := net.ParseIP(localIP)
 	if !ipv4.IsPrivate() {
-		log.Println("NAT Setup: local IP is public, no further  NAT Setup is required")
+		log.Printf("NAT Setup: found public/routable local ip: %s no further nat setup is required", localIP)
 		return nil
 	}
 
@@ -109,7 +109,7 @@ func SetupNAT(conn *net.UDPConn, edgeID string, dialAddr string) NATClient {
 				}
 				natClient = nil // Ensure it's nil
 			} else {
-				log.Println("NAT Setup: NAT-PMP/PCP port mapping added successfully.")
+				log.Printf("NAT Setup: NAT-PMP/PCP port mapping added successfully.")
 				natClient = pmpClient // Success!
 			}
 		} else {
@@ -186,7 +186,7 @@ func getLocalIP(dialAddr string) (string, error) {
 		if localAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
 			ipv4 := localAddr.IP.To4()
 			if ipv4 != nil && !ipv4.IsLoopback() && !ipv4.IsLinkLocalUnicast() {
-				log.Printf("getLocalIP: Found IP via Dial: %s", ipv4.String())
+				//log.Printf("getLocalIP: Found IP via Dial: %s", ipv4.String())
 				return ipv4.String(), nil
 			}
 		}
