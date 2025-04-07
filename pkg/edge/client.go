@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/hex"
+	"fmt"
 	"n2n-go/pkg/buffers"
 	"n2n-go/pkg/crypto"
 	"n2n-go/pkg/log"
@@ -85,6 +86,22 @@ type EdgeClient struct {
 	isWaitingForSNRetryRegisterResponse bool
 
 	payloadProcessor *transform.PayloadProcessor
+}
+
+func EnsureEdgeLogger() {
+	log.MustInit("edge")
+}
+
+func NewEdgeManagementClient() (*management.ManagementClient, error) {
+	cfg, err := LoadConfig(false) // Load config using Viper
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load configuration: %w", err)
+	}
+	client := management.NewManagementClient("edge", cfg.Community)
+	if isStarted := client.IsManagementServerStarted(); !isStarted {
+		return nil, fmt.Errorf("Unable to connect to edge management (is edge up and running ?)")
+	}
+	return client, nil
 }
 
 // NewEdgeClient creates a new EdgeClient with a cancellable context.

@@ -22,6 +22,7 @@ const (
 	defaultSocketDir = "/run/n2n-go"
 	okAuthString     = "OK:AUTHENTICATED"
 	nokAuthString    = "NOK:UNAUTHENTICATED"
+	pongString       = "OK: pong"
 )
 
 func GetDefaultSocketPath(app string) string {
@@ -382,7 +383,7 @@ func (s *ManagementServer) handleStatusCommand(args []string) (string, error) {
 
 func (s *ManagementServer) handlePingCommand(args []string) (string, error) {
 	// ... (Implementation remains the same) ...
-	return "OK: pong", nil
+	return pongString, nil
 }
 
 func (s *ManagementServer) handleLogsCommand(args []string) (string, error) {

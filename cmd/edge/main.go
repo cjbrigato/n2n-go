@@ -2,20 +2,11 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
-	stdlog "log"
-	"n2n-go/pkg/log"
-	"n2n-go/pkg/management"
-	"net"
 	"os"
-	"os/signal"
-	"strings"
-	"syscall"
-
-	"n2n-go/pkg/edge"
 
 	_ "github.com/cjbrigato/ensure/linux" // edge only works on linux right now
+	"github.com/urfave/cli/v2"
 )
 
 const banner = "ICAgICBfICAgICAgIF8KICAgIC8gL19fIF9ffCB8X18gXyAgX18gICAKIF8gLyAvIC1fKSBfYCAvIF9gIC8gLV8pICAKKF8pXy9cX19fXF9fLF9cX18sIFxfX198Ci0tLS0tLS0tLS0tLS0tfF9fXy9AbjJuLWdvLSVzIChidWlsdCAlcykgICAgICAK"
@@ -25,74 +16,39 @@ var (
 	BuildTime = "unknown"
 )
 
-func ctl(command string) {
-	cfg, err := edge.LoadConfig(false) // Load config using Viper
-	if err != nil {
-		stdlog.Fatalf("Failed to load configuration: %v", err)
+func main() {
+	// Define the main application
+	app := &cli.App{
+		Name:  "edge",
+		Usage: "n2n-go edge",
+		Commands: []*cli.Command{
+			logsCommand,
+		},
 	}
-	client := management.NewManagementClient("edge", cfg.Community)
-	res, err := client.SendCommand(command)
-	if err != nil {
-		stdlog.Fatalf("%v", err)
-	}
-	fmt.Println(res)
-	os.Exit(0)
-}
 
-func up() {
-	err := log.Init("edge.db")
+	// Run the application
+	err := app.Run(os.Args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Application Error: %v\n", err)
 		os.Exit(1)
 	}
-	log.Printf("starting edge...")
-
-	b, _ := base64.StdEncoding.DecodeString(banner)
-	fmt.Printf(string(b), Version, BuildTime)
-
-	cfg, err := edge.LoadConfig(true) // Load config using Viper
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
-	}
-	log.Printf("using config file %s", cfg.ConfigFile)
-
-	client, err := edge.NewEdgeClient(*cfg) // Pass the config struct
-	if err != nil {
-		log.Fatalf("Failed to create edge client: %v", err)
-	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal %s, shutting down gracefully...", sig)
-		client.Close()
-		os.Exit(0)
-	}()
-
-	if err := client.InitialSetup(); err != nil {
-		log.Printf("edge setup failed: %v", err)
-		client.Close()
-		os.Exit(127)
-	}
-	log.Printf("edge setup successful")
-	udpPort := client.Conn.LocalAddr().(*net.UDPAddr).Port
-	log.Printf("edge %s registered on local UDP port %d. TAP interface: %s",
-		cfg.EdgeID, udpPort, cfg.TapName)
-	headerFormat := "protoV"
-	log.Printf("Using %s header format - protocol v%d", headerFormat, client.ProtocolVersion())
-	log.Printf("edge node is running. Press Ctrl+C to stop.")
-
-	client.Run() // Start the edge client.
-
-	log.Printf("edge node has been shut down.")
 }
 
-func main() {
+/*
 	if len(os.Args) > 1 {
-		if os.Args[1] == "ctl" {
+		switch os.Args[1] {
+		case "ctl":
 			ctl(strings.Join(os.Args[2:], " "))
+		case "logs":
+			s := ""
+			if len(os.Args) > 2 {
+				s = os.Args[2]
+			}
+			logs(s)
+		case "up":
+			up()
 		}
 	}
-	up()
+	fmt.Printf("need ctl/logs/up args")
 }
+*/

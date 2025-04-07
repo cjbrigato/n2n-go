@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	connectTimeout = 2 * time.Second
+	connectTimeout = 1 * time.Second
 	// Slightly longer overall timeout to accommodate potential auth roundtrip + command
 	readWriteTimeout = 8 * time.Second
 	authTimeout      = 3 * time.Second // Specific timeout for sending password
@@ -26,6 +26,17 @@ func NewManagementClient(app string, password string) *ManagementClient {
 		password:   password,
 	}
 	return c
+}
+
+func (c *ManagementClient) IsManagementServerStarted() bool {
+	res, err := c.SendCommand("ping")
+	if err != nil {
+		return false
+	}
+	if res != pongString {
+		return false
+	}
+	return true
 }
 
 func (c *ManagementClient) SendCommand(command string) (string, error) {
