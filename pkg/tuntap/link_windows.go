@@ -72,8 +72,8 @@ func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error {
 		// via standard tools like netsh or APIs. It's usually set by the driver or registry.
 		// We'll log a warning and attempt to retrieve the current one.
 		log.Printf("Warning: Setting MAC address (%s) on Windows TAP interfaces is generally not supported via netsh/standard APIs.", macAddr)
-		currentHWAddr, err := i.hardwareAddr() // Use the existing method to get current addr
-		if err != nil {
+		currentHWAddr := i.HardwareAddr() // Use the existing method to get current addr
+		if currentHWAddr == nil {
 			log.Printf("Warning: Failed to retrieve current MAC address for interface %s: %v", ifNameIdentifier, err)
 		} else {
 			log.Printf("Current MAC address for interface %s (%s) is %s", ifNameIdentifier, i.Name(), currentHWAddr.String())
@@ -150,10 +150,10 @@ func (i *Interface) IfUp(ipCIDR string) error {
 func (i *Interface) IfMac(macAddr string) error {
 	log.Printf("Warning: Setting MAC address (%s) on Windows TAP interfaces is generally not supported programmatically.", macAddr)
 	// Attempt to retrieve and log the current MAC
-	currentHWAddr, err := i.hardwareAddr()
-	if err != nil {
-		log.Printf("Warning: Failed to retrieve current MAC address for interface %s: %v", i.Name(), err)
-		return fmt.Errorf("setting MAC not supported, and failed to retrieve current MAC: %w", err)
+	currentHWAddr := i.HardwareAddr()
+	if currentHWAddr == nil {
+		log.Printf("Warning: Failed to retrieve current MAC address for interface %s: %v", i.Name())
+		return fmt.Errorf("setting MAC not supported, and failed to retrieve current MAC")
 	}
 	log.Printf("Current MAC address for interface %s is %s (cannot be changed programmatically)", i.Name(), currentHWAddr.String())
 	return fmt.Errorf("setting MAC address (%s) is not supported on Windows", macAddr)
