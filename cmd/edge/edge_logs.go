@@ -219,7 +219,7 @@ func logsCmd(c *cli.Context) error {
 	// Note: We init the log package even if we are just reading,
 	// as it sets up the db handle internally. Consider optimizing
 	// this if initialization becomes heavy and you only need reads.
-	err := log.Init(dbFile)
+	err := log.Init("edge.db")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return cli.Exit(fmt.Sprintf("Error: Database file not found at '%s'", dbFile), 1)
