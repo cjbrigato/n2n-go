@@ -128,16 +128,16 @@ var (
 		Name:               "logs",
 		Usage:              "Retrieve JSON log entries from the application's log database",
 		UsageText:          "myapp logs [command options] [--last|--since|--between] [mode options]",
-		Description:        `Retrieves logs stored in an SQLite database specified with -f/--dbfile.`,
+		Description:        `Retrieves logs stored in an SQLite database specified with -f`,
 		CustomHelpTemplate: logsCommandHelpTemplate,
 		Flags: []cli.Flag{
-			// --- Common Options ---
+			/*// --- Common Options ---
 			&cli.StringFlag{
 				Name:     "dbfile",
 				Aliases:  []string{"f"},
 				Usage:    "Path to the SQLite log database file `PATH` (required)",
 				Required: true,
-			},
+			},*/
 			&cli.BoolFlag{
 				Name:    "pretty",                                                                     // New Flag
 				Aliases: []string{"p"},                                                                // New Flag
