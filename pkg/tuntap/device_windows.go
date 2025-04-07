@@ -30,7 +30,7 @@ const (
 	componentIDRegValue   = "ComponentId"
 	netCfgInstanceIDValue = "NetCfgInstanceID"
 	networkAddressValue   = "NetworkAddress" // Standard value name for MAC override
-	tapWindowsComponentID = "tap0901"
+	tapWindowsComponentID = `root\tap0901`
 	tapDevicePathFormat   = `\\.\Global\%s.tap`
 )
 
