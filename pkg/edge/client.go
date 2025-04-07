@@ -52,6 +52,7 @@ type EdgeClient struct {
 	NatClient natclient.NATClient
 
 	VirtualIP string
+	ParsedVirtualIP net.IP
 	MACAddr   net.HardwareAddr
 
 	machineId      []byte

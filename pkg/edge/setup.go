@@ -8,7 +8,6 @@ import (
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/netstruct"
 	"n2n-go/pkg/tuntap"
-	"n2n-go/pkg/util"
 	"net"
 	"strconv"
 	"time"
@@ -164,6 +163,10 @@ func (e *EdgeClient) InitialRegister() error {
 		return ErrNACKRegister
 	}
 	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
+	e.ParsedVirtualIP = net.ParseIP(e.VirtualIP)
+	if e.ParsedVirtualIP == nil {
+		return fmt.Errorf("invalid virtual IP in configuration: %s", e.VirtualIP)
+	}
 	log.Printf("Assigned virtual IP %s", e.VirtualIP)
 	log.Printf("Registration successful (ACK from %v)", addr)
 	e.registered = true
@@ -171,7 +174,13 @@ func (e *EdgeClient) InitialRegister() error {
 }
 
 func (e *EdgeClient) sendGratuitousARP() error {
-	return util.SendGratuitousARP(e.TAP.Name(), e.TAP.HardwareAddr(), net.ParseIP(e.VirtualIP))
+	if e.TAP == nil {
+		return fmt.Errorf("cannot send gratuitous ARP: EdgeClient's TAP interface is not initialized")
+	}
+	if e.ParsedVirtualIP == nil {
+		return fmt.Errorf("cannot send gratuitous ARP: EdgeClient's ParsedVirtualIP is nil (original IP string: %q)", e.VirtualIP)
+	}
+	return e.TAP.SendGratuitousARP(e.ParsedVirtualIP)
 }
 
 func (e *EdgeClient) TunUp() error {

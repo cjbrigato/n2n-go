@@ -5,7 +5,6 @@ package tuntap
 import (
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -55,7 +54,8 @@ func findInterfaceNameByGUID(guid string) (string, error) {
 
 // ConfigureInterface uses netsh commands on Windows.
 // NOTE: This is less robust than using Windows APIs like IpHlpAPI or WMI,
-//       but simpler to implement initially. Requires Administrator privileges.
+//
+//	but simpler to implement initially. Requires Administrator privileges.
 func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error {
 	// On Windows, i.Name() holds the GUID from device creation. We need the name netsh uses.
 	ifNameIdentifier, err := findInterfaceNameByGUID(i.Name())
