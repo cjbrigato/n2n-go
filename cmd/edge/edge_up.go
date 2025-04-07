@@ -9,8 +9,32 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/urfave/cli/v2"
 )
 
+// --- CLI Definition ---
+
+var (
+	// Define the 'logs' subcommand
+	upCommand = &cli.Command{
+		Name:               "up",
+		Usage:              "starts edge instance",
+		UsageText:          "up [args...]",
+		Description:        `starts edge instance`,
+		CustomHelpTemplate: logsCommandHelpTemplate,
+		Flags:              []cli.Flag{
+			// --- Common Options ---
+
+		},
+		Action: upCmd,
+	}
+)
+
+func upCmd(c *cli.Context) error {
+	up()
+	return nil
+}
 func up() {
 	edge.EnsureEdgeLogger()
 	log.Printf("starting edge...")

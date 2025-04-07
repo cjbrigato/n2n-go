@@ -23,6 +23,7 @@ func main() {
 		Usage: "n2n-go edge",
 		Commands: []*cli.Command{
 			logsCommand,
+			upCommand,
 		},
 	}
 
