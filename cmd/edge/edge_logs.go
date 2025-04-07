@@ -77,7 +77,7 @@ USAGE:
    {{.HelpName}} {{if .UsageText}}{{.UsageText}}{{else}}[command options] argument...{{end}}
 {{if .Description}}
 DESCRIPTION:
-   {{.Description | Indent 4}}
+   {{.Description}}
 {{end}}
 MODES (choose one; defaults to --last if no mode specified):
      --last                 Retrieve the most recent N log entries.
