@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	_ "github.com/cjbrigato/ensure/linux" // edge only works on linux right now
+	//_ "github.com/cjbrigato/ensure/linux" // edge only works on linux right now
 	"github.com/urfave/cli/v2"
 )
 
