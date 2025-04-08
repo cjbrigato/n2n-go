@@ -7,9 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"n2n-go/pkg/appdir"
 	"n2n-go/pkg/log"
 	"net"
 	"os"
+	"path"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -19,10 +22,13 @@ import (
 )
 
 const (
+	okAuthString  = "OK:AUTHENTICATED"
+	nokAuthString = "NOK:UNAUTHENTICATED"
+	pongString    = "OK: pong"
+)
+
+var (
 	defaultSocketDir = "/run/n2n-go"
-	okAuthString     = "OK:AUTHENTICATED"
-	nokAuthString    = "NOK:UNAUTHENTICATED"
-	pongString       = "OK: pong"
 )
 
 func GetDefaultSocketPath(app string) string {
@@ -52,6 +58,9 @@ type ManagementServer struct {
 }
 
 func ensureSocketDir() {
+	if runtime.GOOS == "windows" {
+		defaultSocketDir = path.Join(appdir.AppDir())
+	}
 	dir := defaultSocketDir
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.Mkdir(dir, 0755)
