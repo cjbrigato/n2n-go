@@ -362,8 +362,8 @@ func Create(config Config) (*Device, error) {
 		windows.GENERIC_READ|windows.GENERIC_WRITE,       // Prefixed
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, // Prefixed
 		nil,
-		windows.OPEN_EXISTING, // Prefixed
-		windows.FILE_ATTRIBUTE_SYSTEM|windows.FILE_FLAG_OVERLAPPED, // Prefixed
+		windows.OPEN_EXISTING,         // Prefixed
+		windows.FILE_ATTRIBUTE_SYSTEM, //|windows.FILE_FLAG_OVERLAPPED, // Prefixed
 		0)
 	// --- End Correction ---
 
