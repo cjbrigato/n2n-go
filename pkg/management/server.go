@@ -69,6 +69,7 @@ func ensureSocketDir() {
 
 // NewManagementServer creates a new management server.
 func NewManagementServer(app string, password string) *ManagementServer {
+	ensureSocketDir()
 	s := &ManagementServer{
 		socketPath: GetDefaultSocketPath(app),
 		handlers:   make(map[string]CommandInfo), // <-- Changed type
@@ -76,7 +77,7 @@ func NewManagementServer(app string, password string) *ManagementServer {
 		startTime:  time.Now(),
 		password:   password, // <-- Store password
 	}
-	ensureSocketDir()
+
 	// Register a default "status" handler
 	s.RegisterHandler("status", "Show daemon status and uptime", s.handleStatusCommand)
 	s.RegisterHandler("ping", "Check if the daemon's management interface is responsive", s.handlePingCommand)
