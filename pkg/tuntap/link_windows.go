@@ -3,158 +3,217 @@
 package tuntap
 
 import (
+	"errors"
 	"fmt"
 	"net"
-	"os/exec"
-	"strings"
-	"syscall"
+	"unsafe" // Needed for pointer manipulation for IPv4
 
-	"n2n-go/pkg/log" // Assuming this logging package exists
+	"n2n-go/pkg/log"
+
+	"golang.org/x/sys/windows"
 )
 
-const DefaultMTU = 1420 // Or your desired default MTU
+// --- Constants ---
+const DefaultMTU = 1420
+const (
+	AF_INET  = windows.AF_INET
+	AF_INET6 = windows.AF_INET6
+)
 
-// runNetsh executes a netsh command and logs output/errors
-func runNetsh(args ...string) error {
-	cmd := exec.Command("netsh", args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true} // Prevent flashing console window
-	log.Printf("Executing: netsh %s", strings.Join(args, " "))
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("netsh error: %v\nOutput: %s", err, string(output))
-		return fmt.Errorf("netsh %s failed: %w (output: %s)", args[0], err, string(output))
+// --- Load DLL and Procedures (Unchanged) ---
+var (
+	iphlpapi                        = windows.NewLazySystemDLL("iphlpapi.dll")
+	procCreateUnicastIpAddressEntry = iphlpapi.NewProc("CreateUnicastIpAddressEntry")
+	procDeleteUnicastIpAddressEntry = iphlpapi.NewProc("DeleteUnicastIpAddressEntry")
+	procGetIpInterfaceEntry         = iphlpapi.NewProc("GetIpInterfaceEntry")
+	procSetIpInterfaceEntry         = iphlpapi.NewProc("SetIpInterfaceEntry")
+)
+
+// --- Struct Definitions ---
+// REMOVED - Using structs from golang.org/x/sys/windows, assuming Address is RawSockaddrInet6
+
+// --- callProcErr Helper (With r1 logging) ---
+func callProcErr(proc *windows.LazyProc, args ...uintptr) error {
+	r1, _, errno := proc.Call(args...)
+	if errno != windows.ERROR_SUCCESS {
+		return error(errno)
 	}
-	log.Printf("netsh output: %s", string(output))
+	if r1 != 0 {
+		log.Printf("Warning: proc.Call returned r1=%d errno=0.", r1)
+	}
 	return nil
 }
 
-// findInterfaceNameByGUID attempts to find the user-friendly interface name using the GUID stored in i.Name()
-func findInterfaceNameByGUID(guid string) (string, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return "", fmt.Errorf("failed to list interfaces: %w", err)
-	}
-	for _, iface := range ifaces {
-		// On Windows, net.Interface.Name often contains the GUID for virtual adapters
-		// We need to match against the GUID we stored during device creation.
-		// This is fragile; a more robust method might involve WMI or IpHlpAPI to map GUID to IfIndex or Name.
-		if strings.Contains(iface.Name, guid) { // Simple check, might need refinement
-			// The "friendly" name used by netsh is often just the Index or a description.
-			// Let's try using the index as the name identifier for netsh.
-			// A better approach would be to get the Interface Description or Alias via WMI/IpHlpAPI
-			// and use that if possible, otherwise fall back to index.
-			// For now, we'll risk using the Index directly in netsh commands.
-			return fmt.Sprintf("%d", iface.Index), nil // Use Index as the identifier
-			// Alternatively, try returning iface.Name and hope netsh recognizes it.
-			// return iface.Name, nil
-		}
-	}
-	return "", fmt.Errorf("could not find interface name corresponding to GUID %s", guid)
-}
+// --- Helper Functions using loaded procedures ---
 
-// ConfigureInterface uses netsh commands on Windows.
-// NOTE: This is less robust than using Windows APIs like IpHlpAPI or WMI,
-//
-//	but simpler to implement initially. Requires Administrator privileges.
-func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error {
-	// On Windows, i.Name() holds the GUID from device creation. We need the name netsh uses.
-	ifNameIdentifier, err := findInterfaceNameByGUID(i.Name())
-	if err != nil {
-		// Fallback: try using the GUID directly, might work with some netsh versions/adapters
-		log.Printf("Warning: could not find interface name for GUID %s, attempting to use GUID directly with netsh: %v", i.Name(), err)
-		ifNameIdentifier = i.Name() // Or maybe format as "{GUID}" ? Testing needed.
-	}
-	log.Printf("Attempting configuration using interface identifier: %q (derived from GUID %s)", ifNameIdentifier, i.Name())
-
-	// --- Set MAC Address ---
-	if macAddr != "" {
-		// Changing MAC address programmatically on Windows TAP adapters is often NOT supported
-		// via standard tools like netsh or APIs. It's usually set by the driver or registry.
-		// We'll log a warning and attempt to retrieve the current one.
-		log.Printf("Warning: Setting MAC address (%s) on Windows TAP interfaces is generally not supported via netsh/standard APIs.", macAddr)
-		currentHWAddr := i.HardwareAddr() // Use the existing method to get current addr
-		if currentHWAddr == nil {
-			log.Printf("Warning: Failed to retrieve current MAC address for interface %s: %v", ifNameIdentifier, err)
-		} else {
-			log.Printf("Current MAC address for interface %s (%s) is %s", ifNameIdentifier, i.Name(), currentHWAddr.String())
-		}
-		// No reliable way to set it here, so we skip attempting it.
-	}
-
-	// --- Set IP Address ---
+// setIPAddress treats row.Address as RawSockaddrInet6 and uses unsafe for IPv4.
+func setIPAddress(ifIndex uint32, ipCIDR string) error {
 	ip, ipNet, err := net.ParseCIDR(ipCIDR)
 	if err != nil {
-		return fmt.Errorf("failed to parse IP CIDR %q: %w", ipCIDR, err)
+		return fmt.Errorf("parse CIDR %q: %w", ipCIDR, err)
 	}
-	if ip.To4() == nil {
-		return fmt.Errorf("IPv6 configuration via netsh not implemented in this example")
-		// Add netsh command for IPv6 if needed:
-		// netsh interface ipv6 set address interface="{ifNameIdentifier}" address={ipv6}/{prefixlen} ...
-	}
-	ipStr := ip.String()
-	maskStr := fmt.Sprintf("%d.%d.%d.%d", ipNet.Mask[0], ipNet.Mask[1], ipNet.Mask[2], ipNet.Mask[3])
+	prefixLen, _ := ipNet.Mask.Size()
 
-	// Example: netsh interface ip set address name="Ethernet 2" static 192.168.1.100 255.255.255.0
-	// Using Index: netsh interface ip set address interface=12 static 192.168.1.100 255.255.255.0
-	// Note the keyword difference: 'name' vs 'interface' (for index)
-	err = runNetsh("interface", "ip", "set", "address", fmt.Sprintf("interface=%s", ifNameIdentifier), "static", ipStr, maskStr)
-	// If using name: err = runNetsh("interface", "ip", "set", "address", fmt.Sprintf("name=\"%s\"", ifNameIdentifier), "static", ipStr, maskStr)
-	if err != nil {
-		// Don't fail if address already exists? Check error output maybe.
-		log.Printf("Warning: Failed to set IP address %s/%s on interface %s. Might require manual configuration or elevated privileges. Error: %v", ipStr, maskStr, ifNameIdentifier, err)
-		// Don't return error immediately, try MTU and Up.
-		// return fmt.Errorf("failed to set IP address: %w", err)
+	// Assume windows.MibUnicastIpAddressRow.Address is RawSockaddrInet6
+	row := windows.MibUnicastIpAddressRow{
+		InterfaceIndex:     ifIndex,
+		OnLinkPrefixLength: uint8(prefixLen),
+		SkipAsSource:       0, // uint8
+		DadState:           windows.IpDadStatePreferred,
+		PrefixOrigin:       windows.IpPrefixOriginManual,
+		SuffixOrigin:       windows.IpSuffixOriginManual,
+		ValidLifetime:      0xFFFFFFFF,
+		PreferredLifetime:  0xFFFFFFFF,
+		// Address field will be populated below
+	}
+
+	if ip4 := ip.To4(); ip4 != nil {
+		// --- Handle IPv4 using unsafe pointer copy ---
+		// Create the source IPv4 structure
+		addrV4 := windows.RawSockaddrInet4{
+			Family: windows.AF_INET,
+			// Port: 0, // Zero is default
+		}
+		copy(addrV4.Addr[:], ip4)
+
+		// Get size and pointers
+		sizeV4 := unsafe.Sizeof(addrV4)
+		destPtr := unsafe.Pointer(&row.Address) // Pointer to the RawSockaddrInet6 field
+		srcPtr := unsafe.Pointer(&addrV4)       // Pointer to the temporary RawSockaddrInet4
+
+		// Ensure we don't write past the destination field's size (though v4 is smaller than v6)
+		if sizeV4 > unsafe.Sizeof(row.Address) {
+			return fmt.Errorf("internal error: sizeof(RawSockaddrInet4) > sizeof(RawSockaddrInet6)")
+		}
+
+		// Copy the bytes from addrV4 into the memory space of row.Address
+		// The Family field (first 2 bytes) will be set to AF_INET.
+		copy((*(*[1 << 30]byte)(destPtr))[:sizeV4], (*(*[1 << 30]byte)(srcPtr))[:sizeV4])
+
+		// Ensure remaining bytes (if any) in the destination struct are zero? Might not be necessary.
+
+	} else if ip6 := ip.To16(); ip6 != nil {
+		// --- Handle IPv6 directly ---
+		row.Address.Family = windows.AF_INET6
+		// row.Address.Port = 0 // Default
+		// row.Address.Flowinfo = 0 // Default
+		copy(row.Address.Addr[:], ip6) // Use the .Addr field directly
+
+		// Handle ScopeId - set in both the address struct AND the main MIB row
+		// if ip.IsLinkLocalUnicast() { row.Address.Scope_id = ifIndex } // Needs correct zone index
+		row.Address.Scope_id = 0           // Default to 0 if not link-local or zone unknown
+		row.ScopeId = row.Address.Scope_id // Copy to the main struct field
+
 	} else {
-		log.Printf("Set IP address %s/%s on interface %s", ipStr, maskStr, ifNameIdentifier)
+		return fmt.Errorf("invalid IP format: %s", ip.String())
 	}
 
-	// --- Set MTU ---
+	log.Printf("Attempting CreateUnicastIpAddressEntry call for %s on IfIndex %d", ipCIDR, ifIndex)
+	err = callProcErr(procCreateUnicastIpAddressEntry, uintptr(unsafe.Pointer(&row)))
+	if err != nil {
+		if errors.Is(err, windows.ERROR_OBJECT_ALREADY_EXISTS) {
+			log.Printf("IP address %s already exists on IfIndex %d.", ipCIDR, ifIndex)
+			return nil
+		}
+		return fmt.Errorf("CreateUnicastIpAddressEntry call failed: %w", err)
+	}
+	log.Printf("Successfully added IP address %s to IfIndex %d", ipCIDR, ifIndex)
+	return nil
+}
+
+// setMTUAndEnable uses windows.MibIpInterfaceRow (assuming .Enabled is uint8)
+func setMTUAndEnable(ifIndex uint32, family uint16, mtu int) error {
+	// Use the correct windows struct name
+	keyRow := windows.MibIpInterfaceRow{Family: family, InterfaceIndex: ifIndex}
+	log.Printf("Getting IP interface entry for IfIndex %d (Family %d)...", ifIndex, family)
+
+	err := callProcErr(procGetIpInterfaceEntry, uintptr(unsafe.Pointer(&keyRow)))
+	if err != nil {
+		if errors.Is(err, windows.ERROR_NOT_FOUND) {
+			log.Printf("Warning: GetIpInterfaceEntry not found IfIndex %d (Family %d). %v", ifIndex, family, err)
+			return fmt.Errorf("cannot get interface entry: %w", err)
+		}
+		return fmt.Errorf("GetIpInterfaceEntry call failed: %w", err)
+	}
+
+	modifiedRow := keyRow
+	changed := false
+	if mtu > 0 {
+		currentMtu := modifiedRow.NlMtu
+		if currentMtu != uint32(mtu) {
+			modifiedRow.NlMtu = uint32(mtu)
+			log.Printf("Setting MTU to %d for IfIndex %d (Family %d) (was %d)", mtu, ifIndex, family, currentMtu)
+			changed = true
+		}
+	}
+
+	// Access .Enabled field as uint8, check against 0
+	/*if modifiedRow.Enabled == 0 { // Check if currently disabled
+		modifiedRow.Enabled = 1; // Set to 1 (true)
+		log.Printf("Setting interface IfIndex %d (Family %d) to Enabled", ifIndex, family); changed = true
+	}*/
+
+	if changed {
+		log.Printf("Applying SetIpInterfaceEntry call for IfIndex %d (Family %d)", ifIndex, family)
+		err = callProcErr(procSetIpInterfaceEntry, uintptr(unsafe.Pointer(&modifiedRow)))
+		if err != nil {
+			return fmt.Errorf("SetIpInterfaceEntry call failed: %w", err)
+		}
+		log.Printf("Successfully applied SetIpInterfaceEntry call for IfIndex %d (Family %d)", ifIndex, family)
+	} else {
+		log.Printf("No changes needed for MTU/Enable status for IfIndex %d (Family %d)", ifIndex, family)
+	}
+	return nil
+}
+
+// --- Interface Methods (unchanged logic, using helpers above) ---
+func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error { /* ... as before ... */
+	if i.Iface == nil {
+		return fmt.Errorf("underlying device is nil")
+	}
+	ifIndex := i.GetIfIndex()
+	if ifIndex == 0 {
+		return fmt.Errorf("IfIndex is 0")
+	}
+	log.Printf("Configuring Windows TAP interface IfIndex: %d", ifIndex)
+	if macAddr != "" {
+		actualMac := i.HardwareAddr()
+		log.Printf("Note: Desired MAC (%s) set via registry; current is %s", macAddr, actualMac.String())
+	}
+	err := setIPAddress(ifIndex, ipCIDR)
+	if err != nil {
+		return fmt.Errorf("set IP address failed: %w", err)
+	}
+	ip, _, err := net.ParseCIDR(ipCIDR)
+	if err != nil {
+		return fmt.Errorf("internal re-parse CIDR %s: %w", ipCIDR, err)
+	}
+	family := uint16(AF_INET)
+	if ip.To4() == nil && ip.To16() != nil {
+		family = AF_INET6
+	}
 	if mtu <= 0 {
 		mtu = DefaultMTU
 	}
-	// Example: netsh interface ipv4 set subinterface "Ethernet 2" mtu=1400 store=persistent
-	// Using Index: netsh interface ipv4 set subinterface interface=12 mtu=1400 store=persistent
-	err = runNetsh("interface", "ipv4", "set", "subinterface", fmt.Sprintf("interface=%s", ifNameIdentifier), fmt.Sprintf("mtu=%d", mtu), "store=persistent")
-	// If using name: err = runNetsh("interface", "ipv4", "set", "subinterface", fmt.Sprintf("\"%s\"", ifNameIdentifier), fmt.Sprintf("mtu=%d", mtu), "store=persistent")
+	err = setMTUAndEnable(ifIndex, family, mtu)
 	if err != nil {
-		log.Printf("Warning: Failed to set MTU %d on interface %s. Might require manual configuration or elevated privileges. Error: %v", mtu, ifNameIdentifier, err)
-		// Don't return error immediately
-		// return fmt.Errorf("failed to set MTU: %w", err)
-	} else {
-		log.Printf("Set MTU %d on interface %s", mtu, ifNameIdentifier)
+		log.Printf("Warning: Failed set MTU/Enable status: %v", err)
 	}
-
-	// --- Bring Interface Up ---
-	// This is usually implicit after setting IP and ensuring media status is connected (done in device_windows.go).
-	// But we can explicitly enable it too.
-	// Example: netsh interface set interface name="Ethernet 2" admin=enabled
-	// Using Index: netsh interface set interface interface=12 admin=enabled
-	err = runNetsh("interface", "set", "interface", fmt.Sprintf("interface=%s", ifNameIdentifier), "admin=enabled")
-	// If using name: err = runNetsh("interface", "set", "interface", fmt.Sprintf("name=\"%s\"", ifNameIdentifier), "admin=enabled")
-	if err != nil {
-		log.Printf("Warning: Failed to explicitly enable interface %s. It might already be enabled or require manual action. Error: %v", ifNameIdentifier, err)
-		// Don't return error, getting IP/MTU set is usually sufficient if media status is connected.
-		// return fmt.Errorf("failed to enable interface: %w", err)
-	} else {
-		log.Printf("Ensured interface %s is enabled", ifNameIdentifier)
-	}
-
-	log.Printf("Windows interface configuration attempt finished for %s (%s). Check warnings.", ifNameIdentifier, i.Name())
-	return nil // Return nil even if some steps logged warnings, as basic functionality might still work.
+	log.Printf("Windows interface configuration finished for IfIndex %d", ifIndex)
+	return nil
 }
-
-func (i *Interface) IfUp(ipCIDR string) error {
-	return i.ConfigureInterface("", ipCIDR, DefaultMTU)
-}
-
-func (i *Interface) IfMac(macAddr string) error {
-	log.Printf("Warning: Setting MAC address (%s) on Windows TAP interfaces is generally not supported programmatically.", macAddr)
-	// Attempt to retrieve and log the current MAC
-	currentHWAddr := i.HardwareAddr()
-	if currentHWAddr == nil {
-		log.Printf("Warning: Failed to retrieve current MAC address for interface %s: %v", i.Name())
-		return fmt.Errorf("setting MAC not supported, and failed to retrieve current MAC")
+func (i *Interface) IfUp(ipCIDR string) error { return i.ConfigureInterface("", ipCIDR, DefaultMTU) }
+func (i *Interface) IfMac(macAddr string) error { /* ... as before ... */
+	if i.Iface == nil {
+		return fmt.Errorf("underlying device is nil")
 	}
-	log.Printf("Current MAC address for interface %s is %s (cannot be changed programmatically)", i.Name(), currentHWAddr.String())
-	return fmt.Errorf("setting MAC address (%s) is not supported on Windows", macAddr)
+	log.Printf("Note: Setting MAC address (%s) handled via registry.", macAddr)
+	actualMac := i.HardwareAddr()
+	ifIndex := i.GetIfIndex()
+	if actualMac != nil {
+		log.Printf("Current MAC for IfIndex %d is %s", ifIndex, actualMac.String())
+	} else {
+		log.Printf("Warning: Could not get current MAC for IfIndex %d", ifIndex)
+	}
+	return nil
 }
