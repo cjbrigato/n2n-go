@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+var tapcfg = tuntap.Config{
+	Name:    "benchmark_tap0",
+	DevType: tuntap.TAP,
+}
+
 // Debug flag for verbose logging
 var DEBUG = false
 
@@ -62,7 +67,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 
 	// Create TAP interfaces
 	debugLog("Creating first TAP interface: %s", opts.TAPInterface1)
-	tap1, err := tuntap.NewInterface(opts.TAPInterface1, "tap")
+	tap1, err := tuntap.NewInterface(tapcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TAP interface %s: %w",
 			opts.TAPInterface1, err)
@@ -71,7 +76,7 @@ func BenchmarkTAP(opts *TAPBenchmarkOptions) (*LatencyResults, error) {
 	defer cleanupInterface(opts.TAPInterface1)
 
 	debugLog("Creating second TAP interface: %s", opts.TAPInterface2)
-	tap2, err := tuntap.NewInterface(opts.TAPInterface2, "tap")
+	tap2, err := tuntap.NewInterface(tapcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TAP interface %s: %w",
 			opts.TAPInterface2, err)

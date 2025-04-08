@@ -5,6 +5,25 @@ import (
 	stdlog "log"
 	"n2n-go/pkg/edge"
 	"os"
+	"strings"
+
+	"github.com/urfave/cli/v2"
+)
+
+var (
+	// Define the 'logs' subcommand
+	ctlCommand = &cli.Command{
+		Name:               "ctl",
+		Usage:              "controls edge via management socket",
+		UsageText:          "ctl [args...]",
+		Description:        `controls edge via management socket`,
+		CustomHelpTemplate: logsCommandHelpTemplate,
+		Flags:              []cli.Flag{
+			// --- Common Options ---
+
+		},
+		Action: ctlCmd,
+	}
 )
 
 func ctl(command string) {
@@ -18,4 +37,11 @@ func ctl(command string) {
 	}
 	fmt.Println(res)
 	os.Exit(0)
+}
+
+func ctlCmd(c *cli.Context) error {
+	s := strings.Join(c.Args().Slice(), " ")
+	fmt.Println(s)
+	ctl(s)
+	return nil
 }

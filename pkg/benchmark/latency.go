@@ -405,14 +405,14 @@ func benchmarkTAPOnly(opts *BenchmarkOptions) (*LatencyResults, error) {
 	log.Printf("Creating TAP interfaces %s and %s...", tap1Name, tap2Name)
 
 	// Create and configure TAP interfaces
-	tap1, err := tuntap.NewInterface(tap1Name, "tap")
+	tap1, err := tuntap.NewInterface(tapcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TAP interface %s: %w", tap1Name, err)
 	}
 	defer tap1.Close()
 	defer cleanupInterface(tap1Name)
 
-	tap2, err := tuntap.NewInterface(tap2Name, "tap")
+	tap2, err := tuntap.NewInterface(tapcfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create TAP interface %s: %w", tap2Name, err)
 	}
