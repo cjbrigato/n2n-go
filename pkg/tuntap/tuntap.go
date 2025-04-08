@@ -49,8 +49,9 @@ func NewInterface(config Config) (*Interface, error) {
 	if mac := iface.GetMACAddress(); mac != nil {
 		logMsg += fmt.Sprintf(", MAC: %s", mac.String())
 	}
-	fmt.Println(logMsg) // Use proper logging in real code
-
+	if runtime.GOOS == "linux" {
+		fmt.Println(logMsg) // Use proper logging in real code
+	}
 	return &Interface{Iface: iface}, nil
 }
 

@@ -44,9 +44,9 @@ func Create(config Config) (*Device, error) {
 	if config.DevType != TAP {
 		return nil, fmt.Errorf("only TAP supported")
 	}
-	if config.MACAddress != "" {
+	/*if config.MACAddress != "" {
 		fmt.Fprintf(os.Stderr, "Warning: Config MACAddress (%s) ignored on Linux.\n", config.MACAddress)
-	}
+	}*/
 	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("linux: open /dev/net/tun: %w", err)
