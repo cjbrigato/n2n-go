@@ -32,7 +32,7 @@ Once edges discover each other through the supernode, they establish direct peer
 
 ## OS Compatibility
 - **Supernode**: can run on any GOOS
-- **Edge**: only run on linux right now (compilation will fail early thanks to `github.com/cjbrigato/ensure` package) but windows/darwin/*bsd compatibility is planned
+- **Edge**: ~~only run on linux right now (compilation will fail early thanks to `github.com/cjbrigato/ensure` package) but windows~~ can run on linux, windows (if you are dedicated and lucky), darwin/*bsd compatibility is planned
 
 ## Installation
 
@@ -40,7 +40,8 @@ Once edges discover each other through the supernode, they establish direct peer
 
 - Go 1.16+
 - Linux with TAP interface support
-- Root/sudo privileges (required for creating TAP interfaces)
+- Windows with [tap-windows6](https://github.com/OpenVPN/tap-windows6) driver installed as "TAP0901" ComponentID
+- Root/sudo privileges (required for creating TAP interfaces) / Administrator privileges on Windows (required for nearly everything...)
 
 ### Building from Source
 
