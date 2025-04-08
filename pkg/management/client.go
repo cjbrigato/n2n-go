@@ -21,6 +21,7 @@ type ManagementClient struct {
 }
 
 func NewManagementClient(app string, password string) *ManagementClient {
+	ensureSocketDir()
 	c := &ManagementClient{
 		socketPath: GetDefaultSocketPath(app),
 		password:   password,
