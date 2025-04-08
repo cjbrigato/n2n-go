@@ -249,6 +249,95 @@ func findAndConfigureTapDevice(config Config) (devPath, instanceID string, ifIdx
 	return devPath, instanceID, ifIdx, currentMAC, nil
 }
 
+/*
+// findAndConfigureTapDevice searches registry, validates MAC, sets MAC, finds IfIndex/MAC via API.
+func findAndConfigureTapDevice(config Config) (devPath, instanceID string, ifIdx uint32, currentMAC net.HardwareAddr, err error) {
+	var targetMAC net.HardwareAddr // Store the parsed MAC
+	var targetMACRegistryFormat string // Store the formatted string for registry
+
+	if config.MACAddress != "" {
+		// 1. Parse the provided MAC string
+		targetMAC, err = net.ParseMAC(config.MACAddress)
+		if err != nil {
+			return "", "", 0, nil, fmt.Errorf("invalid MAC address format in config '%s': %w", config.MACAddress, err)
+		}
+        if len(targetMAC) != 6 {
+             return "", "", 0, nil, fmt.Errorf("parsed MAC address '%s' is not 6 bytes long", targetMAC.String())
+        }
+
+
+		// 2. Validate the parsed MAC address
+        // Check for Multicast bit (LSB of first octet)
+        if (targetMAC[0] & 0x01) != 0 {
+            return "", "", 0, nil, fmt.Errorf("invalid MAC address '%s': multicast bit is set (must not be multicast)", targetMAC.String())
+        }
+        // Check for Locally Administered bit (second LSB of first octet)
+        if (targetMAC[0] & 0x02) == 0 {
+            // This is often a requirement or strong recommendation for virtual adapters
+            log.Printf("Warning: MAC address '%s' does not have the locally administered bit set. This might cause issues.", targetMAC.String())
+            // Depending on strictness, you might choose to return an error here instead:
+            // return "", "", 0, nil, fmt.Errorf("invalid MAC address '%s': locally administered bit is not set", targetMAC.String())
+        }
+
+		// 3. Format for registry (assuming your version now includes hyphens)
+		targetMACRegistryFormat, err = formatMACForRegistry(config.MACAddress) // Use the formatter
+		if err != nil {
+			// Should not happen if ParseMAC succeeded, but check defensively
+			return "", "", 0, nil, fmt.Errorf("failed to format validated MAC '%s' for registry: %w", targetMAC.String(), err)
+		}
+		log.Printf("Validated and formatted target MAC for registry: %s", targetMACRegistryFormat)
+	}
+
+	// --- Registry search logic remains the same ---
+	key, err := registry.OpenKey(registry.LOCAL_MACHINE, networkAdaptersRegKey, registry.ENUMERATE_SUB_KEYS|registry.QUERY_VALUE)
+	if err != nil { return "", "", 0, nil, fmt.Errorf("failed open adapters key: %w", err) }; defer key.Close()
+	subkeys, err := key.ReadSubKeyNames(-1); if err != nil { return "", "", 0, nil, fmt.Errorf("failed read subkeys: %w", err) }
+
+	foundInRegistry := false; var foundSubkeyName string
+	for _, subkeyName := range subkeys {
+		access := uint32(registry.QUERY_VALUE); if targetMACRegistryFormat != "" { access |= registry.SET_VALUE } // Check if formatted string exists
+		subkey, errOpen := registry.OpenKey(key, subkeyName, access)
+		if errOpen != nil && targetMACRegistryFormat != "" { } else if errOpen != nil {  continue }
+
+		compID, _, errComp := subkey.GetStringValue(componentIDRegValue)
+		if errComp == nil && compID == tapWindowsComponentID {
+			guid, _, errGuid := subkey.GetStringValue(netCfgInstanceIDValue); if errGuid != nil { subkey.Close(); continue }
+			instanceID = guid; foundInRegistry = true; foundSubkeyName = subkeyName; subkey.Close(); break
+		}
+		subkey.Close()
+	}
+	if !foundInRegistry { return "", "", 0, nil, errors.New("no TAP adapter (ComponentId=" + tapWindowsComponentID + ") found in registry") }
+
+	// --- API lookup remains the same ---
+	ifIdx, currentMAC, err = findInterfaceIndexAndInfoByGUID(instanceID); if err != nil { return "", "", 0, nil, fmt.Errorf("found TAP in registry (GUID %s) but API lookup failed: %w", instanceID, err) }
+
+	// --- Set registry value using the validated+formatted string ---
+	if targetMACRegistryFormat != "" {
+		subkeyWrite, errOpenWrite := registry.OpenKey(key, foundSubkeyName, registry.SET_VALUE); if errOpenWrite != nil { return "", "", 0, nil, fmt.Errorf("failed open key %s for write: %w", foundSubkeyName, errOpenWrite) }; defer subkeyWrite.Close()
+		errSet := subkeyWrite.SetStringValue(networkAddressValue, targetMACRegistryFormat) // Use formatted string
+		if errSet != nil { return "", "", 0, nil, fmt.Errorf("failed write NetworkAddress=%s: %w", targetMACRegistryFormat, errSet) }
+		log.Printf("Successfully wrote NetworkAddress=%s to registry key %s.", targetMACRegistryFormat, foundSubkeyName)
+	}
+
+	// --- Return results ---
+	devPath = fmt.Sprintf(tapDevicePathFormat, instanceID)
+	// ... (final checks and return) ...
+    if devPath == "" || instanceID == "" || ifIdx == 0 { return "", "", 0, nil, errors.New("internal error finalizing") }
+	return devPath, instanceID, ifIdx, currentMAC, nil
+}
+
+// --- Make sure formatMACForRegistry produces XX-XX-XX-XX-XX-XX ---
+func formatMACForRegistry(macStr string) (string, error) {
+	hwAddr, err := net.ParseMAC(macStr)
+	if err != nil {
+		// Could add check for already hyphenated format here if desired
+		return "", fmt.Errorf("invalid MAC format '%s': %w", macStr, err)
+	}
+	return fmt.Sprintf("%02X-%02X-%02X-%02X-%02X-%02X", // Ensure hyphens are here
+		hwAddr[0], hwAddr[1], hwAddr[2], hwAddr[3], hwAddr[4], hwAddr[5]), nil
+}
+*/
+
 // --- Windows Create function ---
 // Creates the TAP device, configures registry, opens handle, stores state.
 func Create(config Config) (*Device, error) {
