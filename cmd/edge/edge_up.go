@@ -40,7 +40,8 @@ func upCmd(c *cli.Context) error {
 	return nil
 }
 func up(c *cli.Context) {
-	edge.EnsureEdgeLogger()
+	//edge.EnsureEdgeLogger()
+	log.SetStd()
 	log.Printf("starting edge...")
 
 	b, _ := base64.StdEncoding.DecodeString(banner)
