@@ -16,7 +16,6 @@ import (
 	"n2n-go/pkg/appdir"
 
 	"github.com/rs/zerolog"
-	zlog "github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
 )
 
@@ -128,7 +127,7 @@ func (w *sqliteWriter) close() error {
 // --- Package Initialization and Configuration ---
 
 func SetStd() {
-	pkgLogger = zerolog.New(zlog.Output(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339})).With().Timestamp().Logger()
+	pkgLogger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}).With().Timestamp().Logger()
 }
 
 func Init(dbFile string) error {
