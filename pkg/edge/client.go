@@ -17,6 +17,7 @@ import (
 	transform "n2n-go/pkg/tranform"
 	"n2n-go/pkg/tuntap"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -138,7 +139,11 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 
 	err = tap.IfMac(predictableMac.String())
 	if err != nil {
-		log.Fatalf("err: %v", err)
+		if runtime.GOOS == "windows" {
+			log.Printf("warn: %v", err)
+		} else {
+			log.Fatalf("err: %v", err)
+		}
 	}
 
 	processorTransforms := []transform.Transform{}
