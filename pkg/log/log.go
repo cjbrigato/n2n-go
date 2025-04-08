@@ -6,6 +6,7 @@ import (
 	"errors" // Import errors package
 	"fmt"
 	stdlog "log" // Use alias to avoid conflict with package name
+	"os"
 	"path"
 	"sync"
 	"sync/atomic"
@@ -124,6 +125,10 @@ func (w *sqliteWriter) close() error {
 }
 
 // --- Package Initialization and Configuration ---
+
+func SetStd() {
+	pkgLogger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+}
 
 func Init(dbFile string) error {
 

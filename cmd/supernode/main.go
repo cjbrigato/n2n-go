@@ -23,11 +23,12 @@ var (
 
 func main() {
 
-	err := log.Init("supernode.db")
+	log.SetStd()
+	/*err := log.Init("supernode.db")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
-	}
+	}*/
 	log.Printf("starting supernode...")
 
 	b, _ := base64.StdEncoding.DecodeString(banner)
