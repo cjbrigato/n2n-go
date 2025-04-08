@@ -11,14 +11,12 @@ import (
 )
 
 var (
-	// Define the 'logs' subcommand
 	ctlCommand = &cli.Command{
-		Name:               "ctl",
-		Usage:              "controls edge via management socket",
-		UsageText:          "ctl [args...]",
-		Description:        `controls edge via management socket`,
-		CustomHelpTemplate: logsCommandHelpTemplate,
-		Flags:              []cli.Flag{
+		Name:        "ctl",
+		Usage:       "controls edge via management socket",
+		UsageText:   "ctl [args...]",
+		Description: `controls edge via management socket`,
+		Flags:       []cli.Flag{
 			// --- Common Options ---
 
 		},
@@ -41,7 +39,6 @@ func ctl(command string) {
 
 func ctlCmd(c *cli.Context) error {
 	s := strings.Join(c.Args().Slice(), " ")
-	fmt.Println(s)
 	ctl(s)
 	return nil
 }

@@ -101,22 +101,22 @@ TIME SPECIFICATION (<time_spec>):
 
 EXAMPLES:
      # Get the last 50 log entries (defaulting to --last mode)
-     myapp logs -f /var/log/app.db -n 50
+     edge logs -f /var/log/app.db -n 50
 
      # Get the last 100 log entries (using default count and mode)
-     myapp logs -f /var/log/app.db
+     edge logs -f /var/log/app.db
 
      # Get logs since 1 hour ago, max 500 entries, in pretty format
-     myapp logs -f /var/log/app.db --since -s 1h -l 500 --pretty
+     edge logs -f /var/log/app.db --since -s 1h -l 500 --pretty
 
      # Get logs since a specific UTC timestamp
-     myapp logs -f /var/log/app.db --since -s "2023-10-26T10:00:00Z"
+     edge logs -f /var/log/app.db --since -s "2023-10-26T10:00:00Z"
 
      # Get logs between 2 days ago and 1 day ago
-     myapp logs -f /var/log/app.db --between -s 2d -e 1d
+     edge logs -f /var/log/app.db --between -s 2d -e 1d
 
      # Get logs between two specific dates (local timezone assumed)
-     myapp logs -f /var/log/app.db --between -s "2023-10-20" -e "2023-10-25" --limit 2000
+     edge logs -f /var/log/app.db --between -s "2023-10-20" -e "2023-10-25" --limit 2000
 
 `
 
@@ -127,7 +127,7 @@ var (
 	logsCommand = &cli.Command{
 		Name:               "logs",
 		Usage:              "Retrieve JSON log entries from the application's log database",
-		UsageText:          "myapp logs [command options] [--last|--since|--between] [mode options]",
+		UsageText:          "[command options] [--last|--since|--between] [mode options]",
 		Description:        `Retrieves logs stored in an SQLite database specified with -f`,
 		CustomHelpTemplate: logsCommandHelpTemplate,
 		Flags: []cli.Flag{

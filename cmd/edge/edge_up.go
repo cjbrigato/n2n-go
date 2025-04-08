@@ -18,12 +18,16 @@ import (
 var (
 	// Define the 'logs' subcommand
 	upCommand = &cli.Command{
-		Name:               "up",
-		Usage:              "starts edge instance",
-		UsageText:          "up [args...]",
-		Description:        `starts edge instance`,
-		CustomHelpTemplate: logsCommandHelpTemplate,
-		Flags:              []cli.Flag{
+		Name:        "up",
+		Usage:       "starts edge instance",
+		UsageText:   "up [args...]",
+		Description: `starts edge instance`,
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:    "edge-id",
+				Aliases: []string{"i"},
+				Usage:   "edge-id EdgeName",
+			},
 			// --- Common Options ---
 
 		},
@@ -32,10 +36,10 @@ var (
 )
 
 func upCmd(c *cli.Context) error {
-	up()
+	up(c)
 	return nil
 }
-func up() {
+func up(c *cli.Context) {
 	edge.EnsureEdgeLogger()
 	log.Printf("starting edge...")
 
@@ -47,6 +51,13 @@ func up() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 	log.Printf("using config file %s", cfg.ConfigFile)
+
+	if c.IsSet("edge-id") {
+		eid := c.String("edge-id")
+		if eid != "" {
+			cfg.EdgeID = eid
+		}
+	}
 
 	client, err := edge.NewEdgeClient(*cfg) // Pass the config struct
 	if err != nil {
