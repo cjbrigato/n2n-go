@@ -97,7 +97,7 @@ func formatMACForRegistry(macStr string) (string, error) {
 		}
 		return "", fmt.Errorf("invalid MAC format '%s': %w", macStr, err)
 	}
-	return fmt.Sprintf("%02X%02X%02X%02X%02X%02X", hwAddr[0], hwAddr[1], hwAddr[2], hwAddr[3], hwAddr[4], hwAddr[5]), nil
+	return fmt.Sprintf("%02X-%02X-%02X-%02X-%02X-%02X", hwAddr[0], hwAddr[1], hwAddr[2], hwAddr[3], hwAddr[4], hwAddr[5]), nil
 }
 
 // findInterfaceIndexAndInfoByGUID (unchanged)
