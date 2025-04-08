@@ -6,7 +6,7 @@ require (
 	github.com/goccy/go-graphviz v0.2.9
 	github.com/huin/goupnp v1.3.0
 	github.com/vishvananda/netlink v1.3.0
-	golang.org/x/sys v0.31.0
+	golang.org/x/sys v0.32.0
 )
 
 require (
@@ -16,7 +16,6 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -51,7 +50,6 @@ require (
 )
 
 require (
-	github.com/cjbrigato/ensure v0.0.0-20250330162609-d4e8cc89b4dc
 	github.com/cjbrigato/ippool v1.0.3
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/flopp/go-findfont v0.1.0 // indirect
@@ -64,8 +62,6 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.20.0
 	github.com/tetratelabs/wazero v1.8.1 // indirect
-	github.com/ua-parser/uap-go v0.0.0-20250326155420-f7f5a2f9f5bc
-	github.com/urfave/cli v1.22.16
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/vishvananda/netns v0.0.4 // indirect
 	golang.org/x/image v0.21.0 // indirect

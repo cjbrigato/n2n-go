@@ -3,58 +3,68 @@ package tuntap
 import (
 	"fmt"
 	"net"
-	"os" // For stderr logging example
-	"runtime"
+	"os"
+	"runtime" // Used only for initial logging msg
 	"time"
 )
 
-// Interface struct remains the same
+// Interface is the primary structure for interacting with a TUN/TAP device.
+// It wraps the lower-level, platform-specific Device object.
 type Interface struct {
-	Iface *Device // Holds platform-specific Device
+	// Iface holds the underlying platform-specific device state and methods.
+	// We make it exported if external packages might need direct access,
+	// otherwise it could be unexported. Let's keep it exported for now.
+	Iface *Device
 }
 
-// NewInterface creates a new TAP interface (TUN support limited/untested)
-func NewInterface(name, mode string) (*Interface, error) {
-	// Currently, only TAP mode is reliably supported across platforms
-	if mode != "tap" {
-		return nil, fmt.Errorf("unsupported mode: %s (only 'tap' is reliably supported)", mode)
+// NewInterface creates and initializes a new TUN/TAP interface based on the provided configuration.
+// The caller is responsible for populating the config, especially config.MACAddress if desired on Windows.
+func NewInterface(config Config) (*Interface, error) {
+	// Validate config minimally
+	if config.DevType != TAP {
+		// Add TUN support later if needed and feasible
+		return nil, fmt.Errorf("unsupported device type: %v (only TAP currently supported)", config.DevType)
+	}
+	if config.Name == "" && runtime.GOOS == "linux" {
+		// Linux usually requires a name hint, though kernel assigns final one
+		// Windows finds based on driver ComponentId, name is less critical here
+		// We might want better name handling later.
+		// return nil, fmt.Errorf("interface name must be provided for Linux")
+		fmt.Fprintln(os.Stderr, "Warning: Interface name not provided in config, kernel will assign one (Linux).")
+
 	}
 
-	devType := TAP
-
-	// Config includes MACAddress field which will be used by device_windows.go
-	config := Config{
-		Name:        name, // Name might be used for matching if multiple TAP exist (not implemented)
-		DevType:     devType,
-		MACAddress:  "", // <<< --- CALLER NEEDS TO SET THIS IF DESIRED --- >>>
-		Persist:     false,
-		Owner:       -1,
-		Group:       -1,
-		Permissions: 0666,
-	}
-
-	// Create calls the platform-specific implementation
-	// The Create function now handles registry setting and API discovery internally.
-	iface, err := Create(config)
+	// Create calls the platform-specific implementation defined in device_*.go
+	iface, err := Create(config) // Pass the caller-provided config
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s interface '%s': %w", mode, name, err)
+		// Add context to the error from Create
+		return nil, fmt.Errorf("failed to create %s interface (name hint: %s): %w", config.DevType, config.Name, err)
 	}
 
-	fmt.Printf("Successfully created interface. Platform: %s, Effective Name/ID: %s, IfIndex: %d, MAC: %s\n",
-		runtime.GOOS, iface.Name, iface.GetIfIndex(), iface.GetMACAddress().String())
+	// Log successful creation using the Device methods (which are platform-aware)
+	logMsg := fmt.Sprintf("Successfully created interface. Platform: %s, Name/ID: %s", runtime.GOOS, iface.Name)
+	if ifIndex := iface.GetIfIndex(); ifIndex != 0 {
+		logMsg += fmt.Sprintf(", IfIndex: %d", ifIndex)
+	}
+	if mac := iface.GetMACAddress(); mac != nil {
+		logMsg += fmt.Sprintf(", MAC: %s", mac.String())
+	}
+	fmt.Println(logMsg) // Use proper logging in real code
 
 	return &Interface{Iface: iface}, nil
 }
 
-// --- Read, Write, Close methods ---
+// --- Methods for *Interface (mostly delegating to *Device) ---
 
+// Read reads a packet from the interface.
 func (i *Interface) Read(b []byte) (int, error) {
 	if i.Iface == nil {
-		return 0, os.ErrInvalid
+		return 0, os.ErrInvalid // Or specific "interface closed" error
 	}
 	return i.Iface.Read(b)
 }
 
+// Write writes a packet to the interface.
 func (i *Interface) Write(b []byte) (int, error) {
 	if i.Iface == nil {
 		return 0, os.ErrInvalid
@@ -62,16 +72,18 @@ func (i *Interface) Write(b []byte) (int, error) {
 	return i.Iface.Write(b)
 }
 
+// Close closes the interface.
 func (i *Interface) Close() error {
 	if i.Iface == nil {
-		return nil
-	} // Or os.ErrInvalid?
-	return i.Iface.Close()
+		return nil // Already closed
+	}
+	err := i.Iface.Close()
+	i.Iface = nil // Prevent further use
+	return err
 }
 
-// --- Accessor methods ---
-
-// Name returns the effective name/identifier (GUID on Windows, name on Linux)
+// Name returns the effective name/identifier of the interface
+// (e.g., "tap0" on Linux, GUID on Windows).
 func (i *Interface) Name() string {
 	if i.Iface == nil {
 		return ""
@@ -79,72 +91,25 @@ func (i *Interface) Name() string {
 	return i.Iface.Name
 }
 
+// HardwareAddr returns the MAC address of the interface.
 func (i *Interface) HardwareAddr() net.HardwareAddr {
 	if i.Iface == nil {
 		return nil
 	}
-	// Always call the method on the Device; the platform-specific
-	// implementation will handle retrieval (stored value or dynamic lookup).
+	// Delegate directly to the Device method, which handles platform differences.
 	return i.Iface.GetMACAddress()
 }
 
-// GetIfIndex returns the interface index by calling the underlying Device method.
+// GetIfIndex returns the OS interface index.
 func (i *Interface) GetIfIndex() uint32 {
 	if i.Iface == nil {
 		return 0
 	}
-	// Always call the method on the Device.
+	// Delegate directly to the Device method.
 	return i.Iface.GetIfIndex()
 }
 
-/*
-// HardwareAddr returns the MAC address discovered during interface creation.
-func (i *Interface) HardwareAddr() net.HardwareAddr {
-	if i.Iface == nil {
-		return nil
-	}
-	// On Windows, delegate to the stored MAC address in the Device struct
-	if runtime.GOOS == "windows" {
-		return i.Iface.GetMACAddress() // Use the stored MAC
-	}
-
-	// Linux implementation (remains the same, using net.InterfaceByName)
-	iface, err := net.InterfaceByName(i.Name())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: hardwareAddr (linux): could not get interface %s: %v\n", i.Name(), err)
-		return nil
-	}
-	// Prefer 6-byte MAC if available
-	if len(iface.HardwareAddr) >= 6 {
-		macCopy := make(net.HardwareAddr, 6)
-		copy(macCopy, iface.HardwareAddr[:6])
-		return macCopy
-	}
-	// Return whatever was found otherwise
-	return iface.HardwareAddr
-}
-
-// GetIfIndex returns the interface index discovered during creation (Windows)
-// or dynamically looks it up (Linux). Returns 0 if not found/applicable.
-func (i *Interface) GetIfIndex() uint32 {
-	if i.Iface == nil {
-		return 0
-	}
-	if runtime.GOOS == "windows" {
-		// Delegate to the stored IfIndex in the Device struct
-		return i.Iface.GetIfIndex()
-	}
-	// Linux implementation
-	iface, err := net.InterfaceByName(i.Name())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: GetIfIndex (linux): could not get interface %s: %v\n", i.Name(), err)
-		return 0
-	}
-	return uint32(iface.Index)
-}
-*/
-// --- Deadline methods ---
-
+// SetReadDeadline sets the read deadline.
 func (i *Interface) SetReadDeadline(t time.Time) error {
 	if i.Iface == nil {
 		return os.ErrInvalid
@@ -152,6 +117,7 @@ func (i *Interface) SetReadDeadline(t time.Time) error {
 	return i.Iface.SetReadDeadline(t)
 }
 
+// SetWriteDeadline sets the write deadline.
 func (i *Interface) SetWriteDeadline(t time.Time) error {
 	if i.Iface == nil {
 		return os.ErrInvalid
@@ -159,27 +125,28 @@ func (i *Interface) SetWriteDeadline(t time.Time) error {
 	return i.Iface.SetWriteDeadline(t)
 }
 
+// SetDeadline sets both read and write deadlines.
 func (i *Interface) SetDeadline(t time.Time) error {
-	// Delegate directly to underlying device method
 	if i.Iface == nil {
 		return os.ErrInvalid
 	}
 	return i.Iface.SetDeadline(t)
 }
 
-// ConfigureInterface delegates to the platform-specific implementation.
-// Defined in link_linux.go and link_windows.go.
+// --- Signatures for methods implemented elsewhere ---
+
+// ConfigureInterface applies network configuration (IP, MTU, etc.) to the interface.
+// Implementation is in link_linux.go and link_windows.go.
 // func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error
 
-// IfUp provides a simpler way to bring the interface up with IP and default MTU.
-// Defined in link_linux.go and link_windows.go.
+// IfUp is a convenience method to set IP/MTU and bring the interface up.
+// Implementation is in link_linux.go and link_windows.go.
 // func (i *Interface) IfUp(ipCIDR string) error
 
-// IfMac attempts to set the MAC address (mostly relevant/possible on Linux).
-// Defined in link_linux.go and link_windows.go.
+// IfMac attempts to set the MAC address (primarily Linux).
+// Implementation is in link_linux.go and link_windows.go.
 // func (i *Interface) IfMac(macAddr string) error
 
-// SendGratuitousARP sends a gratuitous ARP reply for the given IP address
-// using the MAC address of this interface.
-// Defined in arp.go (which calls platform-specific helpers).
+// SendGratuitousARP sends a gratuitous ARP reply using this interface's MAC.
+// Implementation is in arp.go (calling helpers in arp_*.go).
 // func (i *Interface) SendGratuitousARP(vip net.IP) error

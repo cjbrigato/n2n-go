@@ -51,9 +51,9 @@ type EdgeClient struct {
 
 	NatClient natclient.NATClient
 
-	VirtualIP string
+	VirtualIP       string
 	ParsedVirtualIP net.IP
-	MACAddr   net.HardwareAddr
+	MACAddr         net.HardwareAddr
 
 	machineId      []byte
 	predictableMac net.HardwareAddr
@@ -119,7 +119,13 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 	}
 	log.Printf("%s TAP ifName machine-id based Community %s MAC Address: %s", cfg.TapName, cfg.Community, predictableMac.String())
 
-	conn, tap, snAddr, err := setupNetworkComponents(cfg)
+	tapcfg := tuntap.Config{
+		Name:       cfg.TapName,
+		DevType:    tuntap.TAP,
+		MACAddress: predictableMac.String(), // Windows: Set via registry
+	}
+
+	conn, tap, snAddr, err := setupNetworkComponents(cfg, tapcfg)
 	if err != nil {
 		return nil, err
 	}

@@ -10,11 +10,12 @@ import (
 	"n2n-go/pkg/tuntap"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // setupNetworkComponents initializes the UDP connection and TAP interface
-func setupNetworkComponents(cfg Config) (*net.UDPConn, *tuntap.Interface, *net.UDPAddr, error) {
+func setupNetworkComponents(cfg Config, tapcfg tuntap.Config) (*net.UDPConn, *tuntap.Interface, *net.UDPAddr, error) {
 	snAddr, err := net.ResolveUDPAddr("udp4", cfg.SupernodeAddr)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf(" failed to resolve supernode address: %w", err)
@@ -25,7 +26,7 @@ func setupNetworkComponents(cfg Config) (*net.UDPConn, *tuntap.Interface, *net.U
 		return nil, nil, nil, fmt.Errorf(" %w", err)
 	}
 
-	tap, err := tuntap.NewInterface(cfg.TapName, "tap")
+	tap, err := tuntap.NewInterface(tapcfg)
 	if err != nil {
 		conn.Close() // Clean up on error
 		return nil, nil, nil, fmt.Errorf(" failed to create TAP interface: %w", err)
@@ -163,7 +164,7 @@ func (e *EdgeClient) InitialRegister() error {
 		return ErrNACKRegister
 	}
 	e.VirtualIP = fmt.Sprintf("%s/%d", rresp.Msg.VirtualIP, rresp.Msg.Masklen)
-	e.ParsedVirtualIP = net.ParseIP(e.VirtualIP)
+	e.ParsedVirtualIP = net.ParseIP(strings.Split(e.VirtualIP, "/")[0])
 	if e.ParsedVirtualIP == nil {
 		return fmt.Errorf("invalid virtual IP in configuration: %s", e.VirtualIP)
 	}
