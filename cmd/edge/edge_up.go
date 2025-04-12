@@ -27,6 +27,10 @@ var (
 				Name:    "edge-id",
 				Aliases: []string{"i"},
 				Usage:   "edge-id EdgeName",
+			}, &cli.BoolFlag{
+				Name:    "stdout-log",
+				Aliases: []string{"l"},
+				Usage:   "stdout-log",
 			},
 			// --- Common Options ---
 
@@ -40,8 +44,16 @@ func upCmd(c *cli.Context) error {
 	return nil
 }
 func up(c *cli.Context) {
-	//edge.EnsureEdgeLogger()
-	log.SetStd()
+	noSqlLogger := false
+	if c.IsSet("stdout-log") {
+		if c.Bool("stdout-log") {
+			log.SetStd()
+			noSqlLogger = true
+		}
+	}
+	if !noSqlLogger {
+		edge.EnsureEdgeLogger()
+	}
 	log.Printf("starting edge...")
 
 	b, _ := base64.StdEncoding.DecodeString(banner)
