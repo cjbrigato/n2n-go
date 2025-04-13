@@ -443,6 +443,9 @@ func (f *Handle) ReadTimeout(b []byte, milliseconds int) (int, error) {
 		}
 		return int(n), opErr
 	}
+	if isPending && n < 1 {
+		return f.ReadTimeout(b, milliseconds)
+	}
 	return int(n), nil
 }
 
