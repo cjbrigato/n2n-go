@@ -26,12 +26,23 @@ type Config struct {
 	Permissions os.FileMode // Linux only
 }
 
+type DeviceIO interface {
+	Close() error
+	Fd() uintptr
+	Read(b []byte) (int, error)
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
+	Write(b []byte) (int, error)
+}
+
 type Device struct {
 	// Common fields
 	File    *os.File
 	Name    string // Linux: Name hint/actual; Windows: GUID
 	DevType DeviceType
 	Config  Config
+
+	devIo DeviceIO
 
 	// --- Platform-specific state stored internally ---
 
@@ -47,29 +58,29 @@ type Device struct {
 // This method is ONLY defined in device_windows.go
 // func (d *Device) GetHandle() windows.Handle
 
-// --- Common Methods (Read/Write/Close etc. delegate to File) ---
+// --- Common Methods (Read/Write/Close etc. delegate to devIO interface) ---
 func (d *Device) Read(b []byte) (int, error) {
-	if d.File == nil {
+	if d.devIo == nil {
 		return 0, os.ErrInvalid
 	}
-	return d.File.Read(b)
+	return d.devIo.Read(b)
 }
 func (d *Device) Write(b []byte) (int, error) {
-	if d.File == nil {
+	if d.devIo == nil {
 		return 0, os.ErrInvalid
 	}
-	return d.File.Write(b)
+	return d.devIo.Write(b)
 }
 func (d *Device) Close() error {
-	if d.File == nil {
+	if d.devIo == nil {
 		return nil
 	}
-	err := d.File.Close()
-	d.File = nil
+	err := d.devIo.Close()
+	d.devIo = nil
 	return err
 }
-func (d *Device) GetFd() int {
-	if d.File == nil {
+func (d *Device) Fd() int {
+	if d.devIo == nil {
 		return -1
 	}
 	return int(d.File.Fd())
@@ -77,19 +88,19 @@ func (d *Device) GetFd() int {
 func (d *Device) IsTUN() bool { return d.DevType == TUN }
 func (d *Device) IsTAP() bool { return d.DevType == TAP }
 func (d *Device) SetReadDeadline(t time.Time) error {
-	if d.File == nil {
+	if d.devIo == nil {
 		return os.ErrInvalid
 	}
-	return d.File.SetReadDeadline(t)
+	return d.devIo.SetReadDeadline(t)
 }
 func (d *Device) SetWriteDeadline(t time.Time) error {
-	if d.File == nil {
+	if d.devIo == nil {
 		return os.ErrInvalid
 	}
-	return d.File.SetWriteDeadline(t)
+	return d.devIo.SetWriteDeadline(t)
 }
 func (d *Device) SetDeadline(t time.Time) error {
-	if d.File == nil {
+	if d.devIo == nil {
 		return os.ErrInvalid
 	}
 	if err := d.SetReadDeadline(t); err != nil {

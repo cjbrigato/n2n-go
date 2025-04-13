@@ -382,9 +382,11 @@ func Create(config Config) (*Device, error) {
 
 	// Create the core Device struct
 	file := os.NewFile(uintptr(winHandle), devPath)
+	overlapped := NewOverlapped(winHandle, 0)
 	dev := &Device{
 		File:    file,
 		handle:  uintptr(winHandle), // Store as uintptr
+		devIo:   overlapped,
 		Name:    instanceID,
 		DevType: config.DevType,
 		Config:  config,
@@ -400,6 +402,7 @@ func Create(config Config) (*Device, error) {
 		windows.CloseHandle(winHandle) // Close original handle on failure
 		dev.File = nil
 		dev.handle = 0 // Invalidate struct state
+		dev.devIo = nil
 		return nil, fmt.Errorf("failed set TAP media status connected: %w", err)
 	}
 
