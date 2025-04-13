@@ -195,7 +195,8 @@ func (f *Handle) asyncIo(fn func(h windows.Handle, p []byte, n *uint32, o *windo
 				// Return the original ERROR_IO_PENDING to indicate this state.
 				// The caller (ReadTimeout/WriteTimeout) requested non-blocking,
 				// so "pending" is the expected status if it wasn't immediately ready.
-				return 0, windows.ERROR_IO_PENDING
+				break
+				//return 0, windows.ERROR_IO_PENDING
 			} else {
 				// Actual timeout (milliseconds > 0 expired). Cancel and return deadline error.
 				_ = windows.CancelIoEx(f.h, o)
