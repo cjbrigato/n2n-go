@@ -434,19 +434,16 @@ func (f *Handle) ReadTimeout(b []byte, milliseconds int) (int, error) {
 	isStdEOF := (opErr == nil && n == 0 && len(b) > 0)
 	isExplicitEOF := errors.Is(opErr, io.EOF)
 	isDeadline := errors.Is(opErr, os.ErrDeadlineExceeded)
-	isPending := errors.Is(opErr, windows.ERROR_IO_PENDING)
 
 	if isStdEOF || (isExplicitEOF && !isDeadline) {
 		return int(n), io.EOF
-	} else if opErr != nil && !isPending {
+	} else if opErr != nil {
 		if !isExplicitEOF && !isDeadline {
 			return int(n), fmt.Errorf("read: %w", opErr)
 		}
 		return int(n), opErr
 	}
-	if isPending && n < 1 {
-		return f.ReadTimeout(b, milliseconds)
-	}
+
 	return int(n), nil
 }
 
