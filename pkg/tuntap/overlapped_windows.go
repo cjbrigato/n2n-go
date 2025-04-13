@@ -433,10 +433,11 @@ func (f *Handle) ReadTimeout(b []byte, milliseconds int) (int, error) {
 	isStdEOF := (opErr == nil && n == 0 && len(b) > 0)
 	isExplicitEOF := errors.Is(opErr, io.EOF)
 	isDeadline := errors.Is(opErr, os.ErrDeadlineExceeded)
+	isPending := errors.Is(opErr, windows.ERROR_IO_PENDING)
 
 	if isStdEOF || (isExplicitEOF && !isDeadline) {
 		return int(n), io.EOF
-	} else if opErr != nil {
+	} else if opErr != nil && !isPending {
 		if !isExplicitEOF && !isDeadline {
 			return int(n), fmt.Errorf("read: %w", opErr)
 		}
@@ -463,7 +464,7 @@ func (f *Handle) WriteTimeout(b []byte, milliseconds int) (int, error) {
 
 	// Use calculated effectiveMillis
 	n, err := f.asyncIo(windows.WriteFile, b, effectiveMillis, o)
-	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
+	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) && !errors.Is(err, windows.ERROR_IO_PENDING) {
 		return int(n), fmt.Errorf("write: %w", err)
 	}
 	return int(n), err
