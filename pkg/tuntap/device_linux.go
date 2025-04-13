@@ -69,7 +69,7 @@ func Create(config Config) (*Device, error) {
 	}
 	// ... (Owner/Group/Persist logic) ...
 	file := os.NewFile(uintptr(fd), "/dev/net/tun/"+actualName)
-	dev := &Device{File: file, devIo: file, Name: actualName, DevType: config.DevType, Config: config /* Other fields zero */}
+	dev := &Device{devIo: file, Name: actualName, DevType: config.DevType, Config: config /* Other fields zero */}
 	return dev, nil
 }
 

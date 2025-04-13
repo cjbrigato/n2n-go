@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"syscall" // Keep for syscall.Errno check if needed
 	"unsafe"
@@ -381,10 +380,10 @@ func Create(config Config) (*Device, error) {
 	}
 
 	// Create the core Device struct
-	file := os.NewFile(uintptr(winHandle), devPath)
+	//file := os.NewFile(uintptr(winHandle), devPath)
 	overlapped := NewOverlapped(winHandle, 0)
 	dev := &Device{
-		File:    file,
+		//File:    file,
 		handle:  uintptr(winHandle), // Store as uintptr
 		devIo:   overlapped,
 		Name:    instanceID,
@@ -400,7 +399,7 @@ func Create(config Config) (*Device, error) {
 	_, err = deviceIoControl(dev, TAP_IOCTL_SET_MEDIA_STATUS, connectStatus, nil)
 	if err != nil {
 		windows.CloseHandle(winHandle) // Close original handle on failure
-		dev.File = nil
+		//dev.File = nil
 		dev.handle = 0 // Invalidate struct state
 		dev.devIo = nil
 		return nil, fmt.Errorf("failed set TAP media status connected: %w", err)

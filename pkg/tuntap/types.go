@@ -26,6 +26,7 @@ type Config struct {
 	Permissions os.FileMode // Linux only
 }
 
+// Abstract IO to keep more common types out of platform specific code
 type DeviceIO interface {
 	Close() error
 	Fd() uintptr
@@ -37,7 +38,7 @@ type DeviceIO interface {
 
 type Device struct {
 	// Common fields
-	File    *os.File
+	//File    *os.File
 	Name    string // Linux: Name hint/actual; Windows: GUID
 	DevType DeviceType
 	Config  Config
@@ -83,7 +84,7 @@ func (d *Device) Fd() int {
 	if d.devIo == nil {
 		return -1
 	}
-	return int(d.File.Fd())
+	return int(d.devIo.Fd())
 }
 func (d *Device) IsTUN() bool { return d.DevType == TUN }
 func (d *Device) IsTAP() bool { return d.DevType == TAP }
