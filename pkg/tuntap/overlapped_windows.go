@@ -187,9 +187,21 @@ func (f *Handle) asyncIo(fn func(h windows.Handle, p []byte, n *uint32, o *windo
 			// Operation completed.
 			break // Fall through to GetOverlappedResult.
 		case syscall.WAIT_TIMEOUT: // Compared using syscall constant
-			_ = windows.CancelIoEx(f.h, o)
-			// Return os.ErrDeadlineExceeded for timeout condition
-			return 0, os.ErrDeadlineExceeded
+			// --- FIX ---
+			// Check if the timeout was due to a non-blocking request (milliseconds == 0)
+			// or an actual expired timer (milliseconds > 0).
+			if milliseconds == 0 {
+				// Non-blocking call, operation is still pending.
+				// Return the original ERROR_IO_PENDING to indicate this state.
+				// The caller (ReadTimeout/WriteTimeout) requested non-blocking,
+				// so "pending" is the expected status if it wasn't immediately ready.
+				return 0, windows.ERROR_IO_PENDING
+			} else {
+				// Actual timeout (milliseconds > 0 expired). Cancel and return deadline error.
+				_ = windows.CancelIoEx(f.h, o)
+				return 0, os.ErrDeadlineExceeded // Use standard Go deadline error
+			}
+			// --- END FIX --
 		case syscall.WAIT_ABANDONED: // Compared using syscall constant
 			// Return the specific windows error type
 			return 0, fmt.Errorf("WaitForSingleObject: %w", windows.WAIT_ABANDONED)

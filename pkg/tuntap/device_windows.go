@@ -382,7 +382,7 @@ func Create(config Config) (*Device, error) {
 
 	// Create the core Device struct
 	file := os.NewFile(uintptr(winHandle), devPath)
-	overlapped := NewOverlapped(winHandle, -1)
+	overlapped := NewOverlapped(winHandle, 0)
 	dev := &Device{
 		File:    file,
 		handle:  uintptr(winHandle), // Store as uintptr
