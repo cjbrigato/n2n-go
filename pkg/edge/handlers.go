@@ -94,7 +94,9 @@ func (e *EdgeClient) handleDataPayload(payload []byte) error {
 	if err != nil {
 		return fmt.Errorf("error while processing Incoming data packets, droping (err: %w)", err)
 	}
+	log.Printf("want to ttap write befire")
 	_, err = e.TAP.Write(payload)
+	log.Printf("did tap write after")
 	if err != nil {
 		return fmt.Errorf("TAP write error: %w", err)
 	}
