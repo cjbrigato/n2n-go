@@ -1,11 +1,16 @@
 package tuntap
 
 import (
+	// Import errors
 	"fmt"
 	"net"
 	"os"
 	"runtime" // Used only for initial logging msg
+
+	// Import strings
 	"time"
+
+	"n2n-go/pkg/log" // Ensure log package is imported
 )
 
 // Interface is the primary structure for interacting with a TUN/TAP device.
@@ -28,10 +33,8 @@ func NewInterface(config Config) (*Interface, error) {
 	if config.Name == "" && runtime.GOOS == "linux" {
 		// Linux usually requires a name hint, though kernel assigns final one
 		// Windows finds based on driver ComponentId, name is less critical here
-		// We might want better name handling later.
-		// return nil, fmt.Errorf("interface name must be provided for Linux")
-		fmt.Fprintln(os.Stderr, "Warning: Interface name not provided in config, kernel will assign one (Linux).")
-
+		// macOS scans for available /dev/tapX if name is empty or invalid
+		fmt.Fprintln(os.Stderr, "Warning: Interface name not provided in config, kernel/driver will assign one (Linux/Darwin).")
 	}
 
 	// Create calls the platform-specific implementation defined in device_*.go
@@ -49,9 +52,8 @@ func NewInterface(config Config) (*Interface, error) {
 	if mac := iface.GetMACAddress(); mac != nil {
 		logMsg += fmt.Sprintf(", MAC: %s", mac.String())
 	}
-	if runtime.GOOS == "linux" {
-		fmt.Println(logMsg) // Use proper logging in real code
-	}
+	log.Printf(logMsg) // Use proper logging
+
 	return &Interface{Iface: iface}, nil
 }
 
@@ -84,7 +86,7 @@ func (i *Interface) Close() error {
 }
 
 // Name returns the effective name/identifier of the interface
-// (e.g., "tap0" on Linux, GUID on Windows).
+// (e.g., "tap0" on Linux, GUID on Windows, "tapN" on Darwin).
 func (i *Interface) Name() string {
 	if i.Iface == nil {
 		return ""
@@ -131,21 +133,22 @@ func (i *Interface) SetDeadline(t time.Time) error {
 	if i.Iface == nil {
 		return os.ErrInvalid
 	}
+	// Delegate to the underlying Device's SetDeadline method
 	return i.Iface.SetDeadline(t)
 }
 
 // --- Signatures for methods implemented elsewhere ---
 
 // ConfigureInterface applies network configuration (IP, MTU, etc.) to the interface.
-// Implementation is in link_linux.go and link_windows.go.
+// Implementation is in link_*.go.
 // func (i *Interface) ConfigureInterface(macAddr, ipCIDR string, mtu int) error
 
 // IfUp is a convenience method to set IP/MTU and bring the interface up.
-// Implementation is in link_linux.go and link_windows.go.
+// Implementation is in link_*.go.
 // func (i *Interface) IfUp(ipCIDR string) error
 
-// IfMac attempts to set the MAC address (primarily Linux).
-// Implementation is in link_linux.go and link_windows.go.
+// IfMac attempts to set the MAC address (primarily Linux/Darwin).
+// Implementation is in link_*.go.
 // func (i *Interface) IfMac(macAddr string) error
 
 // SendGratuitousARP sends a gratuitous ARP reply using this interface's MAC.
