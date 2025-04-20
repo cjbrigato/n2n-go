@@ -1,5 +1,5 @@
 // Package hostsfile provides utilities to read, manipulate, and write the system's hosts file.
-package hostsfile
+package syshosts
 
 import (
 	"bufio"

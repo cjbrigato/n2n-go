@@ -1,4 +1,4 @@
-package hostsfile
+package syshosts
 
 import (
 	"bytes"

@@ -112,6 +112,10 @@ func (eapi *EdgeClientApi) GetPeersHTML(c echo.Context) error {
 	return c.HTML(http.StatusOK, eapi.Client.Peers.GenPeersHTML())
 }
 
+func (eapi *EdgeClientApi) GetHostsFile(c echo.Context) error {
+	return c.String(http.StatusOK, eapi.Client.Hosts.String())
+}
+
 func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	api := echo.New()
 	eapi := &EdgeClientApi{
@@ -134,6 +138,7 @@ func NewEdgeApi(edge *EdgeClient) *EdgeClientApi {
 	eapi.Api.GET("/peers.svg", eapi.GetPeersSVG)
 	eapi.Api.GET("/leases.json", eapi.GetLeasesInfosJSON)
 	eapi.Api.GET("/offlines.dot", eapi.GetOfflinesDot)
+	eapi.Api.GET("/syshosts/file", eapi.GetHostsFile)
 	return eapi
 }
 

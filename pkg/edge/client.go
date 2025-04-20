@@ -14,6 +14,7 @@ import (
 	"n2n-go/pkg/p2p"
 	"n2n-go/pkg/protocol"
 	"n2n-go/pkg/protocol/spec"
+	"n2n-go/pkg/syshosts"
 	transform "n2n-go/pkg/tranform"
 	"n2n-go/pkg/tuntap"
 	"net"
@@ -78,6 +79,10 @@ type EdgeClient struct {
 
 	SNPubKey *rsa.PublicKey
 
+	//hosts file management
+	//ensure having peer.community with assigned address in hosts file
+	Hosts *syshosts.Hosts
+
 	//state
 	registered bool
 	config     *Config
@@ -124,6 +129,15 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		Name:       cfg.TapName,
 		DevType:    tuntap.TAP,
 		MACAddress: predictableMac.String(), // Windows: Set via registry
+	}
+
+	log.Printf("checking hosts file manageability")
+	hosts, err := syshosts.NewHosts()
+	if err != nil {
+		log.Fatalf("err: %v", err)
+	}
+	if !hosts.IsWritable() {
+		log.Fatalf("hosts file: access-denied for writing into hostsfile (community entries)")
 	}
 
 	conn, tap, snAddr, err := setupNetworkComponents(cfg, tapcfg)
@@ -207,6 +221,7 @@ func NewEdgeClient(cfg Config) (*EdgeClient, error) {
 		messageHandlers:   make(protocol.MessageHandlerMap),
 		config:            &cfg,
 		payloadProcessor:  payloadProcessor,
+		Hosts:             hosts,
 	}
 	edge.messageHandlers[spec.TypeData] = edge.handleDataMessage
 	edge.messageHandlers[spec.TypePeerInfo] = edge.handlePeerInfoMessage
