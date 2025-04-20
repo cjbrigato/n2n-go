@@ -30,7 +30,7 @@ Once edges discover each other through the supernode, they establish direct peer
 
 ## OS Compatibility
 - **Supernode**: can run on any GOOS
-- **Edge**: can run on linux, windows (if you are dedicated and lucky), darwin (very early platform specific code, please contribute),*bsd compatibility is planned
+- **Edge**: can run on linux, windows (if you are dedicated and lucky), darwin, netbsd (experimental), *bsd compatibility is planned
 
 ## Installation
 
